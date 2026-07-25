@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light dark" />
+    <meta name="robots" content="noindex, nofollow" />
+    <title>Posts — add-blog admin</title>
+    <link rel="icon" href="/assets/favicon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="/assets/css/styles.css" />
+    <link rel="stylesheet" href="/assets/css/admin.css" />
+    <script type="module" src="/assets/js/admin.js"></script>
+  </head>
+  <body class="admin" data-page="posts">
+    <a class="skip-link" href="#main">Skip to content</a>
+
+    <div class="admin-layout">
+      <aside class="admin-sidebar" data-sidebar></aside>
+
+      <main class="admin-main" id="main" data-demo-slot>
+        <div class="admin-header">
+          <div>
+            <h1>Posts</h1>
+            <p>Every post, at every status.</p>
+          </div>
+          <div class="admin-header__actions">
+            <button class="btn" type="button" data-theme-toggle aria-label="Toggle theme"></button>
+            <a class="btn btn--primary" href="/admin/editor/">Write a post</a>
+          </div>
+        </div>
+
+        <div class="card card--flush">
+          <div class="filters">
+            <div class="segmented" role="group" aria-label="Filter by status" data-status-filter>
+              <button type="button" data-status="all" aria-pressed="true">All</button>
+              <button type="button" data-status="published" aria-pressed="false">Published</button>
+              <button type="button" data-status="draft" aria-pressed="false">Drafts</button>
+              <button type="button" data-status="scheduled" aria-pressed="false">Scheduled</button>
+              <button type="button" data-status="archived" aria-pressed="false">Archived</button>
+            </div>
+
+            <label class="search-field">
+              <span class="visually-hidden">Search posts</span>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" aria-hidden="true">
+                <circle cx="11" cy="11" r="7" /><path d="m20 20-3.5-3.5" />
+              </svg>
+              <input type="search" placeholder="Search titles and content…" data-search autocomplete="off" />
+            </label>
+
+            <label class="visually-hidden" for="sort">Sort</label>
+            <select id="sort" data-sort>
+              <option value="updated">Recently updated</option>
+              <option value="newest">Newest first</option>
+              <option value="oldest">Oldest first</option>
+              <option value="title">Title A–Z</option>
+            </select>
+          </div>
+
+          <div data-posts aria-live="polite"></div>
+        </div>
+      </main>
+    </div>
+  </body>
+</html>

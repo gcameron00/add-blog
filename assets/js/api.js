@@ -1,0 +1,564 @@
+/**
+ * API client for both the public blog and the admin UI.
+ *
+ * Every call goes to the real endpoint documented in docs/api.md first. If the
+ * backend is not there — which is the case for the whole of Phase 1, where the
+ * deployment is static assets only — the client falls back to the bundled demo
+ * data for the rest of the session and announces it once, so pages never sit
+ * empty and the UI can flag that what you are looking at is not real content.
+ *
+ * When the Phase 3 Worker ships, the fetches start succeeding and this file
+ * stops using demo-data.js. No view code changes.
+ */
+
+import * as demo from './demo-data.js';
+import { renderMarkdown, excerptFrom, wordCount, readingMinutes, slugify } from './markdown.js';
+
+const API_BASE = '/api';
+
+/** 'unknown' → 'live' | 'demo'. Decided by the first request and then sticky. */
+let backend = 'unknown';
+
+export function isDemoMode() {
+  return backend === 'demo';
+}
+
+export class ApiError extends Error {
+  constructor(payload, status) {
+    super(payload?.message || `Request failed (${status})`);
+    this.name = 'ApiError';
+    this.code = payload?.code || 'unknown';
+    this.field = payload?.field;
+    this.status = status;
+  }
+}
+
+class BackendUnavailable extends Error {}
+
+function goDemo() {
+  if (backend !== 'demo') {
+    backend = 'demo';
+    document.dispatchEvent(new CustomEvent('addblog:demo-mode'));
+  }
+  return new BackendUnavailable();
+}
+
+async function call(path, { method = 'GET', body, query } = {}) {
+  if (backend === 'demo') throw new BackendUnavailable();
+
+  const url = new URL(API_BASE + path, location.origin);
+  for (const [key, value] of Object.entries(query || {})) {
+    if (value !== undefined && value !== null && value !== '') url.searchParams.set(key, value);
+  }
+
+  let response;
+  try {
+    response = await fetch(url, {
+      method,
+      headers: body ? { 'Content-Type': 'application/json' } : {},
+      body: body ? JSON.stringify(body) : undefined,
+      credentials: 'same-origin',
+    });
+  } catch {
+    throw goDemo(); // network failure or offline
+  }
+
+  // A static-assets deployment answers /api/* with HTML, not JSON. That is the
+  // signal that the Worker is not deployed yet — not an application error.
+  const contentType = response.headers.get('content-type') || '';
+  if (!contentType.includes('application/json')) throw goDemo();
+
+  backend = 'live';
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) throw new ApiError(payload.error, response.status);
+  return payload;
+}
+
+/** Run a live call, falling back to the demo implementation if there is no backend. */
+async function withFallback(live, fallback) {
+  try {
+    return await live();
+  } catch (error) {
+    if (error instanceof BackendUnavailable) return fallback();
+    throw error;
+  }
+}
+
+/* ============================================================================
+   Demo store
+   Kept in localStorage so edits made in the admin prototype survive navigation.
+   Cleared from Settings → Reset demo data.
+   ========================================================================= */
+
+const STORE_KEY = 'addblog.demo.v1';
+let store = null;
+
+function seed() {
+  return {
+    posts: demo.POSTS.map((p) => ({ ...p })),
+    media: demo.MEDIA.map((m) => ({ ...m })),
+    settings: { ...demo.SETTINGS },
+    activity: demo.ACTIVITY.map((a) => ({ ...a })),
+  };
+}
+
+function getStore() {
+  if (store) return store;
+  try {
+    const raw = localStorage.getItem(STORE_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (parsed?.posts?.length) {
+        store = parsed;
+        return store;
+      }
+    }
+  } catch {
+    // Corrupt or unavailable storage is not worth failing over — reseed.
+  }
+  store = seed();
+  return store;
+}
+
+function persist() {
+  try {
+    localStorage.setItem(STORE_KEY, JSON.stringify(store));
+  } catch {
+    // Private browsing or a full quota. The in-memory copy still works.
+  }
+}
+
+export function resetDemoData() {
+  store = seed();
+  try {
+    localStorage.removeItem(STORE_KEY);
+  } catch { /* ignore */ }
+}
+
+function delay(ms = 120) {
+  // A touch of latency so loading states are exercised rather than flashing.
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function summarise(post) {
+  const { body_md, body_html, ...rest } = post;
+  return rest;
+}
+
+function matches(post, { q, tag, status, author }) {
+  if (status && status !== 'all' && post.status !== status) return false;
+  if (tag && !post.tags.some((t) => t.slug === tag)) return false;
+  if (author && post.author?.id !== author) return false;
+  if (q) {
+    const needle = q.toLowerCase();
+    const haystack = `${post.title} ${post.subtitle || ''} ${post.excerpt} ${post.body_md}`.toLowerCase();
+    if (!haystack.includes(needle)) return false;
+  }
+  return true;
+}
+
+const byNewest = (a, b) =>
+  String(b.published_at || b.updated_at).localeCompare(String(a.published_at || a.updated_at));
+
+function paginate(items, limit, offset) {
+  const start = Number(offset) || 0;
+  const size = Number(limit) || 20;
+  return {
+    data: items.slice(start, start + size),
+    page: { limit: size, offset: start, total: items.length, has_more: start + size < items.length },
+  };
+}
+
+function nowIso() {
+  return new Date().toISOString().replace(/\.\d+Z$/, 'Z');
+}
+
+/* ============================================================================
+   Public API
+   ========================================================================= */
+
+export function listPosts({ limit = 10, offset = 0, tag, q } = {}) {
+  return withFallback(
+    () => call('/posts', { query: { limit, offset, tag, q } }),
+    async () => {
+      await delay();
+      const posts = getStore()
+        .posts.filter((p) => p.status === 'published' && matches(p, { q, tag }))
+        .sort(byNewest)
+        .map(summarise);
+      return paginate(posts, limit, offset);
+    }
+  );
+}
+
+export function getPost(slug) {
+  return withFallback(
+    () => call(`/posts/${encodeURIComponent(slug)}`),
+    async () => {
+      await delay();
+      const posts = getStore().posts;
+      const post = posts.find((p) => p.slug === slug && p.status === 'published');
+      if (!post) throw new ApiError({ code: 'not_found', message: 'Post not found.' }, 404);
+
+      const tagSlugs = new Set(post.tags.map((t) => t.slug));
+      const related = posts
+        .filter((p) => p.status === 'published' && p.id !== post.id)
+        .map((p) => ({ post: p, score: p.tags.filter((t) => tagSlugs.has(t.slug)).length }))
+        .filter((r) => r.score > 0)
+        .sort((a, b) => b.score - a.score || byNewest(a.post, b.post))
+        .slice(0, 3)
+        .map((r) => summarise(r.post));
+
+      return { data: { ...post, body_html: renderMarkdown(post.body_md), related } };
+    }
+  );
+}
+
+export function listTags() {
+  return withFallback(
+    () => call('/tags'),
+    async () => {
+      await delay(60);
+      const counts = new Map();
+      for (const post of getStore().posts) {
+        if (post.status !== 'published') continue;
+        for (const tag of post.tags) {
+          counts.set(tag.slug, (counts.get(tag.slug) || 0) + 1);
+        }
+      }
+      const data = demo.TAGS.filter((t) => counts.has(t.slug))
+        .map((t) => ({ ...t, post_count: counts.get(t.slug) }))
+        .sort((a, b) => b.post_count - a.post_count || a.name.localeCompare(b.name));
+      return { data };
+    }
+  );
+}
+
+export function getArchive() {
+  return withFallback(
+    () => call('/archive'),
+    async () => {
+      await delay();
+      const groups = new Map();
+      for (const post of getStore().posts.filter((p) => p.status === 'published').sort(byNewest)) {
+        const year = String(post.published_at).slice(0, 4);
+        if (!groups.has(year)) groups.set(year, []);
+        groups.get(year).push({
+          slug: post.slug,
+          title: post.title,
+          published_at: post.published_at,
+          reading_minutes: post.reading_minutes,
+        });
+      }
+      return { data: [...groups].map(([year, posts]) => ({ year, posts })) };
+    }
+  );
+}
+
+/* ============================================================================
+   Admin API
+   ========================================================================= */
+
+export function me() {
+  return withFallback(
+    () => call('/admin/me'),
+    async () => ({ data: demo.CURRENT_USER })
+  );
+}
+
+export function adminListPosts({ status = 'all', tag, q, sort = 'updated', limit = 50, offset = 0 } = {}) {
+  return withFallback(
+    () => call('/admin/posts', { query: { status, tag, q, sort, limit, offset } }),
+    async () => {
+      await delay();
+      const posts = getStore()
+        .posts.filter((p) => matches(p, { q, tag, status }))
+        .sort((a, b) => {
+          if (sort === 'oldest') return byNewest(b, a);
+          if (sort === 'title') return a.title.localeCompare(b.title);
+          if (sort === 'updated') return String(b.updated_at).localeCompare(String(a.updated_at));
+          return byNewest(a, b);
+        })
+        .map(summarise);
+      return paginate(posts, limit, offset);
+    }
+  );
+}
+
+export function adminGetPost(id) {
+  return withFallback(
+    () => call(`/admin/posts/${encodeURIComponent(id)}`),
+    async () => {
+      await delay(80);
+      const post = getStore().posts.find((p) => p.id === id || p.slug === id);
+      if (!post) throw new ApiError({ code: 'not_found', message: 'Post not found.' }, 404);
+      return { data: post };
+    }
+  );
+}
+
+export function createPost(input) {
+  return withFallback(
+    () => call('/admin/posts', { method: 'POST', body: input }),
+    async () => {
+      await delay();
+      const state = getStore();
+      const title = input.title?.trim() || 'Untitled post';
+      const slug = uniqueSlug(input.slug?.trim() || slugify(title) || 'untitled', state.posts);
+      const post = {
+        id: `p${Date.now().toString(36)}`,
+        slug,
+        title,
+        subtitle: input.subtitle || '',
+        body_md: input.body_md || '',
+        excerpt: input.excerpt || excerptFrom(input.body_md || '', 190),
+        status: 'draft',
+        visibility: input.visibility || 'public',
+        author: demo.CURRENT_USER,
+        author_id: demo.CURRENT_USER.id,
+        tags: normaliseTags(input.tags),
+        cover: null,
+        word_count: wordCount(input.body_md || ''),
+        reading_minutes: readingMinutes(input.body_md || ''),
+        created_at: nowIso(),
+        updated_at: nowIso(),
+        published_at: null,
+        scheduled_for: null,
+      };
+      state.posts.unshift(post);
+      logActivity('post.create', title);
+      persist();
+      return { data: post };
+    }
+  );
+}
+
+export function updatePost(id, patch) {
+  return withFallback(
+    () => call(`/admin/posts/${encodeURIComponent(id)}`, { method: 'PATCH', body: patch }),
+    async () => {
+      await delay();
+      const state = getStore();
+      const post = state.posts.find((p) => p.id === id);
+      if (!post) throw new ApiError({ code: 'not_found', message: 'Post not found.' }, 404);
+
+      if (patch.slug && patch.slug !== post.slug) {
+        const clash = state.posts.some((p) => p.id !== id && p.slug === patch.slug);
+        if (clash) {
+          throw new ApiError(
+            { code: 'slug_taken', message: `The slug “${patch.slug}” is already in use.`, field: 'slug' },
+            409
+          );
+        }
+      }
+
+      Object.assign(post, {
+        title: patch.title ?? post.title,
+        subtitle: patch.subtitle ?? post.subtitle,
+        slug: patch.slug ?? post.slug,
+        body_md: patch.body_md ?? post.body_md,
+        excerpt: patch.excerpt || excerptFrom(patch.body_md ?? post.body_md, 190),
+        visibility: patch.visibility ?? post.visibility,
+        tags: patch.tags ? normaliseTags(patch.tags) : post.tags,
+        updated_at: nowIso(),
+      });
+      post.word_count = wordCount(post.body_md);
+      post.reading_minutes = readingMinutes(post.body_md);
+
+      logActivity('post.update', post.title);
+      persist();
+      return { data: post };
+    }
+  );
+}
+
+export function publishPost(id, scheduledFor) {
+  const path = `/admin/posts/${encodeURIComponent(id)}/${scheduledFor ? 'schedule' : 'publish'}`;
+  return withFallback(
+    () => call(path, { method: 'POST', body: scheduledFor ? { scheduled_for: scheduledFor } : undefined }),
+    async () => {
+      await delay();
+      const post = getStore().posts.find((p) => p.id === id);
+      if (!post) throw new ApiError({ code: 'not_found', message: 'Post not found.' }, 404);
+      if (scheduledFor) {
+        post.status = 'scheduled';
+        post.scheduled_for = scheduledFor;
+        logActivity('post.schedule', post.title);
+      } else {
+        post.status = 'published';
+        post.scheduled_for = null;
+        // published_at is set once and never moved — see docs/architecture.md §3.
+        post.published_at = post.published_at || nowIso();
+        logActivity('post.publish', post.title);
+      }
+      post.updated_at = nowIso();
+      persist();
+      return { data: post };
+    }
+  );
+}
+
+export function unpublishPost(id) {
+  return withFallback(
+    () => call(`/admin/posts/${encodeURIComponent(id)}/unpublish`, { method: 'POST' }),
+    async () => {
+      await delay();
+      const post = getStore().posts.find((p) => p.id === id);
+      if (!post) throw new ApiError({ code: 'not_found', message: 'Post not found.' }, 404);
+      post.status = 'draft';
+      post.scheduled_for = null;
+      post.updated_at = nowIso();
+      logActivity('post.unpublish', post.title);
+      persist();
+      return { data: post };
+    }
+  );
+}
+
+export function deletePost(id) {
+  return withFallback(
+    () => call(`/admin/posts/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+    async () => {
+      await delay();
+      const post = getStore().posts.find((p) => p.id === id);
+      if (!post) throw new ApiError({ code: 'not_found', message: 'Post not found.' }, 404);
+      post.status = 'archived';
+      post.updated_at = nowIso();
+      logActivity('post.delete', post.title);
+      persist();
+      return { data: post };
+    }
+  );
+}
+
+export function listMedia({ q, type } = {}) {
+  return withFallback(
+    () => call('/admin/media', { query: { q, type } }),
+    async () => {
+      await delay();
+      const data = getStore().media.filter((m) => {
+        if (type && type !== 'all' && !m.content_type.startsWith(type)) return false;
+        if (q && !`${m.filename} ${m.alt}`.toLowerCase().includes(q.toLowerCase())) return false;
+        return true;
+      });
+      return { data };
+    }
+  );
+}
+
+export function deleteMedia(key) {
+  return withFallback(
+    () => call(`/admin/media/${encodeURIComponent(key)}`, { method: 'DELETE' }),
+    async () => {
+      await delay();
+      const state = getStore();
+      const index = state.media.findIndex((m) => m.key === key);
+      if (index === -1) throw new ApiError({ code: 'not_found', message: 'Not found.' }, 404);
+      if (state.media[index].used_by > 0) {
+        throw new ApiError(
+          { code: 'conflict', message: 'This file is used by a post. Remove it from the post first.' },
+          409
+        );
+      }
+      const [removed] = state.media.splice(index, 1);
+      logActivity('media.delete', removed.filename);
+      persist();
+      return { data: { key } };
+    }
+  );
+}
+
+export function getSettings() {
+  return withFallback(
+    () => call('/admin/settings'),
+    async () => ({ data: getStore().settings })
+  );
+}
+
+export function saveSettings(values) {
+  return withFallback(
+    () => call('/admin/settings', { method: 'PUT', body: values }),
+    async () => {
+      await delay();
+      Object.assign(getStore().settings, values);
+      logActivity('settings.update', 'Blog settings');
+      persist();
+      return { data: getStore().settings };
+    }
+  );
+}
+
+export function getStats() {
+  return withFallback(
+    () => call('/admin/stats'),
+    async () => {
+      await delay(60);
+      const posts = getStore().posts;
+      const count = (status) => posts.filter((p) => p.status === status).length;
+      return {
+        data: {
+          published: count('published'),
+          draft: count('draft'),
+          scheduled: count('scheduled'),
+          archived: count('archived'),
+          words: posts.reduce((sum, p) => sum + p.word_count, 0),
+          media: getStore().media.length,
+          next_scheduled: posts
+            .filter((p) => p.status === 'scheduled')
+            .sort((a, b) => String(a.scheduled_for).localeCompare(String(b.scheduled_for)))[0] || null,
+        },
+      };
+    }
+  );
+}
+
+export function getActivity(limit = 8) {
+  return withFallback(
+    () => call('/admin/audit', { query: { limit } }),
+    async () => ({ data: getStore().activity.slice(0, limit) })
+  );
+}
+
+export function previewMarkdown(bodyMd) {
+  // Rendered locally on purpose: the preview must stay responsive per keystroke.
+  // Phase 5 adds POST /api/admin/preview for a server-authoritative render on save.
+  return renderMarkdown(bodyMd);
+}
+
+/* --- Helpers -------------------------------------------------------------- */
+
+function uniqueSlug(base, posts) {
+  let slug = base;
+  let n = 2;
+  while (posts.some((p) => p.slug === slug)) {
+    slug = `${base}-${n}`;
+    n += 1;
+  }
+  return slug;
+}
+
+function normaliseTags(tags) {
+  if (!tags) return [];
+  const list = Array.isArray(tags) ? tags : String(tags).split(',');
+  return list
+    .map((t) => (typeof t === 'string' ? t.trim() : t?.name || ''))
+    .filter(Boolean)
+    .slice(0, 10)
+    .map((name) => {
+      const slug = slugify(name);
+      return demo.TAGS.find((t) => t.slug === slug) || { slug, name };
+    });
+}
+
+function logActivity(action, detail) {
+  getStore().activity.unshift({
+    at: nowIso(),
+    actor: demo.CURRENT_USER.email,
+    via: 'ui',
+    action,
+    detail,
+  });
+  getStore().activity.length = Math.min(getStore().activity.length, 40);
+}
+
+export { demo };

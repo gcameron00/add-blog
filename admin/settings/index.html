@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light dark" />
+    <meta name="robots" content="noindex, nofollow" />
+    <title>Settings — add-blog admin</title>
+    <link rel="icon" href="/assets/favicon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="/assets/css/styles.css" />
+    <link rel="stylesheet" href="/assets/css/admin.css" />
+    <script type="module" src="/assets/js/admin.js"></script>
+  </head>
+  <body class="admin" data-page="settings">
+    <a class="skip-link" href="#main">Skip to content</a>
+
+    <div class="admin-layout">
+      <aside class="admin-sidebar" data-sidebar></aside>
+
+      <main class="admin-main" id="main" data-demo-slot>
+        <div class="admin-header">
+          <div>
+            <h1>Settings</h1>
+            <p>Stored in the D1 <code>settings</code> table. Owner role required to change.</p>
+          </div>
+          <div class="admin-header__actions">
+            <button class="btn" type="button" data-theme-toggle aria-label="Toggle theme"></button>
+          </div>
+        </div>
+
+        <form data-settings-form>
+          <div class="card">
+            <div class="card__header"><h2>Identity</h2></div>
+
+            <div class="field">
+              <label for="site_title">Blog title</label>
+              <input type="text" id="site_title" name="site_title" required maxlength="120" />
+            </div>
+
+            <div class="field">
+              <label for="site_description">Description</label>
+              <textarea id="site_description" name="site_description" rows="3" maxlength="300"></textarea>
+              <p class="field__hint">Used in the RSS feed, the sitemap and social previews.</p>
+            </div>
+
+            <div class="form-row">
+              <div class="field">
+                <label for="site_url">Public URL</label>
+                <input type="url" id="site_url" name="site_url" placeholder="https://blog.mysite.com" />
+              </div>
+              <div class="field">
+                <label for="admin_url">Admin URL</label>
+                <input type="url" id="admin_url" name="admin_url" placeholder="https://blog-admin.mysite.com" />
+                <p class="field__hint">Also where <code>/mcp</code> is served.</p>
+              </div>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card__header"><h2>Behaviour</h2></div>
+
+            <div class="form-row">
+              <div class="field">
+                <label for="timezone">Timezone</label>
+                <input type="text" id="timezone" name="timezone" placeholder="Europe/London" />
+                <p class="field__hint">Used when interpreting scheduled publish times.</p>
+              </div>
+              <div class="field">
+                <label for="posts_per_page">Posts per page</label>
+                <input type="number" id="posts_per_page" name="posts_per_page" min="1" max="50" />
+              </div>
+            </div>
+
+            <div class="form-row">
+              <label class="checkbox">
+                <input type="checkbox" id="feed_full_content" name="feed_full_content" />
+                <span>
+                  <strong>Full content in RSS</strong>
+                  <span>Send whole posts to feed readers instead of excerpts.</span>
+                </span>
+              </label>
+
+              <label class="checkbox">
+                <input type="checkbox" id="analytics_enabled" name="analytics_enabled" />
+                <span>
+                  <strong>Count page views</strong>
+                  <span>Aggregate counts only. No cookies, no third-party scripts.</span>
+                </span>
+              </label>
+
+              <label class="checkbox">
+                <input type="checkbox" id="allow_raw_html" name="allow_raw_html" />
+                <span>
+                  <strong>Allow raw HTML in posts</strong>
+                  <span>
+                    Off by default. When on, HTML is sanitised against an allow-list before
+                    it is stored — but the safest setting is this one.
+                  </span>
+                </span>
+              </label>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card__header"><h2>Base path</h2></div>
+            <div class="field">
+              <label for="base_path">Path prefix</label>
+              <input type="text" id="base_path" name="base_path" placeholder="/" />
+              <p class="field__hint">
+                Reserved for serving the blog under a subpath of the parent site rather than
+                its own subdomain. Leave as <code>/</code> — subpath support is not built yet
+                (open question 2 in the implementation plan).
+              </p>
+            </div>
+          </div>
+
+          <div style="display: flex; gap: .75rem; align-items: center">
+            <button class="btn btn--primary" type="submit">Save settings</button>
+            <span class="small muted">Changes apply to the public site on the next cache purge.</span>
+          </div>
+        </form>
+
+        <div class="card" style="margin-top: 2rem">
+          <div class="card__header"><h2>Prototype</h2></div>
+          <p class="small muted">
+            Demo content is held in this browser's local storage, so anything you create or
+            edit in the admin persists across page loads but is only ever visible to you.
+            Resetting restores the original sample posts.
+          </p>
+          <button class="btn btn--danger" type="button" data-reset-demo>Reset demo data</button>
+        </div>
+      </main>
+    </div>
+  </body>
+</html>

@@ -4,18 +4,14 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="color-scheme" content="light dark" />
-    <title>The add-blog Journal</title>
-    <meta name="description" content="Notes on building a blog engine for Cloudflare Workers — routing, storage, caching, and giving agents a way in." />
-    <meta property="og:type" content="website" />
-    <meta property="og:title" content="The add-blog Journal" />
-    <meta property="og:description" content="Notes on building a blog engine for Cloudflare Workers." />
-    <link rel="canonical" href="/" />
-    <link rel="alternate" type="application/rss+xml" title="The add-blog Journal" href="/feed.xml" />
+    <title>Archive — The add-blog Journal</title>
+    <meta name="description" content="Every post, grouped by year." />
+    <link rel="canonical" href="/archive/" />
     <link rel="icon" href="/assets/favicon.svg" type="image/svg+xml" />
     <link rel="stylesheet" href="/assets/css/styles.css" />
     <script type="module" src="/assets/js/blog.js"></script>
   </head>
-  <body data-page="home">
+  <body data-page="archive">
     <a class="skip-link" href="#main">Skip to content</a>
 
     <header class="site-header">
@@ -37,31 +33,12 @@
     </header>
 
     <main id="main">
-      <div class="wrap" data-demo-slot>
+      <div class="wrap wrap--prose" data-demo-slot>
         <div class="hero">
-          <h1>The add-blog Journal</h1>
-          <p>
-            Notes on building a blog engine for Cloudflare Workers — routing, storage,
-            caching, and giving agents a way in.
-          </p>
+          <h1>Archive</h1>
+          <p>Every post, oldest sections last.</p>
         </div>
-
-        <div class="toolbar">
-          <label class="search-field">
-            <span class="visually-hidden">Search posts</span>
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" aria-hidden="true">
-              <circle cx="11" cy="11" r="7" /><path d="m20 20-3.5-3.5" />
-            </svg>
-            <input type="search" placeholder="Search posts…" data-search autocomplete="off" />
-          </label>
-          <div class="tag-list" data-tag-bar aria-label="Popular tags"></div>
-        </div>
-
-        <div class="post-list" data-post-list></div>
-
-        <div class="pagination">
-          <button class="btn" type="button" data-load-more hidden>Load more posts</button>
-        </div>
+        <div data-archive></div>
       </div>
     </main>
 

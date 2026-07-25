@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light dark" />
+    <meta name="robots" content="noindex, nofollow" />
+    <title>Editor — add-blog admin</title>
+    <link rel="icon" href="/assets/favicon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="/assets/css/styles.css" />
+    <link rel="stylesheet" href="/assets/css/admin.css" />
+    <script type="module" src="/assets/js/admin.js"></script>
+    <script type="module" src="/assets/js/editor.js"></script>
+  </head>
+  <body class="admin" data-page="editor">
+    <a class="skip-link" href="#main">Skip to content</a>
+
+    <div class="admin-layout">
+      <aside class="admin-sidebar" data-sidebar></aside>
+
+      <main class="admin-main" id="main" data-demo-slot>
+        <div class="admin-header">
+          <div>
+            <h1 data-editor-heading>Editor</h1>
+            <p data-status-slot style="display: flex; gap: .75rem; align-items: center"></p>
+          </div>
+          <div class="admin-header__actions" data-actions></div>
+        </div>
+
+        <div class="editor-shell">
+          <div class="editor-main">
+            <label class="visually-hidden" for="title">Title</label>
+            <input class="editor-title" id="title" data-field="title" type="text"
+                   placeholder="Post title" autocomplete="off" />
+
+            <label class="visually-hidden" for="subtitle">Subtitle</label>
+            <input class="editor-subtitle" id="subtitle" data-field="subtitle" type="text"
+                   placeholder="Subtitle (optional)" autocomplete="off" />
+
+            <div class="editor-toolbar" data-toolbar role="toolbar" aria-label="Formatting"></div>
+
+            <div class="editor-panes" data-panes data-view="split">
+              <label class="visually-hidden" for="body">Post body, in Markdown</label>
+              <textarea class="editor-input" id="body" data-field="body" spellcheck="true"
+                        placeholder="Write in Markdown…"></textarea>
+              <div class="editor-preview">
+                <div class="prose" data-preview aria-live="off"></div>
+              </div>
+            </div>
+
+            <div class="editor-status">
+              <span class="save-state" data-save-state data-state="idle">All changes saved</span>
+              <span style="display: flex; gap: 1rem; margin-left: auto" data-counts></span>
+            </div>
+          </div>
+
+          <aside class="editor-aside">
+            <div class="card">
+              <h3>Publishing</h3>
+              <div class="field">
+                <label for="scheduled_for">Schedule for</label>
+                <input type="datetime-local" id="scheduled_for" data-field="scheduled_for" />
+                <p class="field__hint">
+                  A cron trigger promotes scheduled posts every five minutes.
+                </p>
+              </div>
+              <button class="btn" type="button" data-schedule-button>Schedule post</button>
+            </div>
+
+            <div class="card">
+              <h3>Tags</h3>
+              <div class="token-input" data-tags></div>
+              <p class="field__hint">Enter or comma to add. Ten maximum.</p>
+            </div>
+
+            <div class="card">
+              <h3>URL</h3>
+              <div class="field">
+                <label class="visually-hidden" for="slug">Slug</label>
+                <input type="text" id="slug" data-field="slug" placeholder="post-slug" />
+                <p class="field__hint">
+                  Follows the title until you edit it, then stops. Changing the slug of a
+                  published post changes its permalink.
+                </p>
+              </div>
+            </div>
+
+            <div class="card">
+              <h3>Excerpt</h3>
+              <div class="field">
+                <label class="visually-hidden" for="excerpt">Excerpt</label>
+                <textarea id="excerpt" data-field="excerpt" rows="4"
+                          placeholder="Generated from the body if left empty."></textarea>
+                <p class="field__hint">Used in the post list, RSS and social previews.</p>
+              </div>
+            </div>
+          </aside>
+        </div>
+      </main>
+    </div>
+  </body>
+</html>

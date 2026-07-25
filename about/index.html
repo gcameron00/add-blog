@@ -1,15 +1,164 @@
 <!doctype html>
-<html>
+<html lang="en">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="color-scheme" content="light dark" />
-    <title>About</title>
-    <link rel="icon" href="/assets/favicon.svg" type="image/svg+xml">
-    <link rel="stylesheet" href="/assets/css/styles.css">
+    <title>About — The add-blog Journal</title>
+    <meta name="description" content="add-blog is a drop-in blog engine for Cloudflare Workers: a public blog, an authenticated admin, and an MCP endpoint." />
+    <link rel="canonical" href="/about/" />
+    <link rel="icon" href="/assets/favicon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="/assets/css/styles.css" />
+    <script type="module" src="/assets/js/main.js"></script>
   </head>
-  <body>
-    <h1>About</h1>
-    <p><a href="/">Back home</a></p>
+  <body data-page="about">
+    <a class="skip-link" href="#main">Skip to content</a>
+
+    <header class="site-header">
+      <div class="wrap site-header__inner">
+        <a class="brand" href="/">
+          <svg viewBox="0 0 32 32" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round" style="color: var(--accent)">
+            <path d="M6 16 L13 23 L26 9" />
+          </svg>
+          <span>The add-blog Journal</span>
+        </a>
+        <nav class="site-nav" aria-label="Main">
+          <a href="/">Posts</a>
+          <a href="/archive/">Archive</a>
+          <a href="/tags/">Tags</a>
+          <a href="/about/">About</a>
+          <button class="theme-toggle" type="button" data-theme-toggle aria-label="Toggle theme"></button>
+        </nav>
+      </div>
+    </header>
+
+    <main id="main">
+      <div class="wrap wrap--prose">
+        <div class="hero">
+          <h1>About add-blog</h1>
+          <p>
+            A drop-in blog engine for Cloudflare Workers. Add it to any site and that site
+            gets a public blog, an authenticated admin, and an MCP endpoint an AI agent can
+            write through.
+          </p>
+        </div>
+
+        <div class="prose">
+          <div class="demo-banner" role="status" style="margin-bottom: 2rem">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" aria-hidden="true">
+              <circle cx="12" cy="12" r="9" /><path d="M12 11v5m0-8.5v.01" />
+            </svg>
+            <span>
+              <strong>Phase 1 prototype.</strong> Everything you can click here is real; the
+              content behind it is not. The Worker, database and authentication layers are
+              specified but not yet built.
+            </span>
+          </div>
+
+          <h2 id="what-it-is">What it is</h2>
+          <p>
+            Most blog engines are a whole application you adopt. add-blog is meant to be a
+            component you attach: one Cloudflare Worker, deployed once per site, that takes
+            over two subdomains and gives that site a blog without the site having to know
+            anything about how it works.
+          </p>
+          <p>
+            It is plain HTML, CSS and JavaScript. No framework, no bundler, no build step —
+            the files in the repository are the files on the edge.
+          </p>
+
+          <h2 id="how-it-works">How it works</h2>
+          <p>One Worker answers on two hostnames and behaves completely differently on each.</p>
+
+          <table>
+            <thead>
+              <tr><th>Hostname</th><th>Who</th><th>What</th></tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><code>blog.mysite.com</code></td>
+                <td>Everyone</td>
+                <td>The public blog. Anonymous, read-only, cached hard at the edge.</td>
+              </tr>
+              <tr>
+                <td><code>blog-admin.mysite.com</code></td>
+                <td>Editors</td>
+                <td>The editor, media library and write API, behind Cloudflare Zero Trust Access.</td>
+              </tr>
+              <tr>
+                <td><code>blog-admin.mysite.com/mcp</code></td>
+                <td>AI agents</td>
+                <td>A Model Context Protocol endpoint, authenticated via Access Managed OAuth.</td>
+              </tr>
+            </tbody>
+          </table>
+
+          <p>
+            Splitting on hostname rather than a path prefix is the load-bearing decision.
+            Access terminates unauthenticated requests at the edge before the Worker runs,
+            and the public hostname returns <code>404</code> for every admin path
+            unconditionally. Authorization becomes a property of where things are deployed
+            rather than something the application has to keep getting right.
+          </p>
+
+          <h2 id="storage">Where the content lives</h2>
+          <ul>
+            <li><strong>D1</strong> — posts, tags, authors, revisions, settings and the audit log. SQLite at the edge.</li>
+            <li><strong>R2</strong> — images and attachments, under content-addressed keys so an object at a given key never changes and can be cached for a year.</li>
+          </ul>
+          <p>
+            Markdown is the source of truth. It is rendered to HTML once, when a post is
+            saved, so serving a page is one indexed query rather than a parse.
+          </p>
+
+          <h2 id="agents">Why an MCP endpoint</h2>
+          <p>
+            The interesting half of this project. An agent connects once through Cloudflare
+            Access Managed OAuth and can then list, search, draft, edit and publish posts —
+            bound by the same role checks as the human whose identity it is using, and
+            recorded in the same audit log.
+          </p>
+          <p>
+            One constraint shapes the whole tool surface: <strong>publishing is always its
+            own explicit call</strong>. Creating and updating a post cannot change its
+            status. An agent can never make something public as a side effect of anything
+            else, so the worst outcome of a bad generation is a bad draft.
+          </p>
+
+          <h2 id="status">Status</h2>
+          <p>
+            This is the Phase 1 front end running on bundled sample content. The public
+            pages, the admin and the MCP page are all real interfaces; the data behind them
+            is not. The build-out is documented in the repository:
+          </p>
+          <ul>
+            <li><a href="https://github.com/gcameron00/add-blog#readme" rel="noopener noreferrer">README</a> — overview and repository layout</li>
+            <li><a href="https://github.com/gcameron00/add-blog/blob/main/docs/architecture.md" rel="noopener noreferrer">Architecture</a> — routing, data model, caching, threat model</li>
+            <li><a href="https://github.com/gcameron00/add-blog/blob/main/docs/api.md" rel="noopener noreferrer">HTTP API</a> — the contract this front end already calls</li>
+            <li><a href="https://github.com/gcameron00/add-blog/blob/main/docs/mcp.md" rel="noopener noreferrer">MCP server</a> — transport, auth, tools</li>
+            <li><a href="https://github.com/gcameron00/add-blog/blob/main/docs/deployment.md" rel="noopener noreferrer">Deployment runbook</a> — D1, R2, DNS, Access</li>
+            <li><a href="https://github.com/gcameron00/add-blog/blob/main/docs/implementation-plan.md" rel="noopener noreferrer">Implementation plan</a> — phases and open questions</li>
+          </ul>
+
+          <hr />
+          <p class="small muted">
+            Built to run on Cloudflare Workers with static assets. Deployed straight from
+            <code>main</code> — no build step in between.
+          </p>
+        </div>
+      </div>
+    </main>
+
+    <footer class="site-footer">
+      <div class="wrap site-footer__inner">
+        <p style="margin: 0">© <span data-year>2026</span> The add-blog Journal</p>
+        <nav aria-label="Footer">
+          <a href="/about/">About</a>
+          <a href="/archive/">Archive</a>
+          <a href="/feed.xml">RSS</a>
+          <a href="/admin/">Admin</a>
+        </nav>
+      </div>
+    </footer>
   </body>
 </html>

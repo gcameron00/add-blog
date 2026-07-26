@@ -1,14 +1,15 @@
 /**
  * API client for both the public blog and the admin UI.
  *
- * Every call goes to the real endpoint documented in docs/api.md first. If the
- * backend is not there — which is the case for the whole of Phase 1, where the
- * deployment is static assets only — the client falls back to the bundled demo
- * data for the rest of the session and announces it once, so pages never sit
- * empty and the UI can flag that what you are looking at is not real content.
+ * Every call goes to the real endpoint documented in docs/api.md first. If a
+ * given endpoint is not live yet — the public read API shipped in Phase 3,
+ * but the admin API is still Phases 4-5 — the client falls back to the
+ * bundled demo data for the rest of the session and announces it once, so
+ * pages never sit empty and the UI can flag that what you are looking at is
+ * not real content.
  *
- * When the Phase 3 Worker ships, the fetches start succeeding and this file
- * stops using demo-data.js. No view code changes.
+ * As each endpoint goes live, its fetches start succeeding and this file
+ * stops using demo-data.js for it. No view code changes, per call.
  */
 
 import * as demo from './demo-data.js';

@@ -118,9 +118,14 @@ function markCurrentNav() {
 
 /* --- Demo-mode banner ----------------------------------------------------- */
 
+// Deliberately not phase-numbered — this banner fires on both the public
+// site and the admin UI, and the two go real at different times (public
+// read API: Phase 3; admin API: Phases 4-5). A specific phase number here
+// goes stale the moment either one ships without the other, which is
+// exactly the state between Phase 3 and Phase 5.
 const DEMO_MESSAGE =
-  'This page is showing bundled sample content. The D1-backed API arrives in Phase 3 — ' +
-  'until then nothing here is real, and edits are stored only in this browser.';
+  'This page is showing bundled sample content — the API it depends on has not shipped ' +
+  'yet. Until then nothing here is real, and edits are stored only in this browser.';
 
 function showDemoBanner() {
   if (document.querySelector('main .demo-banner')) return;

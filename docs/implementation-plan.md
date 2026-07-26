@@ -1,7 +1,8 @@
 # Implementation plan
 
-Phases 1 and 2 are complete and in this repository, Phase 2 pending its per-site
-deploy (owner-run — see below). Phases 3 onward are the proposed build-out.
+Phases 1–3 are complete and in this repository. Phase 2 is live; Phase 3 is code-complete
+and tested locally, pending its per-site D1/R2 resources (owner-run — see below).
+Phases 4 onward are the proposed build-out.
 
 Each phase is independently deployable and leaves the site working. Phases 2–5 are
 sequential — routing before storage, storage before auth, auth before the write path.
@@ -99,24 +100,51 @@ the negative assertions are written before the positive ones.
 
 ---
 
-## Phase 3 — D1, R2 and the read path
+## Phase 3 — D1, R2 and the read path ✅ (code), pending resources
 
 **Goal.** Real content, read-only, publicly served.
 
-- `migrations/0001_init.sql` — the schema from [architecture.md](architecture.md) §3.
-- A minimal migration runner (`wrangler d1 migrations apply`) plus a seed script.
-- Public API: `GET /api/posts`, `/api/posts/:slug`, `/api/tags`, `/api/archive`.
-- Server-rendered `/posts/<slug>` with correct `<title>`, meta description and Open
-  Graph tags. `/post/?slug=…` becomes a 301 to the canonical permalink.
-- `/media/<key>` streaming from R2 with immutable caching.
-- `feed.xml`, `atom.xml`, `sitemap.xml`, `robots.txt`.
-- Cache API integration with the policies in architecture §5.
-- The front end stops falling back to demo data on its own — no page changes needed.
+- `migrations/0001_init.sql` — the schema from [architecture.md](architecture.md) §3,
+  including the FTS5 sync triggers the design note calls for (missing from the first
+  pass — `posts_fts` silently never populated without them; caught by a test, not by
+  reading the schema).
+- `scripts/generate-seed.mjs` — generates `migrations/seed.sql` from
+  `assets/js/demo-data.js`, so a first deploy has the same real content the demo has
+  been showing since Phase 1, not an empty blog. `INSERT OR IGNORE` throughout —
+  safe to apply more than once.
+- Public API: `GET /api/posts`, `/api/posts/:slug`, `/api/tags`, `/api/archive`
+  (`src/public-api.js`, `src/db.js`).
+- Server-rendered `/posts/<slug>` with real `<title>`, meta description and Open
+  Graph tags, and the article body inlined (`src/pages.js`) — works with JavaScript
+  disabled; `assets/js/post.js` still hydrates on top. `/post/?slug=…` 301s here now;
+  every internal link that used to point at the old form (`blog.js`, `post.js`,
+  `admin.js`, `editor.js`) points at the canonical permalink directly.
+- `/media/<key>` streaming from R2 with immutable caching and conditional-request
+  (`If-None-Match`) support (`src/media.js`).
+- `feed.xml`, `atom.xml`, `sitemap.xml`, `robots.txt` (`src/feeds.js`).
+- Cache-Control headers matching architecture §5's policy on every read response.
+  *Scope note:* this is HTTP-header-level caching, not explicit `caches.default`
+  Worker code — there is no purge path to pair it with until Phase 5 writes exist, so
+  standard Cache-Control (which Cloudflare's edge already respects) covers the read
+  path without adding machinery Phase 5 would have to reconcile with later.
+- Every new route checks for its own D1/R2 binding and falls through to static assets
+  if it's absent — this code was safe to deploy before the bindings existed, same
+  graceful "not live yet" behaviour Phase 1's demo-data fallback already relied on,
+  not a 500.
+- 49 tests (`@cloudflare/vitest-pool-workers`, real local D1 + R2, migrated and seeded
+  per run) cover the read path against realistic data, including every non-public
+  status (draft/scheduled/archived) staying invisible everywhere — the API, the feed,
+  the sitemap, the permalink.
 
-**Owner action required.** D1 and R2 bindings in `wrangler.toml`.
+**Owner action required, per site.** This site's D1 database and R2 bucket have to
+exist before its `wrangler.toml` bindings are uncommented — see the commands and the
+exact sequence above the (deliberately commented-out) `[[env.gcameron.d1_databases]]`
+block in `wrangler.toml`, and [deployment.md](deployment.md) §1.
 
 **Exit criteria.** A post inserted directly into D1 appears on the home page, at its
 permalink, in the tag page, in the archive and in the feed, with correct caching.
+Met locally against seeded data; production verification is blocked on the D1/R2
+resources existing.
 
 **Risk.** The D1 schema is the most expensive thing to change later. Phase 1's demo
 data is deliberately shaped exactly like the API responses, so the contract has already

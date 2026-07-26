@@ -245,7 +245,7 @@ function paintActions() {
     post.status === 'published' && post.slug
       ? el('a', {
           class: 'btn btn--ghost',
-          href: `/post/?slug=${encodeURIComponent(post.slug)}`,
+          href: `/posts/${encodeURIComponent(post.slug)}`,
           target: '_blank', rel: 'noopener', text: 'View',
         })
       : null

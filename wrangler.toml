@@ -12,8 +12,9 @@
 #   4. Push. `wrangler deploy --env NAME` creates the Worker on first run —
 #      there is no separate "create the Worker" step.
 #
-# Phase 3 will add a [[env.NAME.d1_databases]] and [[env.NAME.r2_buckets]]
-# stanza per site, once each site has its own D1/R2 resources to bind.
+# Each site's [[env.NAME.d1_databases]]/[[env.NAME.r2_buckets]] only work
+# once that site's D1 database and R2 bucket actually exist — see the
+# commands above gcameron's stanza below before deploying this file.
 name = "add-blog"
 main = "src/index.js"
 compatibility_date = "2026-07-01"
@@ -32,6 +33,28 @@ routes = [
   { pattern = "blog.gcameron.com",       custom_domain = true },
   { pattern = "blog-admin.gcameron.com", custom_domain = true },
 ]
+
+# Phase 3 — commented out on purpose. src/index.js already handles a
+# missing DB/MEDIA binding gracefully (falls through to static assets, same
+# as today), but wrangler.toml itself does not: a database_id that doesn't
+# exist yet fails the whole deploy, for every site, not just this one. Run
+# these once, then uncomment the two blocks below with the real database_id
+# filled in — see docs/deployment.md §1 for the full sequence (schema,
+# seed, first owner row):
+#
+#   npx wrangler d1 create gcameron-blog
+#   npx wrangler r2 bucket create gcameron-blog-media
+#   npx wrangler d1 execute gcameron-blog --file=./migrations/0001_init.sql --remote
+#   npx wrangler d1 execute gcameron-blog --file=./migrations/seed.sql --remote
+#
+# [[env.gcameron.d1_databases]]
+# binding = "DB"
+# database_name = "gcameron-blog"
+# database_id = "<id printed by `wrangler d1 create` above>"
+#
+# [[env.gcameron.r2_buckets]]
+# binding = "MEDIA"
+# bucket_name = "gcameron-blog-media"
 
 # Deliberately repeated rather than relied on as inherited from the
 # top-level [assets] above — production kept serving static assets for

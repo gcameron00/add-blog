@@ -1,0 +1,112 @@
+/**
+ * Server-rendered permalink: GET /posts/:slug — correct <title>, meta
+ * description and Open Graph tags for crawlers and link previews, plus the
+ * article body itself inlined so the page works with JavaScript disabled.
+ * assets/js/post.js still runs on top and re-renders the same content
+ * client-side (harmless, and keeps this a static-template-based Worker
+ * rather than a second copy of the front end's DOM-building code).
+ *
+ * `/post/?slug=…` (the Phase 1 query-param fallback) 301s here — see
+ * docs/architecture.md §2.
+ */
+
+import { getPublishedPostBySlug } from './db.js';
+import { escapeHtml } from '../assets/js/markdown.js';
+
+function formatDate(iso) {
+  if (!iso) return '';
+  return new Date(iso).toLocaleDateString('en-US', { day: 'numeric', month: 'long', year: 'numeric' });
+}
+
+function renderArticle(post, origin) {
+  const tags = (post.tags || [])
+    .map((t) => `<a class="tag" href="/tags/?tag=${encodeURIComponent(t.slug)}">${escapeHtml(t.name)}</a>`)
+    .join('');
+
+  const cover = post.cover
+    ? `<img class="article-cover" src="${escapeHtml(post.cover.url)}" alt="${escapeHtml(post.cover.alt || '')}">`
+    : '';
+
+  const avatar = post.author?.avatar
+    ? `<img class="byline__avatar" src="${escapeHtml(post.author.avatar)}" alt="">`
+    : '';
+
+  const updated =
+    post.updated_at && post.updated_at !== post.published_at
+      ? ` · updated <time datetime="${escapeHtml(post.updated_at)}">${formatDate(post.updated_at)}</time>`
+      : '';
+
+  return `
+    <header class="article-header">
+      <div class="tag-list" style="margin-bottom:1rem">${tags}</div>
+      <h1>${escapeHtml(post.title)}</h1>
+      ${post.subtitle ? `<p class="subtitle">${escapeHtml(post.subtitle)}</p>` : ''}
+    </header>
+    ${cover}
+    <div class="byline">
+      ${avatar}
+      <div>
+        <div class="byline__name">${escapeHtml(post.author?.name || 'Unknown author')}</div>
+        <div class="byline__meta">
+          <time datetime="${escapeHtml(post.published_at || '')}">${formatDate(post.published_at)}</time>
+          · ${post.reading_minutes} min read${updated}
+        </div>
+      </div>
+    </div>
+    <div class="prose">${post.body_html || ''}</div>
+    <footer class="article-footer">
+      <div class="tag-list">${tags}</div>
+      <p class="small muted" style="margin-top:1rem"><a href="/">← All posts</a></p>
+    </footer>
+  `;
+}
+
+/** GET /posts/:slug. Returns null for anything else, so the caller can fall through. */
+export async function handlePostPage(request, url, env) {
+  const match = url.pathname.match(/^\/posts\/([^/]+)\/?$/);
+  if (!match || (request.method !== 'GET' && request.method !== 'HEAD')) return null;
+  // No D1 binding yet — fall through to static assets rather than throwing.
+  if (!env.DB) return null;
+
+  const slug = decodeURIComponent(match[1]);
+  const post = await getPublishedPostBySlug(env.DB, slug);
+
+  const shellRequest = new Request(new URL('/post/', url), request);
+  const shellResponse = await env.ASSETS.fetch(shellRequest);
+  let html = await shellResponse.text();
+
+  if (!post) {
+    // Let the existing client-side "not found" state render — same as a
+    // direct hit on /post/?slug=<nonexistent> did in Phase 1 — but a real
+    // 404 status, not 200, since this is now the canonical URL.
+    return new Response(html, { status: 404, headers: { 'Content-Type': 'text/html;charset=UTF-8' } });
+  }
+
+  const title = `${escapeHtml(post.title)} — The add-blog Journal`;
+  const description = escapeHtml(post.excerpt || '');
+  const canonical = `${url.origin}/posts/${encodeURIComponent(post.slug)}`;
+
+  html = html
+    .replace('<title>Post — The add-blog Journal</title>', `<title>${title}</title>`)
+    .replace('<meta name="description" content="" />', `<meta name="description" content="${description}" />`)
+    .replace('<meta property="og:title" content="" />', `<meta property="og:title" content="${escapeHtml(post.title)}" />`)
+    .replace('<meta property="og:description" content="" />', `<meta property="og:description" content="${description}" />`)
+    .replace('<link rel="canonical" href="/" />', `<link rel="canonical" href="${canonical}" />`)
+    .replace(/<article data-article>[\s\S]*?<\/article>/, `<article data-article>${renderArticle(post, url.origin)}</article>`);
+
+  return new Response(html, {
+    headers: {
+      'Content-Type': 'text/html;charset=UTF-8',
+      // docs/architecture.md §5: "Public HTML pages" caching policy.
+      'Cache-Control': 'public, max-age=60, s-maxage=3600, stale-while-revalidate=86400',
+    },
+  });
+}
+
+/** GET /post/?slug=… → 301 to the canonical /posts/:slug permalink. */
+export function handleLegacyPostRedirect(url) {
+  if (url.pathname !== '/post/' && url.pathname !== '/post') return null;
+  const slug = url.searchParams.get('slug');
+  if (!slug) return null;
+  return Response.redirect(`${url.origin}/posts/${encodeURIComponent(slug)}`, 301);
+}

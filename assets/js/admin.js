@@ -247,7 +247,7 @@ function postsTable(posts, { compact = false, onChange } = {}) {
             post.status === 'published'
               ? el('a', {
                   class: 'btn btn--sm btn--ghost',
-                  href: `/post/?slug=${encodeURIComponent(post.slug)}`,
+                  href: `/posts/${encodeURIComponent(post.slug)}`,
                   target: '_blank',
                   rel: 'noopener',
                   title: 'View on the public site',

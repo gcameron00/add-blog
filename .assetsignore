@@ -11,9 +11,12 @@ package.json
 package-lock.json
 .wrangler
 
-# Worker source and SQL migrations — server-side only, never asset-served.
-# Added with the Phase 2 router (docs/implementation-plan.md); functionally
-# inert until `main` is set in wrangler.toml, but keeping this ahead of that
-# means src/index.js was never briefly public in between the two commits.
+# Worker source, SQL migrations, and Node-only tooling — server-side only,
+# never asset-served. Added with the Phase 2 router
+# (docs/implementation-plan.md); functionally inert until `main` is set in
+# wrangler.toml, but keeping this ahead of that means src/index.js was never
+# briefly public in between the two commits.
 src
 migrations
+scripts
+vitest.config.js

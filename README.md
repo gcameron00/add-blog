@@ -11,21 +11,22 @@ bundler. The whole front end ships as Cloudflare Workers static assets.
 
 ## Status
 
-**Phases 1 and 2 are built.** The front end is the complete proposed user interface,
-running against bundled demo data until Phase 3 ships a real API. The Worker router
-(`src/index.js`) enforces the hostname split and sends security headers, but each site
-still needs its own `[env.NAME]` deploy — see
-[`docs/deployment.md`](docs/deployment.md). There is still no database and no
+**Phases 1–3 are built.** The Worker router (`src/index.js`) enforces the hostname
+split and sends security headers; the public read path (JSON API, server-rendered
+permalinks, R2 media, feeds) is code-complete and passing 49 tests against real local
+D1/R2, but each site's *own* D1 database and R2 bucket still have to be created and
+bound before that site sees real content instead of demo data — see
+[`docs/deployment.md`](docs/deployment.md). There is still no write path and no
 authentication.
 
 | Layer | State |
 | --- | --- |
-| Public blog UI | Built (demo data) |
+| Public blog UI | Built (demo data until a site's D1 is bound) |
 | Admin UI | Built (demo data) |
 | Documentation | Built |
-| Worker request router | Built — per-site deploy pending (see deployment.md) |
-| D1 schema + API | Specified, not built |
-| R2 media pipeline | Specified, not built |
+| Worker request router | Built and live |
+| D1 schema + public read API | Built, tested — per-site resources pending (see deployment.md) |
+| R2 media pipeline (read) | Built, tested — per-site bucket pending; upload is Phase 5 |
 | Cloudflare Access / Managed OAuth | Specified, not built |
 | MCP server | Specified, not built |
 
@@ -110,12 +111,24 @@ with D1 keeping the metadata row that points at each R2 object.
 │   ├── deployment.md          Cloudflare setup runbook
 │   └── implementation-plan.md Phased build-out
 ├── src/
-│   ├── index.js               The Worker: hostname router, headers, /health
-│   └── index.test.js          Routing tests (`npm test`) — see below
-├── wrangler.toml              One shared Worker, one [env.NAME] block per site
-├── .assetsignore              Files excluded from the asset bundle
-├── package.json               Test tooling only — the front end stays build-step-free
-└── .github/workflows/         CI/CD — deploys every [env.NAME] site on push to main
+│   ├── index.js              The Worker: hostname router, headers, /health, dispatch
+│   ├── db.js                 D1 queries → docs/api.md response shapes
+│   ├── public-api.js         GET /api/posts, /posts/:slug, /tags, /archive
+│   ├── pages.js               Server-rendered /posts/:slug + the legacy redirect
+│   ├── media.js               GET /media/:key — R2 streaming
+│   ├── feeds.js               feed.xml, atom.xml, sitemap.xml, robots.txt
+│   ├── test-setup.js          Applies migrations + seeds a local D1 before tests run
+│   └── *.test.js              49 tests (`npm test`) — real local D1/R2, not mocks
+├── migrations/
+│   ├── 0001_init.sql          Schema — see docs/architecture.md §3
+│   └── seed.sql               Generated — see scripts/generate-seed.mjs
+├── scripts/
+│   ├── generate-seed.mjs      assets/js/demo-data.js → migrations/seed.sql
+│   └── seed-db.mjs            Same seed data, applied directly — used by tests
+├── wrangler.toml               One shared Worker, one [env.NAME] block per site
+├── .assetsignore               Files excluded from the asset bundle
+├── package.json                Test tooling only — the front end stays build-step-free
+└── .github/workflows/          CI/CD — deploys every [env.NAME] site on push to main
 ```
 
 ---

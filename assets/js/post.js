@@ -1,10 +1,12 @@
 /**
  * Public single-post view.
  *
- * Reads `?slug=` because a static-asset deployment cannot express `/posts/<slug>`
- * as a file. Phase 3 moves this to a Worker-rendered permalink for SEO and
- * first-paint, and keeps this URL working as a redirect — see
- * docs/architecture.md §2.
+ * The canonical URL is /posts/<slug> — server-rendered by the Worker as of
+ * Phase 3 (see docs/architecture.md §2), which also 301s the old
+ * /post/?slug= form here. This module still reads `?slug=` as a fallback
+ * for local dev with no Worker at all (`python3 -m http.server`, per
+ * README.md) — nothing there ever redirects, so /post/?slug= is the only
+ * form that resolves to a real file in that mode.
  */
 
 import * as api from './api.js';
@@ -12,7 +14,8 @@ import { el, clear, append, icon, timeEl, renderError } from './main.js';
 import { tagChip } from './blog.js';
 
 const article = document.querySelector('[data-article]');
-const slug = new URLSearchParams(location.search).get('slug');
+const pathSlug = location.pathname.match(/^\/posts\/([^/]+)\/?$/);
+const slug = pathSlug ? decodeURIComponent(pathSlug[1]) : new URLSearchParams(location.search).get('slug');
 
 function setMeta(post) {
   document.title = `${post.title} — The add-blog Journal`;
@@ -92,7 +95,7 @@ function renderPost(post) {
           el('h2', { text: 'Related posts' }),
           el('ul', {}, post.related.map((related) =>
             el('li', {}, [
-              el('a', { href: `/post/?slug=${encodeURIComponent(related.slug)}`, text: related.title }),
+              el('a', { href: `/posts/${encodeURIComponent(related.slug)}`, text: related.title }),
               el('div', { class: 'post-meta' }, [timeEl(related.published_at)]),
             ])
           )),

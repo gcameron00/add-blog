@@ -1,5 +1,5 @@
 /**
- * add-blog Worker — hostname router (Phase 2).
+ * add-blog Worker — hostname router (Phase 2) + public read path (Phase 3).
  *
  * One deployment, one static asset bundle, two hostnames:
  *   - the admin host   (env.ADMIN_HOST)  — editors, agents, never cached
@@ -15,9 +15,19 @@
  * in the project — it would expose drafts and the write API. Every branch
  * below has a routing test, and the negative cases are written first.
  *
- * No D1, no R2, no auth yet — those are Phases 3 and 4. This phase only
- * decides *which* static assets a request is allowed to see.
+ * Phase 3 adds the public read path: JSON API, the server-rendered post
+ * permalink, R2 media, and the feeds — all reading D1/R2 directly (no auth,
+ * no writes; those are Phases 4 and 5). Every one of those handlers checks
+ * for its own binding and returns null (falls through to static assets) if
+ * it's missing, so this file is safe to deploy before wrangler.toml has the
+ * real [[d1_databases]]/[[r2_buckets]] entries — same graceful "not live
+ * yet" behaviour as today, not a 500.
  */
+
+import { handlePublicApi } from './public-api.js';
+import { handlePostPage, handleLegacyPostRedirect } from './pages.js';
+import { handleMedia } from './media.js';
+import { handleFeeds } from './feeds.js';
 
 const DEFAULT_ADMIN_HOST = 'blog-admin.mysite.com';
 
@@ -106,7 +116,14 @@ export default {
     } else if (url.pathname === '/health') {
       response = health(requestId, admin);
     } else {
-      response = withSharedHeaders(await env.ASSETS.fetch(request), { requestId, admin });
+      response =
+        handleLegacyPostRedirect(url) ||
+        (await handlePostPage(request, url, env)) ||
+        (await handlePublicApi(request, url, env)) ||
+        (await handleMedia(request, url, env)) ||
+        (await handleFeeds(request, url, env)) ||
+        (await env.ASSETS.fetch(request));
+      response = withSharedHeaders(response, { requestId, admin });
     }
 
     console.log(JSON.stringify({

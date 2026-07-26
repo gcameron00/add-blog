@@ -33,7 +33,7 @@ function postMeta(post) {
 }
 
 export function postCard(post, { featured = false } = {}) {
-  const href = `/post/?slug=${encodeURIComponent(post.slug)}`;
+  const href = `/posts/${encodeURIComponent(post.slug)}`;
   const hasCover = Boolean(post.cover);
 
   const body = el('div', {}, [
@@ -149,7 +149,7 @@ async function initArchive() {
           el('ul', { class: 'archive-list' }, group.posts.map((post) =>
             el('li', {}, [
               timeEl(post.published_at),
-              el('a', { href: `/post/?slug=${encodeURIComponent(post.slug)}`, text: post.title }),
+              el('a', { href: `/posts/${encodeURIComponent(post.slug)}`, text: post.title }),
               el('span', { class: 'muted small', style: 'margin-left:auto', text: `${post.reading_minutes} min` }),
             ])
           )),

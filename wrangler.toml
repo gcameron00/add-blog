@@ -33,6 +33,19 @@ routes = [
   { pattern = "blog-admin.gcameron.com", custom_domain = true },
 ]
 
+# Deliberately repeated rather than relied on as inherited from the
+# top-level [assets] above — production kept serving static assets for
+# /admin/* without ever invoking the Worker (confirmed with Development Mode
+# on, so it isn't a caching issue: request never reaches src/index.js's
+# guard at all), which is exactly the symptom of run_worker_first not being
+# active for this environment specifically. Repeating it here removes the
+# question of whether [assets] inherits into [env.NAME] instead of relying
+# on an assumption that didn't hold up against the real deploy.
+[env.gcameron.assets]
+directory = "."
+binding = "ASSETS"
+run_worker_first = true
+
 [env.gcameron.vars]
 ADMIN_HOST = "blog-admin.gcameron.com"
 PUBLIC_HOST = "blog.gcameron.com"

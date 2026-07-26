@@ -16,6 +16,14 @@ describe('public host — admin paths are always 404', () => {
     });
   }
 
+  it('never lets a blocked response be cached, at the edge or the browser', async () => {
+    // A cached copy of a page that should have been blocked is exactly how
+    // a stale pre-Phase-2 cache entry kept serving /admin/* after the guard
+    // shipped — this response must refuse to be that cache entry itself.
+    const res = await get(PUBLIC_HOST, '/admin/');
+    expect(res.headers.get('Cache-Control')).toBe('no-store');
+  });
+
   it('does not over-match a lookalike path', async () => {
     // /administrator is not /admin — the guard must not treat it as blocked
     // by the admin-path check specifically (it may still 404 as a missing

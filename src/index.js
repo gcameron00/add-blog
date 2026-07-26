@@ -70,7 +70,17 @@ function withSharedHeaders(response, { requestId, admin }) {
 }
 
 function notFound(requestId, admin) {
-  return withSharedHeaders(new Response('Not found', { status: 404 }), { requestId, admin });
+  const response = withSharedHeaders(new Response('Not found', { status: 404 }), { requestId, admin });
+  // Belt and suspenders on top of the admin-guard itself: this specific
+  // response must never be cacheable, at the edge or in a browser, even for
+  // a host that isn't `admin` (which is the only case that gets
+  // Cache-Control set above). A cached copy of this exact response is
+  // harmless (it's already the deny), but a cached copy of what should have
+  // been this response — as happened when Phase 2's guard shipped after
+  // pages were already live and cached — is exactly the failure mode this
+  // guards against. See docs/deployment.md's post-deploy cache-purge note.
+  response.headers.set('Cache-Control', 'no-store');
+  return response;
 }
 
 function health(requestId, admin) {

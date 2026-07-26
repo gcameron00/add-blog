@@ -183,19 +183,42 @@ possession of them proves anything. Security comes from JWT signature verificati
 
 ## 6. Post-deploy checks
 
+Split by what's actually built. Checking a later-phase row before that phase is
+deployed just gets you a confusing 404 for the wrong reason — this table exists so
+that doesn't happen.
+
+**Phase 2 (routing and headers — checkable today):**
+
 | Check | Expected |
 | --- | --- |
-| `GET https://blog.mysite.com/` | 200, post list, no demo badge |
-| `GET https://blog.mysite.com/admin/` | 404 |
-| `GET https://blog.mysite.com/api/admin/posts` | 404 |
-| `GET https://blog.mysite.com/mcp` | 404 |
-| `GET https://blog-admin.mysite.com/` (logged out) | Access login |
-| `GET https://blog-admin.mysite.com/` (logged in) | Admin dashboard |
-| `POST https://blog-admin.mysite.com/mcp` (no token) | 401 with `WWW-Authenticate` |
-| `GET https://blog.mysite.com/feed.xml` | Valid RSS |
-| Draft post | Absent from public API and feed |
-| Publish | Live within seconds; cache purged |
-| `Cache-Control` on admin responses | `private, no-store` |
+| `GET https://blog.<site>/` | 200, post list, demo-data badge (Phase 3 removes it) |
+| `GET https://blog.<site>/admin/` | 404 |
+| `GET https://blog.<site>/admin/mcp` | 404 |
+| `GET https://blog.<site>/api/admin/posts` | 404 |
+| `GET https://blog.<site>/mcp` | 404 |
+| `GET https://blog-admin.<site>/admin/` | 200 (no login yet — Phase 4; see the README warning) |
+| `GET https://blog.<site>/health` | 200 JSON |
+| Any response on either host | `Strict-Transport-Security`, `Content-Security-Policy`, `X-Content-Type-Options`, `X-Request-Id` present |
+| Admin-host responses specifically | `Cache-Control: private, no-store`, `X-Frame-Options: DENY` |
+| Blocked-path responses (e.g. `/admin/` on the public host) | `Cache-Control: no-store` |
+
+If a fresh (cache-busted) request to a blocked path is anything other than `404`, or
+those headers are missing, `npm run` the local checks below before assuming it's an
+account-side issue — this exact bug (deploy "succeeded" but the guard was silently
+inert) is what took most of a debugging session to track down, and the root cause
+turned out to be the CI deploy tool installing an unrelated wrangler version, not
+`wrangler.toml` itself. See the comment above the `Install dependencies` step in
+`deploy.yml`.
+
+**Later phases (not built yet — expect 404, not a login page or real content):**
+
+| Check | Expected, once built |
+| --- | --- |
+| `GET https://blog-admin.<site>/` (logged out) | Access login (Phase 4) |
+| `POST https://blog-admin.<site>/mcp` (no token) | 401 with `WWW-Authenticate` (Phase 6) |
+| `GET https://blog.<site>/feed.xml` | Valid RSS (Phase 3) |
+| Draft post | Absent from public API and feed (Phase 3/5) |
+| Publish | Live within seconds; cache purged (Phase 5) |
 
 ## 7. Rollback
 

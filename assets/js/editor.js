@@ -89,11 +89,15 @@ function createEditor() {
     tabSize: 2,
     indentWithTabs: false,
     placeholder: 'Write in Markdown…',
+    // Trimmed from EasyMDE's own default set: table, horizontal-rule and
+    // strikethrough are rare enough in a blog post that they weren't worth
+    // the width — at the editor's actual column width (narrower than the
+    // full viewport, thanks to the aside) a longer list wraps mid-group and
+    // orphans a single button on its own row instead of wrapping cleanly.
     toolbar: [
-      'bold', 'italic', 'strikethrough', '|',
+      'bold', 'italic', '|',
       'heading-1', 'heading-2', 'heading-3', '|',
-      'quote', 'unordered-list', 'ordered-list', '|',
-      'link', 'table', 'horizontal-rule', '|',
+      'quote', 'unordered-list', 'ordered-list', 'link', '|',
       'preview', 'side-by-side', 'fullscreen', '|',
       'guide',
     ],

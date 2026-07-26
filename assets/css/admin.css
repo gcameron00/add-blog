@@ -15,13 +15,22 @@ body.admin {
   display: grid;
   grid-template-columns: 15rem minmax(0, 1fr);
   min-height: 100vh;
+  min-height: 100dvh;
+  transition: grid-template-columns var(--transition);
 }
+.admin-layout[data-sidebar-collapsed] { grid-template-columns: 4.25rem minmax(0, 1fr); }
 
 .admin-sidebar {
   position: sticky;
   top: 0;
   align-self: start;
   height: 100vh;
+  /* Safari on iOS sizes 100vh to the viewport with browser chrome hidden,
+     which can be taller than what's actually visible — the sidebar's
+     margin-top: auto footer (.admin-user) then sits below the fold until
+     the chrome collapses. 100dvh tracks the visible viewport instead;
+     browsers without dvh support just keep the vh value above. */
+  height: 100dvh;
   display: flex;
   flex-direction: column;
   gap: var(--sp-5);
@@ -29,18 +38,40 @@ body.admin {
   background: var(--surface);
   border-right: 1px solid var(--border);
   overflow-y: auto;
+  overflow-x: hidden;
 }
+
+.admin-sidebar__header { display: flex; align-items: center; gap: var(--sp-2); }
+
+.sidebar-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  flex: none;
+  margin-left: auto;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--text-muted);
+  transition: all var(--transition);
+}
+.sidebar-toggle:hover { color: var(--text); border-color: var(--border-strong); }
+.sidebar-toggle svg { width: 1rem; height: 1rem; }
 
 .admin-brand {
   display: flex;
   align-items: center;
   gap: var(--sp-2);
+  min-width: 0;
   font-weight: 700;
   letter-spacing: -0.02em;
   color: var(--text);
 }
 .admin-brand:hover { text-decoration: none; color: var(--text); }
-.admin-brand svg { width: 1.4rem; height: 1.4rem; color: var(--accent); }
+.admin-brand svg { width: 1.4rem; height: 1.4rem; color: var(--accent); flex: none; }
 .admin-brand small {
   display: block;
   font-size: var(--text-xs);
@@ -88,6 +119,35 @@ body.admin {
 .admin-user img { width: 2rem; height: 2rem; border-radius: var(--radius-pill); flex: none; }
 .admin-user strong { display: block; font-weight: 600; }
 .admin-user span { color: var(--text-faint); font-size: var(--text-xs); }
+
+/* --- Collapsed sidebar -----------------------------------------------------
+ * An icon rail. Labels aren't display:none — that would drop them from the
+ * accessible name too — they get the site's own .visually-hidden treatment
+ * instead (see styles.css), so a screen reader still announces "Posts",
+ * "Grant Cameron · owner", etc. Sighted users get the native title tooltip
+ * set in admin.js.
+ * ========================================================================= */
+
+.admin-layout[data-sidebar-collapsed] .admin-sidebar { padding-inline: var(--sp-3); }
+.admin-layout[data-sidebar-collapsed] .admin-sidebar__header { flex-direction: column; }
+.admin-layout[data-sidebar-collapsed] .admin-brand { justify-content: center; }
+.admin-layout[data-sidebar-collapsed] .sidebar-toggle { margin-left: 0; }
+.admin-layout[data-sidebar-collapsed] .admin-nav a { justify-content: center; padding: var(--sp-2); }
+.admin-layout[data-sidebar-collapsed] .admin-user { justify-content: center; padding: var(--sp-2); }
+.admin-layout[data-sidebar-collapsed] .admin-nav__label + a { margin-top: var(--sp-3); }
+
+.admin-layout[data-sidebar-collapsed] .admin-brand > div,
+.admin-layout[data-sidebar-collapsed] .admin-nav__label,
+.admin-layout[data-sidebar-collapsed] .admin-nav a span,
+.admin-layout[data-sidebar-collapsed] .admin-user > div {
+  position: absolute;
+  width: 1px; height: 1px;
+  padding: 0; margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
 
 .admin-main { min-width: 0; padding: var(--sp-5) var(--sp-6) var(--sp-8); }
 
@@ -590,7 +650,15 @@ body.admin {
 }
 
 @media (max-width: 48rem) {
-  .admin-layout { grid-template-columns: 1fr; }
+  /* The collapse toggle is for reclaiming width at desktop/tablet sizes;
+     below this breakpoint the sidebar is already a compact horizontal bar,
+     so force the grid back to 1fr regardless of the toggle's state — its
+     [data-sidebar-collapsed] rule outranks the plain .admin-layout rule
+     below on specificity, not just source order, so it has to be matched
+     explicitly rather than simply overridden. */
+  .admin-layout,
+  .admin-layout[data-sidebar-collapsed] { grid-template-columns: 1fr; }
+  .sidebar-toggle { display: none; }
   .admin-sidebar {
     position: static;
     height: auto;
@@ -601,6 +669,7 @@ body.admin {
     border-bottom: 1px solid var(--border);
     gap: var(--sp-3);
   }
+  .admin-sidebar__header { flex: none; }
   .admin-nav { flex-direction: row; flex-wrap: wrap; }
   .admin-nav__label { display: none; }
   .admin-nav a span { display: none; }

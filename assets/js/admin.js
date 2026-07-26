@@ -13,7 +13,7 @@
 import * as api from './api.js';
 import {
   el, clear, append, icon, timeEl, formatDateTime, formatRelative,
-  formatBytes, renderError, renderEmpty,
+  formatBytes, renderError, renderEmpty, isSidebarCollapsed, setSidebarCollapsed,
 } from './main.js';
 
 /* --- Shell ---------------------------------------------------------------- */
@@ -30,18 +30,28 @@ async function renderSidebar() {
   const host = document.querySelector('[data-sidebar]');
   if (!host) return;
 
-  const brand = el('a', { class: 'admin-brand', href: '/admin/' }, [
+  const brand = el('a', { class: 'admin-brand', href: '/admin/', 'aria-label': 'add-blog admin' }, [
     icon('check'),
     el('div', {}, [el('span', { text: 'add-blog' }), el('small', { text: 'Admin' })]),
   ]);
 
+  // Click handling is delegated in main.js (initSidebarCollapse) — it has to
+  // be, since this button doesn't exist yet when that listener is attached.
+  const sidebarToggle = el('button', {
+    class: 'sidebar-toggle',
+    type: 'button',
+    'data-sidebar-toggle': '',
+  });
+
+  const header = el('div', { class: 'admin-sidebar__header' }, [brand, sidebarToggle]);
+
   const nav = el('nav', { class: 'admin-nav', 'aria-label': 'Admin' }, [
     el('div', { class: 'admin-nav__label', text: 'Manage' }),
     ...NAV.map((item) =>
-      el('a', { href: item.href }, [icon(item.icon), el('span', { text: item.label })])
+      el('a', { href: item.href, title: item.label }, [icon(item.icon), el('span', { text: item.label })])
     ),
     el('div', { class: 'admin-nav__label', text: 'Public site' }),
-    el('a', { href: '/', target: '_blank', rel: 'noopener' }, [
+    el('a', { href: '/', target: '_blank', rel: 'noopener', title: 'View blog' }, [
       icon('external'), el('span', { text: 'View blog' }),
     ]),
   ]);
@@ -50,7 +60,10 @@ async function renderSidebar() {
     el('div', { class: 'skeleton', style: 'width:2rem;height:2rem;border-radius:50%' }),
   ]);
 
-  clear(host).append(brand, nav, user);
+  clear(host).append(header, nav, user);
+  // The toggle button now exists — paint its icon/label against the state
+  // main.js already applied (before this ever ran, to avoid a width flash).
+  setSidebarCollapsed(isSidebarCollapsed());
 
   // Re-apply aria-current now that the nav exists (main.js ran before this).
   const here = location.pathname.replace(/index\.html$/, '');

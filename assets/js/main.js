@@ -58,6 +58,52 @@ function initTheme() {
   paintToggles();
 }
 
+/* --- Sidebar collapse ------------------------------------------------------
+ * Admin only — the layout div is absent on public pages, so every function
+ * here is a no-op there. State applies as early as possible (before
+ * admin.js has rendered the sidebar's contents) so there's no flash of the
+ * wrong width, the same reasoning as the theme toggle above.
+ * ---------------------------------------------------------------------- */
+
+const SIDEBAR_KEY = 'addblog.sidebarCollapsed';
+
+function storedSidebarCollapsed() {
+  try {
+    return localStorage.getItem(SIDEBAR_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+
+export function isSidebarCollapsed() {
+  return document.querySelector('.admin-layout')?.hasAttribute('data-sidebar-collapsed') ?? false;
+}
+
+export function setSidebarCollapsed(collapsed) {
+  const layout = document.querySelector('.admin-layout');
+  if (!layout) return;
+  layout.toggleAttribute('data-sidebar-collapsed', collapsed);
+  try { localStorage.setItem(SIDEBAR_KEY, collapsed ? '1' : '0'); } catch { /* ignore */ }
+
+  for (const button of document.querySelectorAll('[data-sidebar-toggle]')) {
+    if (!button.firstChild) button.append(icon('panel'));
+    button.setAttribute('aria-expanded', String(!collapsed));
+    button.setAttribute('aria-label', collapsed ? 'Expand sidebar' : 'Collapse sidebar');
+    button.setAttribute('title', collapsed ? 'Expand sidebar' : 'Collapse sidebar');
+  }
+}
+
+function initSidebarCollapse() {
+  if (!document.querySelector('.admin-layout')) return;
+  setSidebarCollapsed(storedSidebarCollapsed());
+  // Delegated: the toggle button is created later, by admin.js's renderSidebar.
+  document.addEventListener('click', (event) => {
+    const button = event.target.closest('[data-sidebar-toggle]');
+    if (!button) return;
+    setSidebarCollapsed(!isSidebarCollapsed());
+  });
+}
+
 /* --- Navigation ----------------------------------------------------------- */
 
 function markCurrentNav() {
@@ -152,6 +198,7 @@ const ICON_PATHS = {
   inbox: '<path d="M3 12h5l2 3h4l2-3h5"/><path d="M4 6h16l1 6v6a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1v-6Z"/>',
   copy: '<rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1"/>',
   external: '<path d="M14 4h6v6"/><path d="M20 4 10 14"/><path d="M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/>',
+  panel: '<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16"/>',
 };
 
 /** Inline SVG icon. The path data is a constant in this file, never user input. */
@@ -262,6 +309,7 @@ document.addEventListener('addblog:demo-mode', showDemoBanner);
 
 function init() {
   initTheme();
+  initSidebarCollapse();
   markCurrentNav();
   const year = document.querySelector('[data-year]');
   if (year) year.textContent = String(new Date().getFullYear());

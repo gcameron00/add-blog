@@ -156,4 +156,4 @@ tooling and must not be edited by hand. This matters for the roadmap: Phase 2 ne
 - [HTTP API](docs/api.md) — public read API and authenticated admin API
 - [MCP server](docs/mcp.md) — transport, auth, tools, resources
 - [Deployment runbook](docs/deployment.md) — D1, R2, DNS, Access, Managed OAuth
-- [Implementation plan](docs/implementation-plan.md) — phases, deliverables, open questions
+- [Implementation plan](docs/implementation-plan.md) — phases, deliverables, decisions

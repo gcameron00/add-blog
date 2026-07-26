@@ -32,6 +32,19 @@ Worker that cannot be wired up would be dead code in the asset bundle.
 the data model is agreed. Changing the contract is cheap now and expensive after
 Phase 3.
 
+**Amendment — editor (owner review, 2026-07-26).** The hand-rolled toolbar and
+textarea in `admin/editor/index.html` / `assets/js/editor.js` is friendlier than raw
+Markdown but still asks more of a non-technical author than it should. Decision: swap
+it for a drop-in Markdown editor — a library that progressively enhances the existing
+`<textarea id="body">` (toolbar buttons, live/side-by-side preview, image
+drag-and-drop) rather than a hand-rolled one, loaded from a CDN with no build step, the
+same pattern already proven in the sibling `Vibecode` project (EasyMDE, loaded via
+`<script>`/`<link>` tags, `easyMDE.value()` read back on save). This does **not**
+change the editor format decision below — the library still edits and returns plain
+Markdown text (`body_md`), it just gets a nicer toolbar than
+`assets/js/editor.js`'s current hand-rolled `ACTIONS` map. No API, schema or MCP
+surface changes required. Tracked as outstanding front-end work, not yet implemented.
+
 ---
 
 ## Phase 2 — Worker router and hostname split
@@ -165,38 +178,45 @@ identity does not see `publish_post`. Every action appears in the audit log.
 
 ---
 
-## Open questions
+## Decisions
 
-These need decisions from the owner. Each has a working default so nothing is blocked
-in the meantime.
+These were open questions for the owner. Each had a working default so nothing was
+blocked in the meantime; all six were confirmed by the owner on 2026-07-26, five as
+the stated default and one (editor format) with a refinement. Kept here, rather than
+deleted, as the record of why.
 
 1. **Single-tenant or multi-tenant?** The plan assumes one deployment per site: one
    Worker, one D1, one R2. Simple and safely isolated. A shared multi-tenant
    deployment keyed on hostname would be cheaper at scale but puts a `site_id`
    predicate on every query, where one missing `WHERE` clause leaks another site's
-   drafts. *Default: single-tenant.* This is the one decision that is genuinely
+   drafts. **Decided: single-tenant.** This is the one decision that is genuinely
    expensive to reverse — it changes every table and every query.
 
 2. **How does the blog attach to the parent site?** Subdomain (`blog.mysite.com`) is
    assumed and is what the routing is built for. A subpath (`mysite.com/blog`) would
    need the parent site to route through this Worker, which is a much bigger ask of
-   the host site. *Default: subdomain, with `base_path` in settings so subpath support
-   is a later addition rather than a rewrite.*
+   the host site. **Decided: subdomain** (`blog.mysite.com`), with `base_path` in
+   settings so subpath support is a later addition rather than a rewrite.
 
 3. **Comments.** Out of scope as written. If wanted, the least-bad option is a
    moderated comment table in D1 with Turnstile, rather than an embedded third party.
-   *Default: no comments.*
+   **Decided: no comments.**
 
 4. **Editor format.** Markdown, stored as the source of truth. A rich-text editor
    would be friendlier for non-technical authors but makes the MCP surface worse — a
    model editing Markdown is far more reliable than one editing a rich-text document
-   model. *Default: Markdown, with the live preview doing the reassurance work.*
+   model. **Decided: Markdown stays the source of truth**, confirming the default —
+   but with the friendliness gap closed by a better editor rather than by accepting
+   raw Markdown syntax as the ceiling. See the Phase 1 amendment above: a drop-in
+   editor that progressively enhances a plain `<textarea>` (toolbar, live preview,
+   image drop) while still reading and writing plain Markdown text, so the MCP
+   argument in this question's rationale is unaffected.
 
 5. **Media variants: eager or lazy?** Lazy generation is assumed — cheaper, and no
    work for images never displayed at that size. Eager generation on upload gives
-   predictable first-load latency. *Default: lazy.*
+   predictable first-load latency. **Decided: lazy.**
 
 6. **Should the public site be static-generated?** Rendering from D1 per request with
    edge caching is simpler and makes publishing instant. Pre-generating HTML into R2
-   on publish would cut cold-path latency further. *Default: render-and-cache; revisit
-   only if measurements justify it.*
+   on publish would cut cold-path latency further. **Decided: render-and-cache**;
+   revisit only if measurements justify it.

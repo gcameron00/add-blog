@@ -1,6 +1,7 @@
 # Implementation plan
 
-Phase 1 is complete and in this repository. Phases 2 onward are the proposed build-out.
+Phases 1 and 2 are complete and in this repository, Phase 2 pending its per-site
+deploy (owner-run — see below). Phases 3 onward are the proposed build-out.
 
 Each phase is independently deployable and leaves the site working. Phases 2–5 are
 sequential — routing before storage, storage before auth, auth before the write path.
@@ -49,23 +50,47 @@ media API until Phase 5.
 
 ---
 
-## Phase 2 — Worker router and hostname split
+## Phase 2 — Worker router and hostname split ✅
 
 **Goal.** Get the two-hostname topology right before anything valuable is behind it.
 
 - `src/index.js` with a `fetch` handler that branches on `URL.hostname`.
 - Public host: serve static assets; return `404` for `/admin/*`, `/api/admin/*` and
-  `/mcp` as the first check in the handler.
-- Admin host: serve admin assets; every response `private, no-store`.
-- Security headers on all responses: CSP, `X-Content-Type-Options`,
-  `Referrer-Policy`, `Strict-Transport-Security`, `X-Frame-Options: DENY` on admin.
-- `/health` returning build metadata.
-- `X-Request-Id` on every response, echoed into logs.
-- Add `src` and `migrations` to `.assetsignore`.
+  `/mcp` as the first check in the handler, unconditionally, before anything else runs.
+- Admin host: serve admin assets; every response `private, no-store`,
+  `X-Frame-Options: DENY`.
+- Security headers on all responses: CSP (scoped to allow the Phase 1 EasyMDE/Font
+  Awesome CDN, both pinned versions — see the Phase 1 amendment above),
+  `X-Content-Type-Options`, `Referrer-Policy`, `Strict-Transport-Security`.
+- `/health`.
+- `X-Request-Id` on every response, generated or echoed, logged per request.
+- `src` and `migrations` added to `.assetsignore`.
+- `npm test` (vitest, `@cloudflare/vitest-pool-workers`) runs the routing table against
+  the real Workers runtime — negative cases first, per the risk note below.
 
-**Owner action required.** `main` and `routes` in `wrangler.toml`.
+**Decision (2026-07-26): one repo, many independently-deployed sites**, not one clone
+per site. `src/index.js` and the whole front end stay fully generic — the hostname a
+deployment answers to is read from `env.ADMIN_HOST`/`env.PUBLIC_HOST` at runtime, never
+hardcoded. What differs per site lives entirely in `wrangler.toml`, one `[env.NAME]`
+block per site (name, routes, vars, and from Phase 3 onward that site's own D1/R2
+IDs), deployed by a GitHub Actions matrix — one `wrangler deploy --env NAME` per site,
+on every push. See the comment block at the top of `wrangler.toml` and
+[deployment.md](deployment.md) §3 for the mechanics, including a `run_worker_first`
+requirement that isn't optional (without it, Cloudflare serves matching static assets
+*before* the Worker runs, and the admin-path guard never executes for a real file like
+`/admin/index.html` — found by running the router locally, not by reading the config
+format). This does not reopen the single-tenant decision below — every site still gets
+its own Worker, D1 and R2, fully isolated; it only adds a shared-source/many-deployments
+layer in front of that.
 
-**Exit criteria.** `blog.mysite.com/admin/` returns 404 in production. Both hostnames
+First site: `blog.gcameron.com` / `blog-admin.gcameron.com`.
+
+**Owner action required, per site.** The domain must already be a zone in Cloudflare
+before its first deploy (routes can't attach to a zone that doesn't exist). Nothing
+else — `wrangler deploy --env NAME` creates the Worker and, via Custom Domains, the DNS
+record, automatically.
+
+**Exit criteria.** `blog.gcameron.com/admin/` returns 404 in production. Both hostnames
 serve their own UI. Tests cover the routing table, including the negative cases.
 
 **Risk.** Getting the split wrong here is the highest-severity failure mode in the
@@ -192,7 +217,10 @@ deleted, as the record of why.
    deployment keyed on hostname would be cheaper at scale but puts a `site_id`
    predicate on every query, where one missing `WHERE` clause leaks another site's
    drafts. **Decided: single-tenant.** This is the one decision that is genuinely
-   expensive to reverse — it changes every table and every query.
+   expensive to reverse — it changes every table and every query. *(Refined in Phase
+   2, 2026-07-26: "one deployment per site" now means one `[env.NAME]` block per site
+   in a shared repo, not one repo clone per site — see Phase 2 above. Isolation is
+   unchanged: still a separate Worker, D1 and R2 per site, no `site_id` anywhere.)*
 
 2. **How does the blog attach to the parent site?** Subdomain (`blog.mysite.com`) is
    assumed and is what the routing is built for. A subpath (`mysite.com/blog`) would

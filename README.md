@@ -11,16 +11,19 @@ bundler. The whole front end ships as Cloudflare Workers static assets.
 
 ## Status
 
-**Phase 1 — front end prototype.** What is in this repository today is the complete
-proposed user interface, running entirely on static assets against bundled demo data.
-There is no Worker script, no database, and no authentication yet.
+**Phases 1 and 2 are built.** The front end is the complete proposed user interface,
+running against bundled demo data until Phase 3 ships a real API. The Worker router
+(`src/index.js`) enforces the hostname split and sends security headers, but each site
+still needs its own `[env.NAME]` deploy — see
+[`docs/deployment.md`](docs/deployment.md). There is still no database and no
+authentication.
 
 | Layer | State |
 | --- | --- |
 | Public blog UI | Built (demo data) |
 | Admin UI | Built (demo data) |
 | Documentation | Built |
-| Worker request router | Specified, not built |
+| Worker request router | Built — per-site deploy pending (see deployment.md) |
 | D1 schema + API | Specified, not built |
 | R2 media pipeline | Specified, not built |
 | Cloudflare Access / Managed OAuth | Specified, not built |
@@ -29,11 +32,11 @@ There is no Worker script, no database, and no authentication yet.
 See [`docs/implementation-plan.md`](docs/implementation-plan.md) for the phased build-out.
 
 > [!WARNING]
-> **Do not attach a production custom domain yet.** Until the Worker router in Phase 2
-> lands, every path — including `/admin/*` — is served as a public static asset on every
-> hostname the deployment answers to. The admin UI is a prototype shell wired to demo
-> data with no secrets in it, but it is not access-controlled. Hostname split and
-> Cloudflare Access enforcement are Phase 2 and Phase 4 respectively.
+> **The admin UI is still not access-controlled.** Phase 2's router keeps `/admin/*`
+> off the public hostname, but the admin hostname itself has no login yet — anyone who
+> requests `blog-admin.<site>` directly gets the real admin UI. It is a prototype shell
+> wired to demo data with no secrets in it, but treat it as public until Cloudflare
+> Access lands in Phase 4.
 
 ---
 
@@ -106,9 +109,13 @@ with D1 keeping the metadata row that points at each R2 object.
 │   ├── mcp.md                 MCP server design and tool catalog
 │   ├── deployment.md          Cloudflare setup runbook
 │   └── implementation-plan.md Phased build-out
-├── wrangler.toml              Deployment config — do not edit by hand
+├── src/
+│   ├── index.js               The Worker: hostname router, headers, /health
+│   └── index.test.js          Routing tests (`npm test`) — see below
+├── wrangler.toml              One shared Worker, one [env.NAME] block per site
 ├── .assetsignore              Files excluded from the asset bundle
-└── .github/workflows/         CI/CD — do not edit by hand
+├── package.json               Test tooling only — the front end stays build-step-free
+└── .github/workflows/         CI/CD — deploys every [env.NAME] site on push to main
 ```
 
 ---
@@ -122,10 +129,13 @@ python3 -m http.server 8788
 # then open http://localhost:8788
 ```
 
-Or, closer to production, with Wrangler:
+Or, closer to production, with Wrangler — this runs the real `src/index.js` router
+locally (hostname split, headers, `/health`) against a chosen site's config:
 
 ```bash
-npx wrangler dev
+npx wrangler dev --env gcameron
+# or plain `npx wrangler dev` to run it against the placeholder hostnames
+# (blog.mysite.com / blog-admin.mysite.com) rather than any real site
 ```
 
 With no API present, `assets/js/api.js` detects the missing backend on its first call
@@ -134,19 +144,29 @@ realistic content, and a small "Demo data" badge appears so it is never ambiguou
 whether you are looking at real content. Once the Phase 3 API is live, the same
 client hits `/api/*` and the badge disappears — no page changes required.
 
+The Worker itself (`src/index.js`) has its own test suite, separate from the front
+end's no-build-step approach — it's server-side code, not shipped to a browser:
+
+```bash
+npm install
+npm test
+```
+
 ---
 
 ## Deployment
 
-`.github/workflows/deploy.yml` deploys to Cloudflare Workers on every push to `main`,
-using `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` repository secrets. If those
-secrets are absent the job skips cleanly.
+add-blog is one shared codebase deployed to multiple independent sites — one Worker,
+one D1, one R2 *per site*, never shared, but all from this one repo. Each site is a
+`[env.NAME]` block in `wrangler.toml`; `.github/workflows/deploy.yml` runs
+`wrangler deploy --env <site>` once per site, on every push to `main`, using
+`CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` repository secrets (the job skips
+cleanly if those aren't set).
 
-`wrangler.toml`, `.assetsignore` and `.github/workflows/` are managed by the deployment
-tooling and must not be edited by hand. This matters for the roadmap: Phase 2 needs a
-`main` entrypoint and Phase 3 needs D1/R2 bindings, and both of those are
-`wrangler.toml` changes that have to be made deliberately by the repository owner.
-[`docs/deployment.md`](docs/deployment.md) lists the exact stanzas required.
+Adding a new site is a config change, never a code change: add the domain as a zone in
+Cloudflare, add its `[env.NAME]` block, add its name to `deploy.yml`'s `site` matrix,
+push. See [`docs/deployment.md`](docs/deployment.md) for the exact steps and the one
+`wrangler.toml` setting (`run_worker_first`) that isn't optional.
 
 ---
 

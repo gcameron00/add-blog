@@ -1,50 +1,48 @@
 # Deployment runbook
 
 Everything needed to take add-blog from the current static prototype to a running
-blog on `blog.mysite.com` and `blog-admin.mysite.com`.
+fleet of blogs — one shared Worker script, one `[env.NAME]` block per site. First site:
+`blog.gcameron.com` / `blog-admin.gcameron.com`.
 
 ---
 
 ## What deploys today
 
-`.github/workflows/deploy.yml` runs on every push to `main` and calls
-`wrangler deploy --name <repo-name>`. It skips cleanly if `CLOUDFLARE_API_TOKEN` and
-`CLOUDFLARE_ACCOUNT_ID` are not set as repository secrets.
+`.github/workflows/deploy.yml` runs on every push to `main`, once per entry in its
+`site` matrix, and calls `wrangler deploy --env <site>`. It skips cleanly if
+`CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` are not set as repository secrets.
 
-`wrangler.toml` currently declares only a static asset directory:
+`main = "src/index.js"` is set as of Phase 2, so every push now deploys the hostname
+router — see `wrangler.toml` for the current site list and
+[architecture.md](architecture.md) for what the router does. Every deploy still needs
+D1/R2 (§1, Phase 3) and Access (§4, Phase 4) before it's actually safe to point a
+production domain at; those remain owner-driven, per-site steps.
 
-```toml
-name = "generic-website"
-compatibility_date = "2026-07-01"
-workers_dev = true
-
-[assets]
-directory = "."
-```
-
-No `main`, so there is no Worker script — the deployment is static files only. That is
-correct for Phase 1 and is why the prototype runs on demo data.
-
-> [!IMPORTANT]
-> `wrangler.toml`, `.assetsignore` and `.github/workflows/` are managed by the
-> deployment tooling and are not edited as part of normal development. The changes in
-> §3 below are a deliberate, one-time act by the repository owner, and each phase of
-> the build-out is blocked until the corresponding stanza exists.
+> [!NOTE]
+> Whoever is applying `wrangler.toml`/`.assetsignore`/`.github/workflows/` changes,
+> the CF-touching part — actually running `wrangler`, adding a zone, setting a
+> secret — stays a deliberate, owner-run step, per site. The config in this repo can
+> be authored by anyone; what it does to the real Cloudflare account still needs a
+> human decision each time.
 
 ---
 
-## 1. Create the resources
+## 1. Create the resources (per site)
+
+Each site gets its own database and bucket — never shared, per the single-tenant
+decision in [implementation-plan.md](implementation-plan.md). Example for the
+`gcameron` site:
 
 ```bash
 # D1
-npx wrangler d1 create add-blog
-# → note the database_id
+npx wrangler d1 create gcameron-blog
+# → note the database_id, goes in [[env.gcameron.d1_databases]]
 
 # R2
-npx wrangler r2 bucket create add-blog-media
+npx wrangler r2 bucket create gcameron-blog-media
 
 # Apply the schema (see docs/architecture.md §3)
-npx wrangler d1 execute add-blog --file=./migrations/0001_init.sql --remote
+npx wrangler d1 execute gcameron-blog --file=./migrations/0001_init.sql --remote
 ```
 
 Seed the first owner so there is an identity that can log in — the email must match
@@ -52,62 +50,84 @@ exactly the identity Access will present:
 
 ```sql
 INSERT INTO authors (id, email, name, role, created_at)
-VALUES (lower(hex(randomblob(16))), 'you@mysite.com', 'Your Name', 'owner',
+VALUES (lower(hex(randomblob(16))), 'you@gcameron.com', 'Your Name', 'owner',
         strftime('%Y-%m-%dT%H:%M:%SZ','now'));
 ```
 
 ## 2. DNS
 
-Two proxied records in the zone for `mysite.com`:
+Nothing to do by hand here. `routes` entries with `custom_domain = true` (§3) make
+Cloudflare create the DNS record and issue the certificate automatically — Custom
+Domains don't support wildcards or paths, so the pattern is a bare hostname
+(`blog.gcameron.com`, not `blog.gcameron.com/*`; a `/*` pattern is rejected at deploy
+time, not silently accepted).
 
-| Name | Type | Target | Proxy |
-| --- | --- | --- | --- |
-| `blog` | CNAME | the Worker's route | Proxied (orange cloud) |
-| `blog-admin` | CNAME | the Worker's route | Proxied (orange cloud) |
+The one prerequisite this doesn't remove: **the domain must already be a zone in the
+Cloudflare account** (nameservers pointed at Cloudflare) before its first deploy. A
+`routes` entry for a hostname with no zone behind it fails the deploy outright — this
+is the one genuinely manual, CF-dashboard step per new site, and it has to happen
+before step 3, not after.
 
-Both must be proxied. An unproxied record bypasses both the Worker and Cloudflare
-Access — on `blog-admin` that would mean serving the admin UI with no authentication
-at all.
+## 3. `wrangler.toml` — one shared Worker, one `[env.NAME]` block per site
 
-## 3. Required `wrangler.toml` additions
-
-Owner action, applied per phase:
+This repo deploys the same `src/index.js` to multiple independent sites — see the
+comment at the top of `wrangler.toml`. Top-level keys (`main`, `compatibility_date`,
+`[assets]`) are shared by every site; everything site-specific lives in that site's
+`[env.NAME]` block, deployed with `wrangler deploy --env NAME`
+(`.github/workflows/deploy.yml` does this once per entry in its `site` matrix, on
+every push).
 
 ```toml
-# Phase 2 — enable the Worker script (routing, hostname split)
-main = "src/index.js"
+main = "src/index.js"                 # Phase 2 — shared by every site
+compatibility_date = "2026-07-01"
 
-# Phase 2 — bind both hostnames
-routes = [
-  { pattern = "blog.mysite.com/*",       custom_domain = true },
-  { pattern = "blog-admin.mysite.com/*", custom_domain = true },
+[assets]
+directory = "."
+binding = "ASSETS"                    # Phase 2 — required: see the run_worker_first note below
+run_worker_first = true               # Phase 2 — required: see below
+
+# --- one block like this per site --------------------------------------
+
+[env.gcameron]
+name = "gcameron-blog"                 # Phase 2 — the Worker's name; created on first deploy
+routes = [                             # Phase 2 — bare hostnames only, see §2
+  { pattern = "blog.gcameron.com",       custom_domain = true },
+  { pattern = "blog-admin.gcameron.com", custom_domain = true },
 ]
 
-# Phase 3 — storage
-[[d1_databases]]
-binding = "DB"
-database_name = "add-blog"
-database_id = "<id from step 1>"
+[env.gcameron.vars]
+PUBLIC_HOST = "blog.gcameron.com"       # Phase 2
+ADMIN_HOST  = "blog-admin.gcameron.com" # Phase 2
+# ACCESS_TEAM_DOMAIN = "..."            # Phase 4 (non-secret — see below)
+# ACCESS_AUD         = "..."            # Phase 4
 
-[[r2_buckets]]
-binding = "MEDIA"
-bucket_name = "add-blog-media"
+# [[env.gcameron.d1_databases]]         # Phase 3 — this site's own database
+# binding = "DB"
+# database_name = "gcameron-blog"
+# database_id = "<id from step 1, this site's own D1>"
 
-# Phase 4 — Access verification (non-secret; the AUD tag and team name are
-# identifiers, not credentials — but the app must still verify them)
-[vars]
-ACCESS_TEAM_DOMAIN = "mysite.cloudflareaccess.com"
-ACCESS_AUD = "<application audience tag>"
-PUBLIC_HOST = "blog.mysite.com"
-ADMIN_HOST = "blog-admin.mysite.com"
+# [[env.gcameron.r2_buckets]]           # Phase 3 — this site's own bucket
+# binding = "MEDIA"
+# bucket_name = "gcameron-blog-media"
 
-# Phase 5 — scheduled publishing and retention
-[triggers]
-crons = ["*/5 * * * *"]
+# [env.gcameron.triggers]               # Phase 5
+# crons = ["*/5 * * * *"]
 ```
 
-Two smaller items that also live in `wrangler.toml` and are therefore blocked until
-the owner applies them:
+**`[assets] binding = "ASSETS"` and `run_worker_first = true` are not optional.**
+Without `run_worker_first`, Cloudflare serves a matching static file *before* the
+Worker ever runs — which means the admin-path 404 guard in `src/index.js` would never
+execute for a request to `/admin/index.html`, because that file exists in the bundle.
+This is the one setting that makes the whole Phase 2 security model actually take
+effect rather than being dead code; it was found by running the router locally against
+real static assets, not by reading the config format.
+
+**Adding a new site** is: add its zone in Cloudflare (§2), copy an `[env.NAME]` block
+and change the name/routes/vars, add the same `NAME` to `deploy.yml`'s `site` matrix,
+push. No per-site code changes, ever — that's the point of keeping the domain out of
+`src/`.
+
+Two smaller items that also live in `wrangler.toml`, shared across all sites:
 
 - `[assets] not_found_handling = "404-page"`, so `404.html` is actually served on an
   unmatched path. Without it a bad URL gets a bare Workers 404. The file is already in
@@ -118,11 +138,8 @@ the owner applies them:
   and arguably useful, but worth knowing. Add `docs` to `.assetsignore` if the blog
   should not serve them.
 
-Also add `src` and `migrations` to `.assetsignore` when Phase 2 lands, so Worker source
-and SQL files are not uploaded into the public asset bundle.
-
-Once `main` is set, `[assets]` keeps serving the static files, but the Worker runs
-first and can intercept any path — which is exactly what the hostname split needs.
+`src` and `migrations` are already in `.assetsignore` as of Phase 2, so Worker source
+and SQL files are never uploaded into the public asset bundle.
 
 ## 4. Cloudflare Zero Trust Access
 
@@ -153,8 +170,11 @@ Verify before trusting it:
 
 ## 5. Secrets
 
+Secrets are per environment, same as everything else in §3 — put `--env <site>` on it,
+or it lands on the nameless top-level Worker, not any real site:
+
 ```bash
-npx wrangler secret put SESSION_SIGNING_KEY   # signs preview links
+npx wrangler secret put SESSION_SIGNING_KEY --env gcameron   # signs preview links
 ```
 
 `ACCESS_AUD` and `ACCESS_TEAM_DOMAIN` are plain `[vars]`, not secrets: they are
@@ -179,11 +199,11 @@ possession of them proves anything. Security comes from JWT signature verificati
 
 ## 7. Rollback
 
-`wrangler deploy` keeps prior versions. To roll back the Worker:
+`wrangler deploy` keeps prior versions, per site. To roll back one site's Worker:
 
 ```bash
-npx wrangler deployments list
-npx wrangler rollback <version-id>
+npx wrangler deployments list --env gcameron
+npx wrangler rollback <version-id> --env gcameron
 ```
 
 D1 migrations are not rolled back by that. Write migrations additively — add columns

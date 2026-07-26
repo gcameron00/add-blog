@@ -1,10 +1,38 @@
-# Used only when the site was created with the "Workers" deploy target.
-# The name is overridden at deploy time via `wrangler deploy --name <repo-name>`
-# by .github/workflows/deploy.yml. Pages-target sites ignore this file
-# (it has no pages_build_output_dir).
-name = "generic-website"
+# One repo, one shared Worker script (src/index.js), many independent sites —
+# each site is its own [env.NAME] block below, deployed separately via
+# `wrangler deploy --env NAME` (see .github/workflows/deploy.yml, which runs
+# one deploy per site on every push to main). Nothing about a site is generic
+# code that changes per deployment; it is all here, in config.
+#
+# To add a new blog:
+#   1. Add the domain as a zone in Cloudflare (nameservers pointed at CF) —
+#      the routes below can't attach to a zone that doesn't exist yet.
+#   2. Copy an [env.NAME] block, change the name/routes/vars for the new site.
+#   3. Add the same NAME to the `site` matrix in deploy.yml.
+#   4. Push. `wrangler deploy --env NAME` creates the Worker on first run —
+#      there is no separate "create the Worker" step.
+#
+# Phase 3 will add a [[env.NAME.d1_databases]] and [[env.NAME.r2_buckets]]
+# stanza per site, once each site has its own D1/R2 resources to bind.
+name = "add-blog"
+main = "src/index.js"
 compatibility_date = "2026-07-01"
 workers_dev = true
 
 [assets]
 directory = "."
+binding = "ASSETS"
+run_worker_first = true
+
+# --- gcameron.com -------------------------------------------------------
+
+[env.gcameron]
+name = "gcameron-blog"
+routes = [
+  { pattern = "blog.gcameron.com",       custom_domain = true },
+  { pattern = "blog-admin.gcameron.com", custom_domain = true },
+]
+
+[env.gcameron.vars]
+ADMIN_HOST = "blog-admin.gcameron.com"
+PUBLIC_HOST = "blog.gcameron.com"

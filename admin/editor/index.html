@@ -16,6 +16,12 @@
       own CSS otherwise beats equal-specificity rules on fullscreen/side-by-side.
     -->
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/easymde@2.21.0/dist/easymde.min.css" />
+    <!--
+      EasyMDE's toolbar icons are Font Awesome glyphs. Loaded explicitly and
+      pinned here (same jsdelivr origin as EasyMDE, so no extra CSP entry) —
+      see the autoDownloadFontAwesome note in assets/js/editor.js for why.
+    -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/font-awesome@4.7.0/css/font-awesome.min.css" />
     <link rel="stylesheet" href="/assets/css/admin.css" />
     <script src="https://cdn.jsdelivr.net/npm/easymde@2.21.0/dist/easymde.min.js"></script>
     <script type="module" src="/assets/js/admin.js"></script>

@@ -89,6 +89,15 @@ function createEditor() {
     tabSize: 2,
     indentWithTabs: false,
     placeholder: 'Write in Markdown…',
+    // EasyMDE's toolbar icons are Font Awesome glyphs, and by default it
+    // injects an *unpinned* `.../latest/...` Font Awesome stylesheet from
+    // maxcdn.bootstrapcdn.com at runtime if it doesn't detect FA already
+    // present — a surprise third CDN the CSP (src/index.js) rightly blocks,
+    // and an unpinned version we wouldn't want even if it were allowed. We
+    // load a pinned Font Awesome 4.7.0 ourselves instead, from the same
+    // jsdelivr origin as EasyMDE (see admin/editor/index.html), and tell it
+    // not to fetch its own.
+    autoDownloadFontAwesome: false,
     // Trimmed from EasyMDE's own default set: table, horizontal-rule and
     // strikethrough are rare enough in a blog post that they weren't worth
     // the width — at the editor's actual column width (narrower than the

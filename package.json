@@ -1,0 +1,13 @@
+{
+  "name": "add-blog",
+  "private": true,
+  "type": "module",
+  "description": "Test tooling for the Worker in src/. The front end (everything outside src/) stays framework- and build-step-free — see README.md.",
+  "scripts": {
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "@cloudflare/vitest-pool-workers": "^0.18.8",
+    "vitest": "^4.1.10"
+  }
+}

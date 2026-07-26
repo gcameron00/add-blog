@@ -9,5 +9,8 @@ node_modules/
 dist/
 build/
 
+# wrangler dev / vitest-pool-workers local state — machine-specific, never committed
+.wrangler/
+
 # Editor settings
 .vscode/

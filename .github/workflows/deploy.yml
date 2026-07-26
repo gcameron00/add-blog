@@ -12,10 +12,16 @@ concurrency:
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        # One entry per [env.NAME] block in wrangler.toml — every site this
+        # repo serves gets deployed on every push. Add a new site by adding
+        # its name here and its [env.NAME] block in wrangler.toml.
+        site: [gcameron]
+      fail-fast: false
     steps:
-      # CF secrets exist only for Worker-target sites, and are set by
-      # site-builder AFTER repo creation — skip cleanly when absent
-      # (covers both Pages-target repos and the first pre-secrets push).
+      # CF secrets are repo-level, shared by every site. Skip cleanly when
+      # absent (covers the first pre-secrets push).
       - name: Check Cloudflare credentials
         id: creds
         run: echo "ok=${{ secrets.CLOUDFLARE_API_TOKEN != '' && secrets.CLOUDFLARE_ACCOUNT_ID != '' }}" >> "$GITHUB_OUTPUT"
@@ -24,10 +30,10 @@ jobs:
         if: steps.creds.outputs.ok == 'true'
         uses: actions/checkout@v6
 
-      - name: Deploy
+      - name: Deploy ${{ matrix.site }}
         if: steps.creds.outputs.ok == 'true'
         uses: cloudflare/wrangler-action@v3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          command: deploy --name ${{ github.event.repository.name }}
+          command: deploy --env ${{ matrix.site }}

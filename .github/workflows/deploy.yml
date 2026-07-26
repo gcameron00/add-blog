@@ -30,10 +30,26 @@ jobs:
         if: steps.creds.outputs.ok == 'true'
         uses: actions/checkout@v6
 
+      # cloudflare/wrangler-action@v3 used to run this step, but its own
+      # "Wrangler not found, installing..." fallback ignored the pinned
+      # wranglerVersion input and hardcoded an install of wrangler@3.90.0 —
+      # confirmed in a run's own log. Wrangler 3.x predates the Workers
+      # Static Assets config this Worker depends on (run_worker_first, the
+      # [assets] binding), so it silently did nothing with those keys: a
+      # deploy that "succeeded" while quietly not enforcing the Phase 2
+      # hostname split in production. Installing from package-lock.json
+      # (npm ci) and running wrangler directly removes that whole layer of
+      # "trust a third-party action's version-resolution logic" — this
+      # installs exactly the wrangler version pinned by
+      # @cloudflare/vitest-pool-workers's own dependency, the same one every
+      # local dry-run/dev test in this repo already runs against.
+      - name: Install dependencies
+        if: steps.creds.outputs.ok == 'true'
+        run: npm ci
+
       - name: Deploy ${{ matrix.site }}
         if: steps.creds.outputs.ok == 'true'
-        uses: cloudflare/wrangler-action@v3
-        with:
-          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          command: deploy --env ${{ matrix.site }}
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: npx wrangler deploy --env ${{ matrix.site }}

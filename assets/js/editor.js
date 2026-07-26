@@ -1,8 +1,12 @@
 /**
  * Markdown editor.
  *
- * A textarea with a live preview beside it. The preview is rendered by the same
- * module the Worker will use at write time, so what you see is what gets stored.
+ * EasyMDE (loaded from a CDN in admin/editor/index.html, no build step)
+ * progressively enhances the #body textarea: toolbar, live/side-by-side
+ * preview, keyboard shortcuts. It still edits and returns plain Markdown —
+ * body_md stays the source of truth, and the preview is rendered by the same
+ * module the Worker will use at write time, so what you see is what gets
+ * stored.
  *
  * Two behaviours worth knowing about:
  *  - The slug follows the title until you edit it, then it stops following.
@@ -25,9 +29,6 @@ const dom = {
   body: document.querySelector('[data-field="body"]'),
   slug: document.querySelector('[data-field="slug"]'),
   excerpt: document.querySelector('[data-field="excerpt"]'),
-  preview: document.querySelector('[data-preview]'),
-  panes: document.querySelector('[data-panes]'),
-  toolbar: document.querySelector('[data-toolbar]'),
   saveState: document.querySelector('[data-save-state]'),
   counts: document.querySelector('[data-counts]'),
   statusSlot: document.querySelector('[data-status-slot]'),
@@ -44,6 +45,8 @@ const state = {
   dirty: false,
   saving: false,
 };
+
+let mde;
 
 /* --- Save state indicator ------------------------------------------------- */
 
@@ -69,13 +72,45 @@ function markDirty() {
   scheduleAutosave();
 }
 
-/* --- Preview -------------------------------------------------------------- */
+/* --- Editor ----------------------------------------------------------------
+ * EasyMDE owns the toolbar and the write/preview/side-by-side views. Its
+ * previewRender hook is wired to our own renderMarkdown so the editor preview
+ * and the published post are always built from identical rendering code.
+ * ---------------------------------------------------------------------- */
 
-function refreshPreview() {
-  const markdown = dom.body.value;
-  // Trusted input: renderMarkdown escapes everything before building HTML.
-  dom.preview.innerHTML = renderMarkdown(markdown);
+function createEditor() {
+  mde = new EasyMDE({
+    element: dom.body,
+    autofocus: false,
+    spellChecker: false,
+    nativeSpellcheck: true,
+    status: false,
+    autosave: { enabled: false },
+    tabSize: 2,
+    indentWithTabs: false,
+    placeholder: 'Write in Markdown…',
+    toolbar: [
+      'bold', 'italic', 'strikethrough', '|',
+      'heading-1', 'heading-2', 'heading-3', '|',
+      'quote', 'unordered-list', 'ordered-list', '|',
+      'link', 'table', 'horizontal-rule', '|',
+      'preview', 'side-by-side', 'fullscreen', '|',
+      'guide',
+    ],
+    previewRender(markdown, previewEl) {
+      previewEl.classList.add('prose');
+      return renderMarkdown(markdown);
+    },
+  });
 
+  mde.codemirror.on('change', () => {
+    refreshCounts();
+    markDirty();
+  });
+}
+
+function refreshCounts() {
+  const markdown = mde.value();
   const words = wordCount(markdown);
   clear(dom.counts).append(
     el('span', { text: `${words.toLocaleString()} word${words === 1 ? '' : 's'}` }),
@@ -145,98 +180,6 @@ function addTag(raw) {
   markDirty();
 }
 
-/* --- Toolbar -------------------------------------------------------------- */
-
-const ACTIONS = {
-  bold: { wrap: '**', label: 'Bold', key: 'b' },
-  italic: { wrap: '_', label: 'Italic', key: 'i' },
-  code: { wrap: '`', label: 'Inline code' },
-  link: { link: true, label: 'Link', key: 'k' },
-  h2: { prefix: '## ', label: 'Heading' },
-  quote: { prefix: '> ', label: 'Quote' },
-  list: { prefix: '- ', label: 'List' },
-};
-
-function applyAction(name) {
-  const action = ACTIONS[name];
-  if (!action) return;
-
-  const field = dom.body;
-  const { selectionStart: start, selectionEnd: end, value } = field;
-  const selected = value.slice(start, end);
-
-  let replacement;
-  let caret;
-
-  if (action.link) {
-    const label = selected || 'link text';
-    replacement = `[${label}](https://)`;
-    caret = start + replacement.length - 1;
-  } else if (action.wrap) {
-    const w = action.wrap;
-    const alreadyWrapped = value.slice(start - w.length, start) === w && value.slice(end, end + w.length) === w;
-    if (alreadyWrapped) {
-      // Toggle off rather than nesting markers.
-      field.value = value.slice(0, start - w.length) + selected + value.slice(end + w.length);
-      field.setSelectionRange(start - w.length, end - w.length);
-      field.dispatchEvent(new Event('input'));
-      return;
-    }
-    replacement = `${w}${selected || action.label.toLowerCase()}${w}`;
-    caret = start + w.length + (selected || action.label).length;
-  } else {
-    // Line prefix — apply to every line the selection touches.
-    const lineStart = value.lastIndexOf('\n', start - 1) + 1;
-    const block = value.slice(lineStart, end);
-    replacement = block.split('\n').map((line) => action.prefix + line).join('\n');
-    field.value = value.slice(0, lineStart) + replacement + value.slice(end);
-    field.setSelectionRange(lineStart, lineStart + replacement.length);
-    field.focus();
-    field.dispatchEvent(new Event('input'));
-    return;
-  }
-
-  field.value = value.slice(0, start) + replacement + value.slice(end);
-  field.setSelectionRange(caret, caret);
-  field.focus();
-  field.dispatchEvent(new Event('input'));
-}
-
-function initToolbar() {
-  for (const [name, action] of Object.entries(ACTIONS)) {
-    dom.toolbar.append(
-      el('button', {
-        class: 'btn btn--sm',
-        type: 'button',
-        text: action.label,
-        title: action.key ? `${action.label} (Ctrl/⌘+${action.key.toUpperCase()})` : action.label,
-        onClick: () => applyAction(name),
-      })
-    );
-  }
-
-  dom.toolbar.append(el('div', { class: 'spacer' }));
-
-  const views = [['write', 'Write'], ['split', 'Split'], ['preview', 'Preview']];
-  const group = el('div', { class: 'segmented', role: 'group', 'aria-label': 'Editor view' });
-  for (const [value, label] of views) {
-    group.append(
-      el('button', {
-        type: 'button',
-        text: label,
-        'aria-pressed': String(value === 'split'),
-        onClick: () => {
-          dom.panes.dataset.view = value;
-          for (const button of group.querySelectorAll('button')) {
-            button.setAttribute('aria-pressed', String(button.textContent === label));
-          }
-        },
-      })
-    );
-  }
-  dom.toolbar.append(group);
-}
-
 /* --- Load ----------------------------------------------------------------- */
 
 function fill(post) {
@@ -246,14 +189,14 @@ function fill(post) {
 
   dom.title.value = post.title || '';
   dom.subtitle.value = post.subtitle || '';
-  dom.body.value = post.body_md || '';
+  mde.value(post.body_md || '');
   dom.slug.value = post.slug || '';
   dom.excerpt.value = post.excerpt || '';
   if (post.scheduled_for) dom.schedule.value = post.scheduled_for.slice(0, 16);
 
   dom.heading.textContent = post.id ? 'Edit post' : 'New post';
   renderTags();
-  refreshPreview();
+  refreshCounts();
   paintStatus();
   setSaveState('idle');
   state.dirty = false;
@@ -334,7 +277,7 @@ function collect() {
     subtitle: dom.subtitle.value.trim(),
     slug: dom.slug.value.trim(),
     excerpt: dom.excerpt.value.trim(),
-    body_md: dom.body.value,
+    body_md: mde.value(),
     tags: state.tags.map((t) => t.name),
   };
 }
@@ -386,8 +329,6 @@ async function save({ notify = false } = {}) {
 /* --- Wiring --------------------------------------------------------------- */
 
 function wire() {
-  dom.body.addEventListener('input', () => { refreshPreview(); markDirty(); });
-
   dom.title.addEventListener('input', () => {
     if (!state.slugLocked) dom.slug.value = slugify(dom.title.value);
     markDirty();
@@ -419,30 +360,13 @@ function wire() {
     transition((id) => api.publishPost(id, new Date(when).toISOString()), 'Scheduled');
   });
 
+  // EasyMDE owns bold/italic/link/etc. shortcuts; Ctrl/Cmd+S is ours, and has
+  // to be document-level since focus usually lives inside CodeMirror.
   document.addEventListener('keydown', (event) => {
     if (!(event.metaKey || event.ctrlKey)) return;
-    const key = event.key.toLowerCase();
-    if (key === 's') {
-      event.preventDefault();
-      save({ notify: true });
-      return;
-    }
-    if (document.activeElement !== dom.body) return;
-    const match = Object.entries(ACTIONS).find(([, action]) => action.key === key);
-    if (match) {
-      event.preventDefault();
-      applyAction(match[0]);
-    }
-  });
-
-  // Tab inserts two spaces instead of leaving the textarea.
-  dom.body.addEventListener('keydown', (event) => {
-    if (event.key !== 'Tab' || event.shiftKey) return;
+    if (event.key.toLowerCase() !== 's') return;
     event.preventDefault();
-    const { selectionStart: start, selectionEnd: end, value } = dom.body;
-    dom.body.value = `${value.slice(0, start)}  ${value.slice(end)}`;
-    dom.body.setSelectionRange(start + 2, start + 2);
-    dom.body.dispatchEvent(new Event('input'));
+    save({ notify: true });
   });
 
   window.addEventListener('beforeunload', (event) => {
@@ -455,7 +379,7 @@ function wire() {
 /* --- Init ----------------------------------------------------------------- */
 
 async function init() {
-  initToolbar();
+  createEditor();
   wire();
 
   if (!postId) {

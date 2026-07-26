@@ -303,49 +303,74 @@ body.admin {
 }
 .editor-subtitle:focus { box-shadow: none; border-color: var(--border); }
 
+/*
+ * EasyMDE (CDN, see admin/editor/index.html) progressively enhances the
+ * #body textarea. The classes below — .editor-toolbar, .EasyMDEContainer,
+ * .CodeMirror, .editor-preview(-side) — are EasyMDE's own; restyled here to
+ * use the site's tokens instead of its bundled defaults. Layout mechanics
+ * (show/hide, width split on side-by-side, fullscreen) stay untouched —
+ * only colour, spacing and type.
+ */
+
 .editor-toolbar {
   display: flex;
   flex-wrap: wrap;
-  gap: var(--sp-1);
+  gap: 2px;
   align-items: center;
   padding: var(--sp-2) var(--sp-3);
+  border: 0;
   border-bottom: 1px solid var(--border);
   background: var(--bg-subtle);
 }
-.editor-toolbar .spacer { margin-left: auto; }
-.editor-toolbar .btn { border-color: transparent; background: transparent; }
-.editor-toolbar .btn:hover { background: var(--bg-inset); }
+.editor-toolbar button {
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
+}
+.editor-toolbar button:hover,
+.editor-toolbar button.active {
+  background: var(--bg-inset);
+  color: var(--text);
+}
+.editor-toolbar i.separator {
+  border-left: 1px solid var(--border);
+  margin: 0 var(--sp-1);
+}
+/* Fullscreen (F11) pins the toolbar with `.fullscreen` added — two classes,
+   so EasyMDE's own #fff background there outranks the single-class rule
+   above on specificity, not just source order. Match it explicitly. */
+.editor-toolbar.fullscreen { background: var(--bg-subtle); }
+.editor-toolbar.fullscreen::before { background: linear-gradient(to right, var(--bg-subtle), transparent); }
+.editor-toolbar.fullscreen::after { background: linear-gradient(to left, var(--bg-subtle), transparent); }
 
-.editor-panes { display: grid; grid-template-columns: 1fr 1fr; min-height: 28rem; }
-.editor-panes[data-view="write"] { grid-template-columns: 1fr; }
-.editor-panes[data-view="write"] .editor-preview { display: none; }
-.editor-panes[data-view="preview"] { grid-template-columns: 1fr; }
-.editor-panes[data-view="preview"] .editor-input { display: none; }
+.editor-input { display: none; } /* replaced by EasyMDE's own CodeMirror element */
 
-.editor-input {
-  width: 100%;
+.EasyMDEContainer .CodeMirror {
   border: 0;
   border-radius: 0;
-  resize: vertical;
-  min-height: 28rem;
-  padding: var(--sp-5);
+  /* Opaque, not transparent: fullscreen mode (F11) repositions this as a
+     fixed-position overlay with no correctly-coloured ancestor behind it. */
+  background: var(--surface);
+  color: var(--text);
   font-family: var(--font-mono);
   font-size: var(--text-sm);
   line-height: 1.7;
-  background: transparent;
-  tab-size: 2;
+  min-height: 28rem;
+  padding: var(--sp-4) var(--sp-5);
 }
-.editor-input:focus { box-shadow: none; }
+.EasyMDEContainer .CodeMirror-cursor { border-left-color: var(--text); }
+.EasyMDEContainer .CodeMirror-selected,
+.EasyMDEContainer .CodeMirror-focused .CodeMirror-selected { background: var(--accent-subtle); }
+.EasyMDEContainer .CodeMirror-placeholder { color: var(--text-faint) !important; }
 
-.editor-preview {
-  border-left: 1px solid var(--border);
+.editor-preview,
+.editor-preview-side {
+  background: var(--surface);
+  color: var(--text);
+  border-color: var(--border);
   padding: var(--sp-5);
-  overflow-y: auto;
-  max-height: 44rem;
-  background: var(--bg-subtle);
 }
-.editor-preview .prose { font-size: var(--text-base); }
-.editor-preview .prose > :first-child { margin-top: 0; }
+.editor-preview.prose > :first-child,
+.editor-preview-side.prose > :first-child { margin-top: 0; }
 
 .editor-status {
   display: flex;
@@ -562,8 +587,6 @@ body.admin {
 
 @media (max-width: 62rem) {
   .editor-shell { grid-template-columns: 1fr; }
-  .editor-panes { grid-template-columns: 1fr; }
-  .editor-preview { border-left: 0; border-top: 1px solid var(--border); }
 }
 
 @media (max-width: 48rem) {

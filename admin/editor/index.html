@@ -8,7 +8,16 @@
     <title>Editor — add-blog admin</title>
     <link rel="icon" href="/assets/favicon.svg" type="image/svg+xml" />
     <link rel="stylesheet" href="/assets/css/styles.css" />
+    <!--
+      Drop-in Markdown editor: progressively enhances the #body textarea below.
+      CDN, no build step — same pattern as the sibling Vibecode blog. It still
+      edits and returns plain Markdown text; body_md stays the source of truth.
+      Loaded before admin.css so our token overrides win the cascade — EasyMDE's
+      own CSS otherwise beats equal-specificity rules on fullscreen/side-by-side.
+    -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/easymde@2.21.0/dist/easymde.min.css" />
     <link rel="stylesheet" href="/assets/css/admin.css" />
+    <script src="https://cdn.jsdelivr.net/npm/easymde@2.21.0/dist/easymde.min.js"></script>
     <script type="module" src="/assets/js/admin.js"></script>
     <script type="module" src="/assets/js/editor.js"></script>
   </head>
@@ -37,16 +46,9 @@
             <input class="editor-subtitle" id="subtitle" data-field="subtitle" type="text"
                    placeholder="Subtitle (optional)" autocomplete="off" />
 
-            <div class="editor-toolbar" data-toolbar role="toolbar" aria-label="Formatting"></div>
-
-            <div class="editor-panes" data-panes data-view="split">
-              <label class="visually-hidden" for="body">Post body, in Markdown</label>
-              <textarea class="editor-input" id="body" data-field="body" spellcheck="true"
-                        placeholder="Write in Markdown…"></textarea>
-              <div class="editor-preview">
-                <div class="prose" data-preview aria-live="off"></div>
-              </div>
-            </div>
+            <label class="visually-hidden" for="body">Post body, in Markdown</label>
+            <textarea class="editor-input" id="body" data-field="body"
+                      placeholder="Write in Markdown…"></textarea>
 
             <div class="editor-status">
               <span class="save-state" data-save-state data-state="idle">All changes saved</span>

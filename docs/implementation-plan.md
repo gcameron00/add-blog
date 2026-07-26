@@ -32,18 +32,20 @@ Worker that cannot be wired up would be dead code in the asset bundle.
 the data model is agreed. Changing the contract is cheap now and expensive after
 Phase 3.
 
-**Amendment — editor (owner review, 2026-07-26).** The hand-rolled toolbar and
-textarea in `admin/editor/index.html` / `assets/js/editor.js` is friendlier than raw
-Markdown but still asks more of a non-technical author than it should. Decision: swap
+**Amendment — editor (owner review, 2026-07-26) ✅.** The hand-rolled toolbar and
+textarea in `admin/editor/index.html` / `assets/js/editor.js` was friendlier than raw
+Markdown but still asked more of a non-technical author than it should. Decision: swap
 it for a drop-in Markdown editor — a library that progressively enhances the existing
-`<textarea id="body">` (toolbar buttons, live/side-by-side preview, image
-drag-and-drop) rather than a hand-rolled one, loaded from a CDN with no build step, the
-same pattern already proven in the sibling `Vibecode` project (EasyMDE, loaded via
-`<script>`/`<link>` tags, `easyMDE.value()` read back on save). This does **not**
-change the editor format decision below — the library still edits and returns plain
-Markdown text (`body_md`), it just gets a nicer toolbar than
-`assets/js/editor.js`'s current hand-rolled `ACTIONS` map. No API, schema or MCP
-surface changes required. Tracked as outstanding front-end work, not yet implemented.
+`<textarea id="body">` (toolbar buttons, live/side-by-side preview) rather than a
+hand-rolled one, loaded from a CDN with no build step, the same pattern already proven
+in the sibling `Vibecode` project. Implemented with **EasyMDE** (`admin/editor/index.html`
+loads it via `<link>`/`<script>` tags pinned to a version, `easyMDE.value()` read back
+on save/autosave). This did **not** change the editor format decision below — the
+library still edits and returns plain Markdown text (`body_md`); the previewRender hook
+is wired to the site's own `renderMarkdown` so the editor preview and the published post
+still come from identical rendering code. No API, schema or MCP surface changes were
+required. Image upload is intentionally not wired into the toolbar yet — there is no
+media API until Phase 5.
 
 ---
 

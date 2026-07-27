@@ -22,12 +22,22 @@
  * it's missing, so this file is safe to deploy before wrangler.toml has the
  * real [[d1_databases]]/[[r2_buckets]] entries — same graceful "not live
  * yet" behaviour as today, not a 500.
+ *
+ * Phase 4 adds identity: on the admin host, the admin-only paths guarded
+ * below also require a verified Cloudflare Access JWT (src/access.js) and a
+ * matching `authors` row (src/auth.js) — but only once a site has set
+ * ACCESS_TEAM_DOMAIN/ACCESS_AUD. A site that hasn't done that setup yet
+ * keeps today's un-gated behaviour, same "not live yet" philosophy as the
+ * Phase 3 handlers.
  */
 
 import { handlePublicApi } from './public-api.js';
 import { handlePostPage, handleLegacyPostRedirect } from './pages.js';
 import { handleMedia } from './media.js';
 import { handleFeeds } from './feeds.js';
+import { verifyAccessIdentity } from './access.js';
+import { resolveAuthor } from './auth.js';
+import { handleAdminApi } from './admin-api.js';
 
 const DEFAULT_ADMIN_HOST = 'blog-admin.mysite.com';
 
@@ -93,6 +103,20 @@ function notFound(requestId, admin) {
   return response;
 }
 
+// Shape from docs/api.md's error envelope. Used for the Phase 4 auth guard's
+// 401/403s — same no-store belt-and-suspenders as notFound() above, for the
+// same reason: an auth failure cached as if it were the real response is
+// worse than the guard never having run.
+function jsonError(status, code, message, { requestId, admin }) {
+  const body = JSON.stringify({ error: { code, message } });
+  const response = withSharedHeaders(
+    new Response(body, { status, headers: { 'Content-Type': 'application/json' } }),
+    { requestId, admin }
+  );
+  response.headers.set('Cache-Control', 'no-store');
+  return response;
+}
+
 function health(requestId, admin) {
   const body = JSON.stringify({ ok: true, service: 'add-blog', now: new Date().toISOString() });
   const response = new Response(body, { headers: { 'Content-Type': 'application/json' } });
@@ -108,22 +132,49 @@ export default {
     const admin = url.hostname === adminHost;
 
     let response;
+    let identity = null;
+
     if (!admin && isAdminOnlyPath(url.pathname)) {
       // The public host (or any hostname that isn't the recognised admin
       // host) never reaches anything else below for these paths — checked
       // before anything else, full stop, no exceptions carved out.
       response = notFound(requestId, admin);
-    } else if (url.pathname === '/health') {
-      response = health(requestId, admin);
-    } else {
-      response =
-        handleLegacyPostRedirect(url) ||
-        (await handlePostPage(request, url, env)) ||
-        (await handlePublicApi(request, url, env)) ||
-        (await handleMedia(request, url, env)) ||
-        (await handleFeeds(request, url, env)) ||
-        (await env.ASSETS.fetch(request));
-      response = withSharedHeaders(response, { requestId, admin });
+    } else if (admin && isAdminOnlyPath(url.pathname) && env.ACCESS_TEAM_DOMAIN && env.ACCESS_AUD) {
+      // Cloudflare Access already terminates an unauthenticated request at
+      // the edge — this is the Worker's own check on top of that, per
+      // docs/architecture.md §6 ("Access is the front door, not the only
+      // lock"). Gated on both vars being set so a site that hasn't done its
+      // Phase 4 setup yet keeps today's behaviour rather than 401ing on
+      // every admin request.
+      try {
+        const claims = await verifyAccessIdentity(request, env);
+        const author = env.DB ? await resolveAuthor(env.DB, claims.email) : null;
+        if (!author) {
+          // A verified identity with no `authors` row is not an implicit
+          // account — provisioning is explicit, per docs/architecture.md §6.
+          response = jsonError(403, 'forbidden', 'No author record for this identity.', { requestId, admin });
+        } else {
+          identity = { email: claims.email, author };
+        }
+      } catch (err) {
+        response = jsonError(err.status || 401, err.code || 'unauthenticated', err.message, { requestId, admin });
+      }
+    }
+
+    if (!response) {
+      if (url.pathname === '/health') {
+        response = health(requestId, admin);
+      } else {
+        response =
+          handleLegacyPostRedirect(url) ||
+          (await handlePostPage(request, url, env)) ||
+          (await handleAdminApi(request, url, identity)) ||
+          (await handlePublicApi(request, url, env)) ||
+          (await handleMedia(request, url, env)) ||
+          (await handleFeeds(request, url, env)) ||
+          (await env.ASSETS.fetch(request));
+        response = withSharedHeaders(response, { requestId, admin });
+      }
     }
 
     console.log(JSON.stringify({

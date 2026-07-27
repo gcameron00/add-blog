@@ -11,24 +11,28 @@ bundler. The whole front end ships as Cloudflare Workers static assets.
 
 ## Status
 
-**Phases 1–3 are built and live.** The Worker router (`src/index.js`) enforces the
-hostname split and sends security headers; the public read path (JSON API,
-server-rendered permalinks, R2 media, feeds) is live for `gcameron`, backed by real
-D1/R2, passing 49 tests. A *new* site still needs its own D1 database and R2 bucket
-created and bound before it shows real content instead of demo data — see
-[`docs/deployment.md`](docs/deployment.md) and the "Future considerations" section of
-the [implementation plan](docs/implementation-plan.md) on why that's a one-time manual
-step per site. There is still no write path and no authentication.
+**Phases 1–3 are built and live; Phase 4 is built and tested, pending deployment.** The
+Worker router (`src/index.js`) enforces the hostname split and sends security headers;
+the public read path (JSON API, server-rendered permalinks, R2 media, feeds) is live
+for `gcameron`, backed by real D1/R2. Access JWT verification and identity resolution
+(`src/access.js`, `src/auth.js`) are written and tested against real signed tokens, but
+not yet deployed against the live Access application — see the Phase 4 exit criteria in
+[implementation-plan.md](docs/implementation-plan.md). 77 tests passing. A *new* site
+still needs its own D1 database and R2 bucket created and bound before it shows real
+content instead of demo data — see [`docs/deployment.md`](docs/deployment.md) and the
+"Future considerations" section of the [implementation plan](docs/implementation-plan.md)
+on why that's a one-time manual step per site. There is still no write path.
 
 | Layer | State |
 | --- | --- |
 | Public blog UI | Live for `gcameron`; demo data for any site not yet bound |
-| Admin UI | Built (demo data — no admin API until Phases 4-5) |
+| Admin UI | Built; still shows demo identity/data until Phase 4 deploys and Phase 5 ships |
 | Documentation | Built |
 | Worker request router | Built and live |
 | D1 schema + public read API | Built, tested, live for `gcameron` |
 | R2 media pipeline (read) | Built, tested, live for `gcameron`; upload is Phase 5 |
-| Cloudflare Access / Managed OAuth | Specified, not built |
+| Cloudflare Access / identity (`GET /me`) | Built, tested; not yet deployed live |
+| Managed OAuth (for `/mcp`) | Enabled on the Access app; unused until Phase 6 |
 | MCP server | Specified, not built |
 
 See [`docs/implementation-plan.md`](docs/implementation-plan.md) for the phased build-out.
@@ -118,8 +122,13 @@ with D1 keeping the metadata row that points at each R2 object.
 │   ├── pages.js               Server-rendered /posts/:slug + the legacy redirect
 │   ├── media.js               GET /media/:key — R2 streaming
 │   ├── feeds.js               feed.xml, atom.xml, sitemap.xml, robots.txt
+│   ├── access.js              Cloudflare Access JWT verification (Phase 4)
+│   ├── auth.js                 Role table + authors-row resolution (Phase 4)
+│   ├── audit.js                 audit_log writer, ready for Phase 5's mutations
+│   ├── admin-api.js           GET /api/admin/me (Phase 4) — rest is Phase 5
+│   ├── test-jwt.js             Test-only helper: signs fake Access JWTs
 │   ├── test-setup.js          Applies migrations + seeds a local D1 before tests run
-│   └── *.test.js              49 tests (`npm test`) — real local D1/R2, not mocks
+│   └── *.test.js              77 tests (`npm test`) — real local D1/R2, not mocks
 ├── migrations/
 │   ├── 0001_init.sql          Schema — see docs/architecture.md §3
 │   └── seed.sql               Generated — see scripts/generate-seed.mjs

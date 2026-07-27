@@ -293,6 +293,13 @@ minutes, never permanent staleness.
 
 ## 6. Security model
 
+> **Built vs. as-specified (Phase 4):** the JWT verification, `authors` resolution and
+> role table below are implemented (`src/access.js`, `src/auth.js`) and tested against
+> real signed tokens, but not yet deployed against the live Access application — see
+> [implementation-plan.md](implementation-plan.md)'s Phase 4 exit criteria.
+> Role-gated *write* actions don't exist yet regardless (Phase 5) — the table below is
+> reachable today only via `GET /api/admin/me`.
+
 **Cloudflare Access is the front door, not the only lock.** Access authenticates users
 at the edge and no unauthenticated request reaches the admin Worker. The Worker
 nonetheless verifies the `Cf-Access-Jwt-Assertion` header on every admin request:

@@ -1,7 +1,8 @@
 # Implementation plan
 
 Phases 1–3 are complete, in this repository, and live in production for the
-`gcameron` site. Phases 4 onward are the proposed build-out.
+`gcameron` site. Phase 4 is code-complete and tested but not yet deployed/verified
+live — see its exit criteria below. Phases 5 onward are the proposed build-out.
 
 Each phase is independently deployable and leaves the site working. Phases 2–5 are
 sequential — routing before storage, storage before auth, auth before the write path.
@@ -152,25 +153,46 @@ been exercised by real rendering code before the tables exist.
 
 ---
 
-## Phase 4 — Cloudflare Access and identity
+## Phase 4 — Cloudflare Access and identity ✅ (code), pending live verification
 
 **Goal.** A verified identity on every admin request.
 
-- Access application over `blog-admin.mysite.com`, Managed OAuth enabled.
-- JWT verification in the Worker: JWKS fetch and cache, signature, `aud`, `exp`/`iat`.
-- Identity → `authors` row resolution; `403` when no row exists.
-- Role checks (`owner`/`editor`/`author`) as reusable middleware rather than per-route
-  conditionals.
-- `GET /api/admin/me`; the admin UI renders controls from the real role and drops its
-  demo identity.
-- `audit_log` writes wired up.
+- JWT verification in the Worker (`src/access.js`): JWKS fetch and cache (keyed per
+  team domain, one-hour TTL), signature, `aud`, `exp`/`iat`. Cache is exercised by test
+  — a second verification within the TTL does not refetch the JWKS.
+- Identity → `authors` row resolution (`src/auth.js`); `403` when no row exists — a
+  verified Access identity is not an implicit account.
+- Role table (`owner`/`editor`/`author`) as reusable middleware (`src/auth.js`'s `can`/
+  `permissionsFor`) rather than per-route conditionals — built now so Phase 5's write
+  routes call into it rather than re-deriving it.
+- `audit_log` writer (`src/audit.js`) — built and tested, not yet called anywhere:
+  Phase 4 has no mutations to audit. Phase 5's write routes call it at each mutation
+  point.
+- The guard itself lives in `src/index.js`: on the admin host, every admin-only path
+  (`/admin`, `/api/admin`, `/mcp`) now requires a verified identity *and* a matching
+  `authors` row, but only once a site sets `ACCESS_TEAM_DOMAIN`/`ACCESS_AUD` — a site
+  that hasn't done its Phase 4 setup yet keeps today's un-gated behaviour, same
+  graceful "not live yet" pattern as every Phase 3 handler.
+- `GET /api/admin/me` (`src/admin-api.js`) — `assets/js/api.js` already called this
+  route since Phase 1 with a demo-data fallback; no front-end changes were needed for
+  the admin UI to start rendering the real role once this went live.
 
-**Owner action required.** Access application, `ACCESS_TEAM_DOMAIN` and `ACCESS_AUD`
-vars.
+**Owner action, done for `gcameron`.** Access application created over
+`blog-admin.gcameron.com` (self-hosted, Managed OAuth on, policy scoped to explicit
+emails) — see [deployment.md](deployment.md) §4. `ACCESS_TEAM_DOMAIN` and `ACCESS_AUD`
+are in `wrangler.toml`.
 
-**Exit criteria.** Logged out → Access login. Logged in as an unprovisioned email →
-403. A JWT for another application in the same team → rejected. Role table enforced
-server-side, verified by test.
+**Owner action still needed.** Seed a real `authors` row for the owner's actual Access
+email — the seeded demo authors (`grant@mysite.com`, `ada@mysite.com`) are placeholders,
+not real addresses; see the `INSERT INTO authors` command in
+[deployment.md](deployment.md) §1. Then deploy and verify against the checklist in
+[deployment.md](deployment.md) §6.
+
+**Exit criteria — code-complete, not yet confirmed live.** Logged out → Access login.
+Logged in as an unprovisioned email → 403. A JWT for another application in the same
+team → rejected. Role table enforced server-side. All four verified by test against a
+real signed JWT and the real JWKS-verification code path (`src/access.test.js`,
+`src/admin-guard.test.js`) — not yet verified against the live Access application.
 
 ---
 

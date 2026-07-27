@@ -3,10 +3,13 @@
 Everything needed to run add-blog as a fleet of blogs — one shared Worker script, one
 `[env.NAME]` block per site. First (and so far only) site: `blog.gcameron.com` /
 `blog-admin.gcameron.com`, live since Phase 3 (2026-07-27) — hostname routing, public
-read API, R2 media and feeds all real. Still no admin API and no login (Phases 4-5) —
-treat the admin host as public until then. Sections below double as the runbook for
-the *next* site: everything in §1-3 is real, owner-run work for `gcameron` already
-done; repeat it for each new one.
+read API, R2 media and feeds all real. Phase 4 (Access JWT verification, `GET
+/api/admin/me`) is code-complete and tested but **not yet deployed** — the Access
+application itself is created (§4) and its `ACCESS_TEAM_DOMAIN`/`ACCESS_AUD` are in
+`wrangler.toml`, but until the next deploy ships and the checks in §6 are run, still
+treat the admin host as public, same as before Phase 4. No write path yet (Phase 5).
+Sections below double as the runbook for the *next* site: everything in §1-3 is real,
+owner-run work for `gcameron` already done; repeat it for each new one.
 
 ---
 
@@ -147,6 +150,10 @@ Two smaller items that also live in `wrangler.toml`, shared across all sites:
 and SQL files are never uploaded into the public asset bundle.
 
 ## 4. Cloudflare Zero Trust Access
+
+**Done for `gcameron`** (2026-07-27) — Access application created, `ACCESS_TEAM_DOMAIN`
+and `ACCESS_AUD` are in `wrangler.toml`. Repeat this per new site; steps below are the
+reference either way.
 
 Protect the admin hostname:
 

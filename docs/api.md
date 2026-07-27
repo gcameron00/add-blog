@@ -13,10 +13,9 @@ The public hostname does not acknowledge that an admin surface exists.
 > Status: **Public API built and live** (Phase 3) — `GET /api/posts`, `/api/posts/:slug`,
 > `/api/tags`, `/api/archive`, plus `feed.xml`/`atom.xml`/`sitemap.xml`/`robots.txt` and
 > `/media/:key`. Source: `src/db.js`, `src/public-api.js`, `src/feeds.js`, `src/media.js`.
-> **Admin API: identity built, not yet live** (Phase 4) — `GET /me` (`src/admin-api.js`),
+> **Admin API: identity built and live** (Phase 4) — `GET /me` (`src/admin-api.js`),
 > gated by Access JWT verification (`src/access.js`) and role resolution (`src/auth.js`).
-> Code-complete and tested; not yet deployed against the real Access application — see
-> [implementation-plan.md](implementation-plan.md)'s Phase 4 exit criteria.
+> Verified against the live Access application on `blog-admin.gcameron.com`.
 > **Everything else below is still specified, not implemented** (Phase 5).
 > `assets/js/api.js` already calls every route in this document; it falls back to demo
 > data per-endpoint until each one is live.

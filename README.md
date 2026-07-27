@@ -11,38 +11,38 @@ bundler. The whole front end ships as Cloudflare Workers static assets.
 
 ## Status
 
-**Phases 1–3 are built and live; Phase 4 is built and tested, pending deployment.** The
-Worker router (`src/index.js`) enforces the hostname split and sends security headers;
-the public read path (JSON API, server-rendered permalinks, R2 media, feeds) is live
-for `gcameron`, backed by real D1/R2. Access JWT verification and identity resolution
-(`src/access.js`, `src/auth.js`) are written and tested against real signed tokens, but
-not yet deployed against the live Access application — see the Phase 4 exit criteria in
-[implementation-plan.md](docs/implementation-plan.md). 77 tests passing. A *new* site
-still needs its own D1 database and R2 bucket created and bound before it shows real
-content instead of demo data — see [`docs/deployment.md`](docs/deployment.md) and the
-"Future considerations" section of the [implementation plan](docs/implementation-plan.md)
-on why that's a one-time manual step per site. There is still no write path.
+**Phases 1–4 are built and live.** The Worker router (`src/index.js`) enforces the
+hostname split and sends security headers; the public read path (JSON API,
+server-rendered permalinks, R2 media, feeds) is live for `gcameron`, backed by real
+D1/R2. Access JWT verification and identity resolution (`src/access.js`, `src/auth.js`)
+are live too — the admin hostname is genuinely access-controlled now, not a public
+prototype. 77 tests passing. A *new* site still needs its own D1 database, R2 bucket
+and Access application created before it shows real content and requires login instead
+of demo data — see [`docs/deployment.md`](docs/deployment.md) and the "Future
+considerations" section of the [implementation plan](docs/implementation-plan.md) on
+why that's a one-time manual step per site. There is still no write path (Phase 5).
 
 | Layer | State |
 | --- | --- |
 | Public blog UI | Live for `gcameron`; demo data for any site not yet bound |
-| Admin UI | Built; still shows demo identity/data until Phase 4 deploys and Phase 5 ships |
+| Admin UI | Access-controlled for `gcameron`; still demo data until Phase 5 ships |
 | Documentation | Built |
 | Worker request router | Built and live |
 | D1 schema + public read API | Built, tested, live for `gcameron` |
 | R2 media pipeline (read) | Built, tested, live for `gcameron`; upload is Phase 5 |
-| Cloudflare Access / identity (`GET /me`) | Built, tested; not yet deployed live |
+| Cloudflare Access / identity (`GET /me`) | Built, tested, live for `gcameron` |
 | Managed OAuth (for `/mcp`) | Enabled on the Access app; unused until Phase 6 |
 | MCP server | Specified, not built |
 
 See [`docs/implementation-plan.md`](docs/implementation-plan.md) for the phased build-out.
 
 > [!WARNING]
-> **The admin UI is still not access-controlled.** Phase 2's router keeps `/admin/*`
-> off the public hostname, but the admin hostname itself has no login yet — anyone who
-> requests `blog-admin.<site>` directly gets the real admin UI. It is a prototype shell
-> wired to demo data with no secrets in it, but treat it as public until Cloudflare
-> Access lands in Phase 4.
+> **Access-control is per site, not automatic.** Phase 2's router keeps `/admin/*` off
+> the public hostname on every site, but the admin hostname itself only requires login
+> once that site has its own Cloudflare Access application and `ACCESS_TEAM_DOMAIN`/
+> `ACCESS_AUD` set (Phase 4 — see [`docs/deployment.md`](docs/deployment.md) §4). `gcameron`
+> has this done and verified live. A *new* site is a public, unauthenticated admin
+> prototype until that setup is repeated for it.
 
 ---
 

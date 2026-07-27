@@ -294,21 +294,25 @@ minutes, never permanent staleness.
 ## 6. Security model
 
 > **Built vs. as-specified (Phase 4):** the JWT verification, `authors` resolution and
-> role table below are implemented (`src/access.js`, `src/auth.js`) and tested against
-> real signed tokens, but not yet deployed against the live Access application — see
-> [implementation-plan.md](implementation-plan.md)'s Phase 4 exit criteria.
-> Role-gated *write* actions don't exist yet regardless (Phase 5) — the table below is
-> reachable today only via `GET /api/admin/me`.
+> role table below are implemented (`src/access.js`, `src/auth.js`) and live for
+> `gcameron`, verified against the real Access application. Role-gated *write* actions
+> don't exist yet regardless (Phase 5) — the table below is reachable today only via
+> `GET /api/admin/me`.
 
 **Cloudflare Access is the front door, not the only lock.** Access authenticates users
 at the edge and no unauthenticated request reaches the admin Worker. The Worker
 nonetheless verifies the `Cf-Access-Jwt-Assertion` header on every admin request:
 signature against the team JWKS at
 `https://<team>.cloudflareaccess.com/cdn-cgi/access/certs`, `aud` equal to the Access
-application AUD tag, and `exp`/`iat` in range. Without the `aud` check, a JWT minted
-for any other application in the same Access team would be accepted — this is the
-single most commonly skipped step in an Access integration. JWKS responses are cached
-in memory with a short TTL.
+application AUD tag, and `exp`/`iat` in range. Without the `aud` check, a JWT captured
+from a *different* application in the same Access team — e.g. lifted from a request to
+some other, less sensitive tool — could be replayed straight at blog-admin and accepted
+as if it were real. This is not about the normal case of an already-authenticated user
+silently getting a fresh, correctly-scoped token when they visit a new application (that
+carry-over is Access working as intended); it's about a token minted for one application
+never being valid proof of authorization for another one, however it was obtained. `aud`
+is the single most commonly skipped step in an Access integration. JWKS responses are
+cached in memory with a short TTL.
 
 **Authorization is role-based**, resolved from the `authors` row matching the verified
 email:

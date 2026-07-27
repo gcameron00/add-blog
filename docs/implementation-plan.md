@@ -1,8 +1,7 @@
 # Implementation plan
 
-Phases 1–3 are complete, in this repository, and live in production for the
-`gcameron` site. Phase 4 is code-complete and tested but not yet deployed/verified
-live — see its exit criteria below. Phases 5 onward are the proposed build-out.
+Phases 1–4 are complete, in this repository, and live in production for the
+`gcameron` site. Phases 5 onward are the proposed build-out.
 
 Each phase is independently deployable and leaves the site working. Phases 2–5 are
 sequential — routing before storage, storage before auth, auth before the write path.
@@ -153,7 +152,7 @@ been exercised by real rendering code before the tables exist.
 
 ---
 
-## Phase 4 — Cloudflare Access and identity ✅ (code), pending live verification
+## Phase 4 — Cloudflare Access and identity ✅
 
 **Goal.** A verified identity on every admin request.
 
@@ -180,19 +179,18 @@ been exercised by real rendering code before the tables exist.
 **Owner action, done for `gcameron`.** Access application created over
 `blog-admin.gcameron.com` (self-hosted, Managed OAuth on, policy scoped to explicit
 emails) — see [deployment.md](deployment.md) §4. `ACCESS_TEAM_DOMAIN` and `ACCESS_AUD`
-are in `wrangler.toml`.
+are in `wrangler.toml`. Real `authors` row seeded for the owner's actual Access email
+(2026-07-27) — the seeded demo authors (`grant@mysite.com`, `ada@mysite.com`) stay as
+placeholder content, not real accounts.
 
-**Owner action still needed.** Seed a real `authors` row for the owner's actual Access
-email — the seeded demo authors (`grant@mysite.com`, `ada@mysite.com`) are placeholders,
-not real addresses; see the `INSERT INTO authors` command in
-[deployment.md](deployment.md) §1. Then deploy and verify against the checklist in
-[deployment.md](deployment.md) §6.
-
-**Exit criteria — code-complete, not yet confirmed live.** Logged out → Access login.
-Logged in as an unprovisioned email → 403. A JWT for another application in the same
-team → rejected. Role table enforced server-side. All four verified by test against a
-real signed JWT and the real JWKS-verification code path (`src/access.test.js`,
-`src/admin-guard.test.js`) — not yet verified against the live Access application.
+**Exit criteria — met, in production.** Logged out → Access login. Logged in as an
+unprovisioned email → 403. A JWT for another application in the same team → rejected
+(confirmed both by test and by the owner's own cross-app session carrying over
+correctly *without* bypassing this — see the note in [architecture.md](architecture.md)
+§6 on the difference between Access silently re-authorizing an existing identity, which
+is expected, and a token being replayed across applications, which `aud` blocks). Role
+table enforced server-side. `GET /api/admin/me` verified against the live Access
+application, returning the real identity and role.
 
 ---
 

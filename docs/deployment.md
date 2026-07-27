@@ -4,12 +4,10 @@ Everything needed to run add-blog as a fleet of blogs — one shared Worker scri
 `[env.NAME]` block per site. First (and so far only) site: `blog.gcameron.com` /
 `blog-admin.gcameron.com`, live since Phase 3 (2026-07-27) — hostname routing, public
 read API, R2 media and feeds all real. Phase 4 (Access JWT verification, `GET
-/api/admin/me`) is code-complete and tested but **not yet deployed** — the Access
-application itself is created (§4) and its `ACCESS_TEAM_DOMAIN`/`ACCESS_AUD` are in
-`wrangler.toml`, but until the next deploy ships and the checks in §6 are run, still
-treat the admin host as public, same as before Phase 4. No write path yet (Phase 5).
-Sections below double as the runbook for the *next* site: everything in §1-3 is real,
-owner-run work for `gcameron` already done; repeat it for each new one.
+/api/admin/me`) is live too (verified 2026-07-27) — the admin host genuinely requires a
+verified, provisioned identity now. No write path yet (Phase 5). Sections below double
+as the runbook for the *next* site: everything in §1-4 is real, owner-run work for
+`gcameron` already done; repeat it for each new one.
 
 ---
 
@@ -208,7 +206,7 @@ that doesn't happen.
 | `GET https://blog.<site>/admin/mcp` | 404 |
 | `GET https://blog.<site>/api/admin/posts` | 404 |
 | `GET https://blog.<site>/mcp` | 404 |
-| `GET https://blog-admin.<site>/admin/` | 200 (no login yet — Phase 4; see the README warning) |
+| `GET https://blog-admin.<site>/admin/` | 200 with no login *only* on a site that hasn't set up Phase 4 yet (see the README warning) — for `gcameron`, see the Phase 4 table below instead |
 | `GET https://blog.<site>/health` | 200 JSON |
 | Any response on either host | `Strict-Transport-Security`, `Content-Security-Policy`, `X-Content-Type-Options`, `X-Request-Id` present |
 | Admin-host responses specifically | `Cache-Control: private, no-store`, `X-Frame-Options: DENY` |
@@ -222,15 +220,30 @@ turned out to be the CI deploy tool installing an unrelated wrangler version, no
 `wrangler.toml` itself. See the comment above the `Install dependencies` step in
 `deploy.yml`.
 
-**Later phases (not built yet — expect 404, not a login page or real content):**
+**Phase 3 (public read path — checkable once D1/R2 are bound):**
+
+| Check | Expected |
+| --- | --- |
+| `GET https://blog.<site>/feed.xml` | Valid RSS, published posts only |
+| A `draft`/`scheduled`/`archived` post | Absent from the public API, the feed, the sitemap and its own permalink — `404`, no signal it exists |
+| `GET https://blog.<site>/posts/<slug>` (published) | 200, real `<title>`/meta/OG tags, article body inlined |
+
+**Phase 4 (identity — checkable once a site has its Access application, e.g. `gcameron`):**
+
+| Check | Expected |
+| --- | --- |
+| `GET https://blog-admin.<site>/` (logged out, incognito) | Access login page, not the admin UI |
+| Log in as a provisioned email, then `GET /api/admin/me` | 200, real `name`/`role`/`permissions` for that identity |
+| Log in as an email with no `authors` row | 403 `forbidden` from the Worker (Access itself still let the login through — provisioning is a separate, explicit step; see docs/deployment.md §1) |
+| A request with no `Cf-Access-Jwt-Assertion` at all reaching the Worker | 401 `unauthenticated` (belt-and-suspenders — Access should already have blocked it at the edge) |
+| Visiting a *different* Access application in the same team, then blog-admin | Silent re-authorization with a freshly-minted, blog-admin-scoped token — not a bypass; see [architecture.md](architecture.md) §6 on why this is expected |
+
+**Not built yet (expect 404, not real behaviour):**
 
 | Check | Expected, once built |
 | --- | --- |
-| `GET https://blog-admin.<site>/` (logged out) | Access login (Phase 4) |
 | `POST https://blog-admin.<site>/mcp` (no token) | 401 with `WWW-Authenticate` (Phase 6) |
-| `GET https://blog.<site>/feed.xml` | Valid RSS (Phase 3) |
-| Draft post | Absent from public API and feed (Phase 3/5) |
-| Publish | Live within seconds; cache purged (Phase 5) |
+| Publish through the admin UI | Live within seconds; cache purged (Phase 5) |
 
 ## 7. Rollback
 

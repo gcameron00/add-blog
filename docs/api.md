@@ -10,8 +10,12 @@ Two surfaces sharing one Worker:
 Requesting an admin path on the public hostname returns `404` — not `401`, not `403`.
 The public hostname does not acknowledge that an admin surface exists.
 
-> Status: specified, not yet implemented. This is the contract Phase 3 builds against,
-> and the shape `assets/js/api.js` already calls.
+> Status: **Public API built and live** (Phase 3) — `GET /api/posts`, `/api/posts/:slug`,
+> `/api/tags`, `/api/archive`, plus `feed.xml`/`atom.xml`/`sitemap.xml`/`robots.txt` and
+> `/media/:key`. Source: `src/db.js`, `src/public-api.js`, `src/feeds.js`, `src/media.js`.
+> **Admin API still specified, not implemented** — Phases 4 (identity, `GET /me`) and 5
+> (everything else below). `assets/js/api.js` already calls every route in this
+> document; it falls back to demo data per-endpoint until each one is live.
 
 ---
 

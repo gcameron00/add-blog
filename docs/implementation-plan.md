@@ -1,8 +1,7 @@
 # Implementation plan
 
-Phases 1–3 are complete and in this repository. Phase 2 is live; Phase 3 is code-complete
-and tested locally, pending its per-site D1/R2 resources (owner-run — see below).
-Phases 4 onward are the proposed build-out.
+Phases 1–3 are complete, in this repository, and live in production for the
+`gcameron` site. Phases 4 onward are the proposed build-out.
 
 Each phase is independently deployable and leaves the site working. Phases 2–5 are
 sequential — routing before storage, storage before auth, auth before the write path.
@@ -100,7 +99,7 @@ the negative assertions are written before the positive ones.
 
 ---
 
-## Phase 3 — D1, R2 and the read path ✅ (code), pending resources
+## Phase 3 — D1, R2 and the read path ✅
 
 **Goal.** Real content, read-only, publicly served.
 
@@ -136,15 +135,16 @@ the negative assertions are written before the positive ones.
   status (draft/scheduled/archived) staying invisible everywhere — the API, the feed,
   the sitemap, the permalink.
 
-**Owner action required, per site.** This site's D1 database and R2 bucket have to
-exist before its `wrangler.toml` bindings are uncommented — see the commands and the
-exact sequence above the (deliberately commented-out) `[[env.gcameron.d1_databases]]`
-block in `wrangler.toml`, and [deployment.md](deployment.md) §1.
+**Owner action, done for `gcameron`.** D1 database and R2 bucket created, schema and
+seed applied, `wrangler.toml` bindings uncommented and deployed (2026-07-27) — see the
+commands in [deployment.md](deployment.md) §1. Each *new* site repeats this once; see
+the "Future considerations" section below on why that's still a manual step per site.
 
-**Exit criteria.** A post inserted directly into D1 appears on the home page, at its
-permalink, in the tag page, in the archive and in the feed, with correct caching.
-Met locally against seeded data; production verification is blocked on the D1/R2
-resources existing.
+**Exit criteria — met, in production.** A post inserted directly into D1 appears on
+the home page, at its permalink, in the tag page, in the archive and in the feed, with
+correct caching. Verified locally against seeded data before deploy, then confirmed
+against `blog.gcameron.com` after — real posts, `/health`, and the Phase 2 admin-path
+guard all checked post-deploy.
 
 **Risk.** The D1 schema is the most expensive thing to change later. Phase 1's demo
 data is deliberately shaped exactly like the API responses, so the contract has already
@@ -230,6 +230,42 @@ identity does not see `publish_post`. Every action appears in the audit log.
 - Dashboard stats from real data.
 - Lighthouse budget in CI; accessibility audit; RSS validation.
 - Import from Ghost, WordPress and Markdown archives.
+
+---
+
+## Future considerations
+
+Ideas deliberately not acted on now — parked here rather than lost, in case the owner
+comes back to one.
+
+**Auto-provision D1/R2 instead of a one-time manual create per site (2026-07-27).**
+Wrangler ≥4.45 can create a D1 database or R2 bucket itself at deploy time if
+`wrangler.toml` declares the binding with no `database_id`/`bucket_name` — no
+`wrangler d1 create`/`r2 bucket create` needed, and it runs non-interactively in CI
+(confirmation is skipped with no TTY). That would remove the one manual per-site step
+"adding a new blog" still has (see Phase 2's `wrangler.toml` comment).
+
+Two reasons it isn't used today:
+
+- **It doesn't work with named environments.** This repo's whole multi-site model is
+  one `[env.NAME]` block per site in a shared `wrangler.toml` (Phase 2's decision,
+  below). Someone hit exactly that combination and Cloudflare closed it
+  [*"not planned"*](https://github.com/cloudflare/workers-sdk/issues/11167) — an
+  acknowledged, deliberate limitation, not a bug pending a fix. Getting auto-provision
+  working would mean restructuring away from named environments to one small
+  `wrangler.toml` file per site (`wrangler deploy -c wrangler.<site>.toml`), which
+  auto-provisioning does support. Real change, not a toggle — `deploy.yml`'s matrix
+  would iterate config file paths instead of env names, and resources would get
+  Wrangler's auto-generated names instead of the ones chosen by hand today.
+- **Auto-provisioning creates an instance of a resource; it doesn't turn the
+  underlying Cloudflare product on for the account.** Found the hard way: an R2
+  binding in `wrangler.toml` warned before R2 itself had ever been enabled on the
+  account. That's a one-time, account-level, dashboard step — orthogonal to
+  per-site config, and something no amount of `wrangler.toml` restructuring removes.
+  Auto-provisioning would still need this done first, same as the manual path does.
+
+Net: revisit if a third or fourth site makes the one-time `d1 create`/`r2 bucket
+create` step per site annoying enough to be worth the restructure. Not before then.
 
 ---
 

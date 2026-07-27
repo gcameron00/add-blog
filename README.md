@@ -11,22 +11,23 @@ bundler. The whole front end ships as Cloudflare Workers static assets.
 
 ## Status
 
-**Phases 1–3 are built.** The Worker router (`src/index.js`) enforces the hostname
-split and sends security headers; the public read path (JSON API, server-rendered
-permalinks, R2 media, feeds) is code-complete and passing 49 tests against real local
-D1/R2, but each site's *own* D1 database and R2 bucket still have to be created and
-bound before that site sees real content instead of demo data — see
-[`docs/deployment.md`](docs/deployment.md). There is still no write path and no
-authentication.
+**Phases 1–3 are built and live.** The Worker router (`src/index.js`) enforces the
+hostname split and sends security headers; the public read path (JSON API,
+server-rendered permalinks, R2 media, feeds) is live for `gcameron`, backed by real
+D1/R2, passing 49 tests. A *new* site still needs its own D1 database and R2 bucket
+created and bound before it shows real content instead of demo data — see
+[`docs/deployment.md`](docs/deployment.md) and the "Future considerations" section of
+the [implementation plan](docs/implementation-plan.md) on why that's a one-time manual
+step per site. There is still no write path and no authentication.
 
 | Layer | State |
 | --- | --- |
-| Public blog UI | Built (demo data until a site's D1 is bound) |
-| Admin UI | Built (demo data) |
+| Public blog UI | Live for `gcameron`; demo data for any site not yet bound |
+| Admin UI | Built (demo data — no admin API until Phases 4-5) |
 | Documentation | Built |
 | Worker request router | Built and live |
-| D1 schema + public read API | Built, tested — per-site resources pending (see deployment.md) |
-| R2 media pipeline (read) | Built, tested — per-site bucket pending; upload is Phase 5 |
+| D1 schema + public read API | Built, tested, live for `gcameron` |
+| R2 media pipeline (read) | Built, tested, live for `gcameron`; upload is Phase 5 |
 | Cloudflare Access / Managed OAuth | Specified, not built |
 | MCP server | Specified, not built |
 
@@ -151,11 +152,13 @@ npx wrangler dev --env gcameron
 # (blog.mysite.com / blog-admin.mysite.com) rather than any real site
 ```
 
-With no API present, `assets/js/api.js` detects the missing backend on its first call
-and transparently falls back to `assets/js/demo-data.js`. Every page renders with
+Per endpoint, if the real one isn't live yet, `assets/js/api.js` detects that on first
+call and transparently falls back to `assets/js/demo-data.js`. Every page renders with
 realistic content, and a small "Demo data" badge appears so it is never ambiguous
-whether you are looking at real content. Once the Phase 3 API is live, the same
-client hits `/api/*` and the badge disappears — no page changes required.
+whether you are looking at real content. `gcameron`'s public read endpoints are live
+now, so `blog.gcameron.com` shows real content with no badge; the admin API isn't built
+yet (Phases 4-5), so the admin UI still shows the badge everywhere, on every site — no
+page changes needed either way, the client just starts succeeding as each route ships.
 
 The Worker itself (`src/index.js`) has its own test suite, separate from the front
 end's no-build-step approach — it's server-side code, not shipped to a browser:

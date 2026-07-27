@@ -1,8 +1,12 @@
 # Deployment runbook
 
-Everything needed to take add-blog from the current static prototype to a running
-fleet of blogs — one shared Worker script, one `[env.NAME]` block per site. First site:
-`blog.gcameron.com` / `blog-admin.gcameron.com`.
+Everything needed to run add-blog as a fleet of blogs — one shared Worker script, one
+`[env.NAME]` block per site. First (and so far only) site: `blog.gcameron.com` /
+`blog-admin.gcameron.com`, live since Phase 3 (2026-07-27) — hostname routing, public
+read API, R2 media and feeds all real. Still no admin API and no login (Phases 4-5) —
+treat the admin host as public until then. Sections below double as the runbook for
+the *next* site: everything in §1-3 is real, owner-run work for `gcameron` already
+done; repeat it for each new one.
 
 ---
 
@@ -12,11 +16,12 @@ fleet of blogs — one shared Worker script, one `[env.NAME]` block per site. Fi
 `site` matrix, and calls `wrangler deploy --env <site>`. It skips cleanly if
 `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` are not set as repository secrets.
 
-`main = "src/index.js"` is set as of Phase 2, so every push now deploys the hostname
+`main = "src/index.js"` is set as of Phase 2, so every push deploys the hostname
 router — see `wrangler.toml` for the current site list and
-[architecture.md](architecture.md) for what the router does. Every deploy still needs
-D1/R2 (§1, Phase 3) and Access (§4, Phase 4) before it's actually safe to point a
-production domain at; those remain owner-driven, per-site steps.
+[architecture.md](architecture.md) for what the router does. A *new* site's deploy
+still needs D1/R2 (§1) and, later, Access (§4, Phase 4 — not built yet, for any site)
+before it's safe to point a production domain at; those stay owner-driven, per-site
+steps, for the reasons in the note below.
 
 > [!NOTE]
 > Whoever is applying `wrangler.toml`/`.assetsignore`/`.github/workflows/` changes,
@@ -30,8 +35,8 @@ production domain at; those remain owner-driven, per-site steps.
 ## 1. Create the resources (per site)
 
 Each site gets its own database and bucket — never shared, per the single-tenant
-decision in [implementation-plan.md](implementation-plan.md). Example for the
-`gcameron` site:
+decision in [implementation-plan.md](implementation-plan.md). Already run for
+`gcameron`; repeat for a new site with its own names:
 
 ```bash
 # D1

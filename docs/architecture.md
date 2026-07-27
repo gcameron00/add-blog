@@ -41,7 +41,8 @@ request
   │     │   verifies the Access JWT itself — see §6)
   │     ├─ POST /mcp                 → MCP server (Streamable HTTP)
   │     ├─ /api/admin/*              → admin JSON API (read/write)
-  │     ├─ /api/*                    → public JSON API (reused, unfiltered by status)
+  │     ├─ /api/*                    → public JSON API, same handler as the public host
+  │     │                               (published-only either way — see the note below)
   │     └─ everything else           → static assets (admin UI)
   │
   └─ hostname == blog.*  (or anything else)
@@ -50,7 +51,8 @@ request
         ├─ /feed.xml, /rss.xml             → RSS
         ├─ /sitemap.xml                    → sitemap
         ├─ /media/<key>                    → R2 object, immutable cache
-        ├─ /posts/<slug>                   → static post shell + hydration
+        ├─ /posts/<slug>                   → server-rendered post: real title/meta/OG
+        │                                     tags and article body, hydrated on top
         └─ everything else                 → static assets (public UI)
 ```
 
@@ -58,19 +60,24 @@ The `404` branch for admin paths on the public hostname is deliberately the *fir
 check, not the last. It should be a literal prefix test at the top of the handler with
 no dependency on any other state.
 
-### Static assets and dynamic paths
+> **Built vs. as-specified (Phase 3):** the "unfiltered by status" admin-host behaviour
+> sketched above was never actually implemented — the same published-only handler
+> answers `/api/*` on both hostnames. Nothing needs the unfiltered form yet: the admin
+> UI calls `/api/admin/*`, not `/api/*`. Revisit if that changes.
 
-The static asset bundle cannot express `/posts/<slug>` as a real file. Two options,
-in order of preference:
+### Static assets and dynamic paths (Phase 3, built)
 
-1. **Worker-rendered shell (Phase 3).** The Worker matches `/posts/<slug>`, loads the
-   post from D1, and returns fully-rendered HTML. Best for SEO, fastest first paint,
-   and works with JavaScript disabled.
-2. **Query-parameter fallback (today).** `/post/?slug=my-post` is a real static file
-   that fetches and renders client-side. This is what the Phase 1 prototype uses,
-   because it works with an assets-only deployment.
+The static asset bundle cannot express `/posts/<slug>` as a real file, so the Worker
+matches it directly (`src/pages.js`): loads the post from D1 and returns real HTML —
+correct `<title>`, meta description and Open Graph tags, and the article body itself,
+not just a shell. Works with JavaScript disabled; `assets/js/post.js` still hydrates on
+top of it.
 
-Phase 3 keeps `/post/?slug=` working as a permanent redirect target so no links break.
+`/post/?slug=my-post` — the Phase 1 query-parameter form, which is what an assets-only
+deployment had to use — now 301s to the canonical `/posts/<slug>` permalink, so no
+existing link breaks. Every internal link generator (`blog.js`, `post.js`, `admin.js`,
+`editor.js`) points at the canonical form directly rather than round-tripping the
+redirect.
 
 ---
 
@@ -176,11 +183,26 @@ CREATE TABLE audit_log (
 );
 CREATE INDEX idx_audit_created ON audit_log(created_at DESC);
 
--- Full-text search over published content
+-- Full-text search over published content. External-content FTS5 indexes
+-- posts without duplicating body_md, but is then only ever as fresh as these
+-- triggers keep it — nothing populates it at query time.
 CREATE VIRTUAL TABLE posts_fts USING fts5(
   title, excerpt, body_md,
   content = 'posts', content_rowid = 'rowid'
 );
+
+CREATE TRIGGER posts_fts_ai AFTER INSERT ON posts BEGIN
+  INSERT INTO posts_fts(rowid, title, excerpt, body_md) VALUES (new.rowid, new.title, new.excerpt, new.body_md);
+END;
+
+CREATE TRIGGER posts_fts_ad AFTER DELETE ON posts BEGIN
+  INSERT INTO posts_fts(posts_fts, rowid, title, excerpt, body_md) VALUES ('delete', old.rowid, old.title, old.excerpt, old.body_md);
+END;
+
+CREATE TRIGGER posts_fts_au AFTER UPDATE ON posts BEGIN
+  INSERT INTO posts_fts(posts_fts, rowid, title, excerpt, body_md) VALUES ('delete', old.rowid, old.title, old.excerpt, old.body_md);
+  INSERT INTO posts_fts(rowid, title, excerpt, body_md) VALUES (new.rowid, new.title, new.excerpt, new.body_md);
+END;
 ```
 
 ### Design notes
@@ -212,14 +234,24 @@ scale a single site's blog operates at.
 ## 4. Object storage (R2)
 
 R2 holds everything that is not a row. Keys are content-addressed to make uploads
-idempotent and caching safe:
+idempotent and caching safe. The bucket is already scoped to one site's media (the
+bucket name itself carries that), so upload keys don't repeat a "media/" segment —
+that's the URL route prefix (`/media/<key>`, below), not part of the stored key;
+`avatars/` and `exports/` are the two sub-namespaces sharing the bucket with plain
+uploads:
 
 ```
-media/<yyyy>/<mm>/<sha256-first-16>-<sanitised-filename>     original upload
-media/<yyyy>/<mm>/<sha256-first-16>-<width>w.<ext>           derived variant
+<yyyy>/<mm>/<sha256-first-16>-<sanitised-filename>            original upload
+<yyyy>/<mm>/<sha256-first-16>-<width>w.<ext>                  derived variant
 avatars/<author-id>.<ext>                                    author avatars
 exports/<iso-date>-backup.json                               scheduled content exports
 ```
+
+So a cover image's `cover_key` column (§3) holds `2026/07/<hash>-cover.jpg`, and its
+public URL — `cover_key` with the route prefix applied — is
+`/media/2026/07/<hash>-cover.jpg` (matches the example in [api.md](api.md)). `src/db.js`
+already builds URLs this way for Phase 3's read path; Phase 5's upload code is what has
+to write keys matching it.
 
 Because the key contains a hash of the content, an object at a given key never changes.
 Public media is served through the Worker at `/media/<key>` with
@@ -310,7 +342,10 @@ Access cookie is the credential.
 No framework, no build step. That is a constraint worth keeping honest:
 
 - **Progressive rendering.** Every page is complete HTML with a semantic skeleton;
-  JavaScript fills in content. Pages that can be server-rendered in Phase 3 will be.
+  JavaScript fills in content. `/posts/<slug>` is server-rendered as of Phase 3; the
+  list/archive/tag pages stay shell-plus-hydration (JSON is cheaper to cache and
+  paginate than HTML, and these pages don't carry the same per-URL SEO/OG weight a
+  permalink does).
 - **One small module per page**, plus shared `api.js` / `markdown.js` / `main.js`.
   ES modules, loaded with `type="module"` — no globals, no load-order coupling.
 - **Design tokens in `:root`**, defined once in `styles.css`. `admin.css` extends the

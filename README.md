@@ -11,33 +11,33 @@ bundler. The whole front end ships as Cloudflare Workers static assets.
 
 ## Status
 
-**Phases 1–4 are built and live; Phase 5 (posts write path) is built and tested,
-pending deployment.** The Worker router (`src/index.js`) enforces the hostname split
-and sends security headers; the public read path (JSON API, server-rendered
-permalinks, R2 media, feeds) is live for `gcameron`, backed by real D1/R2. Access JWT
-verification and identity resolution (`src/access.js`, `src/auth.js`) are live too —
-the admin hostname is genuinely access-controlled, not a public prototype. The admin
-Posts API — create, edit, publish/unpublish/schedule, delete, duplicate, revisions —
-is written and tested (109 tests total) but not yet deployed; tags, media upload,
-settings/authors/export routes and scheduled-post auto-publishing are still queued —
-see the Phase 5 breakdown in
-[implementation-plan.md](docs/implementation-plan.md). A *new* site still needs its own
-D1 database, R2 bucket and Access application created before it shows real content and
-requires login instead of demo data — see [`docs/deployment.md`](docs/deployment.md)
-and the "Future considerations" section of the
-[implementation plan](docs/implementation-plan.md) on why that's a one-time manual step
-per site.
+**Phases 1–4 are built and live; Phase 5's posts write path is built, tested, and live
+too.** The Worker router (`src/index.js`) enforces the hostname split and sends
+security headers; the public read path (JSON API, server-rendered permalinks, R2
+media, feeds) is live for `gcameron`, backed by real D1/R2. Access JWT verification and
+identity resolution (`src/access.js`, `src/auth.js`) are live too — the admin hostname
+is genuinely access-controlled, not a public prototype. The admin Posts API — create,
+edit, publish/unpublish/schedule, delete, duplicate, revisions — is live and verified
+in production (109 tests total); tags, media upload, settings/authors/export routes and
+scheduled-post auto-publishing are still queued — see the Phase 5 breakdown in
+[implementation-plan.md](docs/implementation-plan.md), which also has a known UI issue
+found in production (editing a published post is labelled "Save draft" but goes live
+immediately). A *new* site still needs its own D1 database, R2 bucket and Access
+application created before it shows real content and requires login instead of demo
+data — see [`docs/deployment.md`](docs/deployment.md) and the "Future considerations"
+section of the [implementation plan](docs/implementation-plan.md) on why that's a
+one-time manual step per site.
 
 | Layer | State |
 | --- | --- |
 | Public blog UI | Live for `gcameron`; demo data for any site not yet bound |
-| Admin UI | Access-controlled for `gcameron`; posts write path built, not yet deployed |
+| Admin UI | Access-controlled and writable for `gcameron`; see known UI issue below |
 | Documentation | Built |
 | Worker request router | Built and live |
 | D1 schema + public read API | Built, tested, live for `gcameron` |
 | R2 media pipeline (read) | Built, tested, live for `gcameron`; upload still queued |
 | Cloudflare Access / identity (`GET /me`) | Built, tested, live for `gcameron` |
-| Admin Posts API (CRUD, publish, revisions) | Built, tested; not yet deployed |
+| Admin Posts API (CRUD, publish, revisions) | Built, tested, live for `gcameron` |
 | Tags/Settings/Authors/Export admin routes | Not built |
 | Scheduled-post auto-publish (cron) | Not built — needs an owner decision on `wrangler.toml` `[triggers]` |
 | Managed OAuth (for `/mcp`) | Enabled on the Access app; unused until Phase 6 |

@@ -321,8 +321,8 @@ minutes, never permanent staleness.
 > and role table below are implemented (`src/access.js`, `src/auth.js`) and live for
 > `gcameron`, verified against the real Access application. Role-gated *write* actions
 > are implemented too, for posts specifically (`src/admin-posts.js`) — tested against
-> every row of the table below, but not yet deployed. Tags/media/settings/authors
-> writes don't exist yet (still Phase 5, queued) — see
+> every row of the table below and verified live in production. Tags/media/settings/
+> authors writes don't exist yet (still Phase 5, queued) — see
 > [implementation-plan.md](implementation-plan.md).
 
 **Cloudflare Access is the front door, not the only lock.** Access authenticates users

@@ -6,9 +6,9 @@ Everything needed to run add-blog as a fleet of blogs — one shared Worker scri
 read API, R2 media and feeds all real. Phase 4 (Access JWT verification, `GET
 /api/admin/me`) is live too (verified 2026-07-27) — the admin host genuinely requires a
 verified, provisioned identity now. Phase 5's posts write path (create/edit/publish/
-delete/revisions) is code-complete and tested but **not yet deployed** — nothing here
-changes for `gcameron` until it ships; tags, media upload and scheduled-post
-auto-publish are still queued regardless. Sections below double as the runbook for the
+delete/revisions) is live too (verified 2026-07-28) — see the known UI issue in §6
+before assuming every rough edge is a bug. Tags, media upload and scheduled-post
+auto-publish are still queued. Sections below double as the runbook for the
 *next* site: everything in §1-4 is real, owner-run work for `gcameron` already done;
 repeat it for each new one.
 
@@ -241,15 +241,21 @@ turned out to be the CI deploy tool installing an unrelated wrangler version, no
 | A request with no `Cf-Access-Jwt-Assertion` at all reaching the Worker | 401 `unauthenticated` (belt-and-suspenders — Access should already have blocked it at the edge) |
 | Visiting a *different* Access application in the same team, then blog-admin | Silent re-authorization with a freshly-minted, blog-admin-scoped token — not a bypass; see [architecture.md](architecture.md) §6 on why this is expected |
 
-**Phase 5, posts slice (once deployed — code-complete and tested, not yet live for any site):**
+**Phase 5, posts slice (live for `gcameron`, verified 2026-07-28):**
 
-| Check | Expected |
-| --- | --- |
-| Create a post through the editor, save | Draft appears in `GET /api/admin/posts`, not on the public site |
-| Publish it | Live at `/posts/<slug>` and in `/api/posts` within the cache window; cache purge means usually immediately |
-| Edit the title/body of a published post | Public copy reflects the change within the cache window |
-| Unpublish, then delete | Gone from the public site at each step; a hard delete (owner only) removes the row entirely |
-| Two tabs editing the same post, second one saves | No conflict prompt yet — the second save silently wins; `ETag`/`If-Match` exist server-side (test-verified) but the editor doesn't send `If-Match` yet |
+| Check | Expected | Confirmed |
+| --- | --- | --- |
+| Create a post through the editor, save | Draft appears in `GET /api/admin/posts`, not on the public site | ✅ |
+| Publish it | Live at `/posts/<slug>` and in `/api/posts` within the cache window; cache purge means usually immediately | ✅ |
+| Edit the title/body of a published post | Public copy reflects the change within the cache window | ✅ — but see the known UI issue below |
+| Unpublish, then delete | Gone from the public site at each step; a hard delete (owner only) removes the row entirely | ✅ |
+| Two tabs editing the same post, second one saves | No conflict prompt yet — the second save silently wins; `ETag`/`If-Match` exist server-side (test-verified) but the editor doesn't send `If-Match` yet | not yet exercised in prod |
+
+> **Known UI issue, found in this pass:** editing an already-published post shows a
+> "Save draft" button, but saving edits the live post directly — the change goes out
+> immediately (correct per the API contract; the button's label is what's misleading).
+> See [implementation-plan.md](implementation-plan.md)'s Phase 5 section for the fix
+> options under consideration.
 
 **Not built yet (expect 404 or demo data, not real behaviour):**
 

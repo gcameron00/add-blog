@@ -1,9 +1,9 @@
 # Implementation plan
 
 Phases 1–4 are complete, in this repository, and live in production for the
-`gcameron` site. Phase 5's first slice (the posts write path) is code-complete and
-tested but not yet deployed; the rest of Phase 5, and Phase 6 onward, are the proposed
-build-out — see Phase 5 below for exactly which slice is which.
+`gcameron` site. Phase 5's first slice (the posts write path) is live too, verified in
+production 2026-07-28 — with one known UI issue open, see Phase 5 below. The rest of
+Phase 5, and Phase 6 onward, are the proposed build-out.
 
 Each phase is independently deployable and leaves the site working. Phases 2–5 are
 sequential — routing before storage, storage before auth, auth before the write path.
@@ -196,16 +196,17 @@ application, returning the real identity and role.
 
 ---
 
-## Phase 5 — Write path 🚧 (posts done, tested; rest queued)
+## Phase 5 — Write path 🚧 (posts live for `gcameron`; rest queued)
 
 **Goal.** The admin UI stops being a prototype.
 
 Phase 5 turned out to be several independently-shippable slices, not one. First slice
-(posts) is code-complete and tested; the rest are queued as explicit follow-ups rather
-than attempted in the same pass at lower quality.
+(posts) is built, tested, and live in production for `gcameron` (deployed and verified
+2026-07-28); the rest are queued as explicit follow-ups rather than attempted in the
+same pass at lower quality.
 
-**Built and tested (`src/admin-posts.js`, `src/admin-db.js`, `src/validate.js`,
-`src/cache-purge.js`):**
+**Built, tested, and live for `gcameron` (`src/admin-posts.js`, `src/admin-db.js`,
+`src/validate.js`, `src/cache-purge.js`):**
 
 - Admin post API: create, read, update, soft/hard delete (hard is owner-only),
   publish, unpublish, schedule, duplicate — every route in
@@ -238,6 +239,19 @@ than attempted in the same pass at lower quality.
   "edit your own post" as "edit someone else's" — 403ing an `author`-role user out of
   their own drafts.
 
+**Known issue, found in production (2026-07-28), not yet fixed.** Editing an
+already-published post shows a **"Save draft"** button (`assets/js/editor.js`), but
+saving edits a published post *in place* and purges the public cache — the change goes
+live immediately, not into a pending draft. This isn't an API bug: `PATCH
+/api/admin/posts/:id` does exactly what it's documented to do, and there's no
+"unpublished pending edit of a published post" concept in the data model — a post has
+exactly one row and one status. It's a front-end copy/UX gap left over from Phase 1's
+demo prototype, where "Save draft" only ever applied to genuinely-unpublished posts.
+Options for the fix: relabel the button for a published post (e.g. "Save changes" or
+"Save (live now)"), or actually add the pending-edit concept the label implies — the
+latter is a real design decision (a shadow draft row? a `pending_body_md` column?), not
+a one-line fix, so this is parked here rather than patched reflexively.
+
 **Queued — not yet built:**
 
 - Tags as their own resource: `GET/POST /tags`, `PATCH`/`DELETE /tags/:id`,
@@ -260,10 +274,12 @@ than attempted in the same pass at lower quality.
 firing job (auto-publishing, auto-deleting old revisions), a different risk category
 from a static var, worth a specific conversation rather than folding into a config diff.
 
-**Exit criteria — partially met.** A post can be created, edited, saved, previewed,
-scheduled, published, unpublished and deleted through the API layer, verified by test;
-not yet verified through the actual admin UI against live D1 (not yet deployed), and
-"scheduled" doesn't yet self-publish without the cron trigger.
+**Exit criteria — met for the posts slice, in production.** A post can be created,
+edited, saved, previewed, scheduled, published, unpublished and deleted through the
+admin UI against live D1 for `gcameron`, not just through tests. The known issue above
+is a UX gap, not a functional failure — every one of those actions does what it's
+specified to do. Still open: "scheduled" doesn't self-publish without the cron trigger,
+and Phase 5's non-posts slices (tags/media/settings/export) remain unbuilt.
 
 ---
 

@@ -29,6 +29,12 @@
  * ACCESS_TEAM_DOMAIN/ACCESS_AUD. A site that hasn't done that setup yet
  * keeps today's un-gated behaviour, same "not live yet" philosophy as the
  * Phase 3 handlers.
+ *
+ * Phase 5 adds the Posts write path (src/admin-posts.js, dispatched through
+ * src/admin-api.js) — the first handler in this file's chain that can
+ * mutate D1, which is why it needs `identity` (who) and `ctx` (to purge the
+ * edge cache in the background via `ctx.waitUntil` without delaying the
+ * response) alongside `env`.
  */
 
 import { handlePublicApi } from './public-api.js';
@@ -168,7 +174,7 @@ export default {
         response =
           handleLegacyPostRedirect(url) ||
           (await handlePostPage(request, url, env)) ||
-          (await handleAdminApi(request, url, identity)) ||
+          (await handleAdminApi(request, url, { env, ctx, identity })) ||
           (await handlePublicApi(request, url, env)) ||
           (await handleMedia(request, url, env)) ||
           (await handleFeeds(request, url, env)) ||

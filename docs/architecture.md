@@ -221,9 +221,18 @@ near-free query. Publishing through the cron path and through the API converge o
 same internal `publishPost()` function so the cache purge and audit entry cannot be
 forgotten in one path.
 
-**Revisions are append-only and capped.** Autosave writes a revision at most once per
-90 seconds per post; a retention job trims each post to its most recent 50 revisions
-plus every revision tagged `published`.
+> **Built vs. as-specified (Phase 5):** `POST /:id/schedule` sets `status='scheduled'`
+> and is live-tested; the Cron Trigger described above that promotes it to `published`
+> on its own is not built yet — see the "Owner action required" note on the cron
+> trigger in [implementation-plan.md](implementation-plan.md)'s Phase 5 section. A
+> scheduled post today stays `scheduled` until someone calls `/publish` by hand.
+
+**Revisions are append-only.** Every save that changes `title` or `body_md` writes a
+revision (`src/admin-posts.js`) — including autosave calls from the editor, since
+there's no separate "this was an autosave" endpoint to throttle against, unlike the
+90-second-interval/50-revision-cap scheme originally sketched here. The retention job
+that would cap revision count per post needs the same Cron Trigger as scheduled
+publishing, so it's queued alongside it, not built.
 
 **FTS is populated by trigger** on `posts` insert/update/delete. If FTS proves awkward
 on D1, the fallback is `LIKE` over `title` and `excerpt`, which is acceptable at the
@@ -250,8 +259,11 @@ exports/<iso-date>-backup.json                               scheduled content e
 So a cover image's `cover_key` column (§3) holds `2026/07/<hash>-cover.jpg`, and its
 public URL — `cover_key` with the route prefix applied — is
 `/media/2026/07/<hash>-cover.jpg` (matches the example in [api.md](api.md)). `src/db.js`
-already builds URLs this way for Phase 3's read path; Phase 5's upload code is what has
-to write keys matching it.
+already builds URLs this way for Phase 3's read path; Phase 5's upload code — still
+queued, not built (see implementation-plan.md) — is what has to write keys matching it.
+A post's `cover_key`/`cover_alt` fields are already settable through `PATCH
+/api/admin/posts/:id`, so an editor can point a post at *existing* R2 objects (e.g.
+ones uploaded outside the admin UI for now) even before upload itself ships.
 
 Because the key contains a hash of the content, an object at a given key never changes.
 Public media is served through the Worker at `/media/<key>` with
@@ -269,6 +281,11 @@ escape hatch if large-file support is ever needed.
 **Image variants** are generated lazily: a request for a width that does not exist yet
 is resized via Cloudflare Images (or `fetch` with `cf.image` options), written back to
 R2 under the derived key, and returned. Subsequent requests hit R2 directly.
+
+> **Not built yet:** everything in this section (uploads and variants) is still queued
+> — see Phase 5's breakdown in [implementation-plan.md](implementation-plan.md). Reads
+> (`GET /media/:key`) are built and live (Phase 3); writing new objects into R2 through
+> the admin UI is not.
 
 ---
 
@@ -289,15 +306,24 @@ the Cache API. Purge is best-effort and runs in `ctx.waitUntil()`; the short `s-
 is the backstop if a purge fails, so a missed purge costs staleness measured in
 minutes, never permanent staleness.
 
+> **Built (Phase 5):** `src/cache-purge.js` implements exactly this — `caches.default`,
+> no Cloudflare API token needed, called from `ctx.waitUntil()` after any mutation that
+> touches a published post. It purges the deterministic URLs listed above; it cannot
+> enumerate every filtered `/api/posts?tag=…&q=…` combination a client might have
+> cached, which is why those variants' short `max-age`/`s-maxage` still matters as the
+> real backstop, not just a fallback for purge failures.
+
 ---
 
 ## 6. Security model
 
-> **Built vs. as-specified (Phase 4):** the JWT verification, `authors` resolution and
-> role table below are implemented (`src/access.js`, `src/auth.js`) and live for
+> **Built vs. as-specified (Phase 4 + 5):** the JWT verification, `authors` resolution
+> and role table below are implemented (`src/access.js`, `src/auth.js`) and live for
 > `gcameron`, verified against the real Access application. Role-gated *write* actions
-> don't exist yet regardless (Phase 5) — the table below is reachable today only via
-> `GET /api/admin/me`.
+> are implemented too, for posts specifically (`src/admin-posts.js`) — tested against
+> every row of the table below, but not yet deployed. Tags/media/settings/authors
+> writes don't exist yet (still Phase 5, queued) — see
+> [implementation-plan.md](implementation-plan.md).
 
 **Cloudflare Access is the front door, not the only lock.** Access authenticates users
 at the edge and no unauthenticated request reaches the admin Worker. The Worker

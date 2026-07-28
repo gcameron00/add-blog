@@ -11,26 +11,35 @@ bundler. The whole front end ships as Cloudflare Workers static assets.
 
 ## Status
 
-**Phases 1–4 are built and live.** The Worker router (`src/index.js`) enforces the
-hostname split and sends security headers; the public read path (JSON API,
-server-rendered permalinks, R2 media, feeds) is live for `gcameron`, backed by real
-D1/R2. Access JWT verification and identity resolution (`src/access.js`, `src/auth.js`)
-are live too — the admin hostname is genuinely access-controlled now, not a public
-prototype. 77 tests passing. A *new* site still needs its own D1 database, R2 bucket
-and Access application created before it shows real content and requires login instead
-of demo data — see [`docs/deployment.md`](docs/deployment.md) and the "Future
-considerations" section of the [implementation plan](docs/implementation-plan.md) on
-why that's a one-time manual step per site. There is still no write path (Phase 5).
+**Phases 1–4 are built and live; Phase 5 (posts write path) is built and tested,
+pending deployment.** The Worker router (`src/index.js`) enforces the hostname split
+and sends security headers; the public read path (JSON API, server-rendered
+permalinks, R2 media, feeds) is live for `gcameron`, backed by real D1/R2. Access JWT
+verification and identity resolution (`src/access.js`, `src/auth.js`) are live too —
+the admin hostname is genuinely access-controlled, not a public prototype. The admin
+Posts API — create, edit, publish/unpublish/schedule, delete, duplicate, revisions —
+is written and tested (109 tests total) but not yet deployed; tags, media upload,
+settings/authors/export routes and scheduled-post auto-publishing are still queued —
+see the Phase 5 breakdown in
+[implementation-plan.md](docs/implementation-plan.md). A *new* site still needs its own
+D1 database, R2 bucket and Access application created before it shows real content and
+requires login instead of demo data — see [`docs/deployment.md`](docs/deployment.md)
+and the "Future considerations" section of the
+[implementation plan](docs/implementation-plan.md) on why that's a one-time manual step
+per site.
 
 | Layer | State |
 | --- | --- |
 | Public blog UI | Live for `gcameron`; demo data for any site not yet bound |
-| Admin UI | Access-controlled for `gcameron`; still demo data until Phase 5 ships |
+| Admin UI | Access-controlled for `gcameron`; posts write path built, not yet deployed |
 | Documentation | Built |
 | Worker request router | Built and live |
 | D1 schema + public read API | Built, tested, live for `gcameron` |
-| R2 media pipeline (read) | Built, tested, live for `gcameron`; upload is Phase 5 |
+| R2 media pipeline (read) | Built, tested, live for `gcameron`; upload still queued |
 | Cloudflare Access / identity (`GET /me`) | Built, tested, live for `gcameron` |
+| Admin Posts API (CRUD, publish, revisions) | Built, tested; not yet deployed |
+| Tags/Settings/Authors/Export admin routes | Not built |
+| Scheduled-post auto-publish (cron) | Not built — needs an owner decision on `wrangler.toml` `[triggers]` |
 | Managed OAuth (for `/mcp`) | Enabled on the Access app; unused until Phase 6 |
 | MCP server | Specified, not built |
 
@@ -124,11 +133,15 @@ with D1 keeping the metadata row that points at each R2 object.
 │   ├── feeds.js               feed.xml, atom.xml, sitemap.xml, robots.txt
 │   ├── access.js              Cloudflare Access JWT verification (Phase 4)
 │   ├── auth.js                 Role table + authors-row resolution (Phase 4)
-│   ├── audit.js                 audit_log writer, ready for Phase 5's mutations
-│   ├── admin-api.js           GET /api/admin/me (Phase 4) — rest is Phase 5
+│   ├── audit.js                 audit_log writer, called from every Phase 5 mutation
+│   ├── validate.js             Admin write-API request validation (Phase 5)
+│   ├── admin-db.js             D1 write queries: posts, tag linking, revisions (Phase 5)
+│   ├── admin-posts.js          Admin Posts API — CRUD, publish, revisions (Phase 5)
+│   ├── cache-purge.js          Edge cache purge on mutation, via caches.default (Phase 5)
+│   ├── admin-api.js           GET /api/admin/me (Phase 4) + dispatch to admin-posts.js
 │   ├── test-jwt.js             Test-only helper: signs fake Access JWTs
 │   ├── test-setup.js          Applies migrations + seeds a local D1 before tests run
-│   └── *.test.js              77 tests (`npm test`) — real local D1/R2, not mocks
+│   └── *.test.js              109 tests (`npm test`) — real local D1/R2, not mocks
 ├── migrations/
 │   ├── 0001_init.sql          Schema — see docs/architecture.md §3
 │   └── seed.sql               Generated — see scripts/generate-seed.mjs

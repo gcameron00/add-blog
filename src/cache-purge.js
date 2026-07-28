@@ -1,0 +1,33 @@
+/**
+ * Best-effort edge cache purge for public URLs an admin mutation affects
+ * (Phase 5's "cache purge on every mutation, via one shared publish path").
+ * Uses the Workers Cache API (`caches.default`) — the same edge cache that
+ * serves cached responses to end users — so this needs no Cloudflare API
+ * token or extra secret, unlike a zone-level purge call.
+ *
+ * This purges the specific, deterministic URLs a post touches. It cannot
+ * enumerate every filtered `/api/posts?tag=…&q=…` variant a client might
+ * have cached, so those still rely on their short max-age/s-maxage rather
+ * than an active purge — see docs/architecture.md §5.
+ */
+export async function purgePostUrls(publicOrigin, { slug, previousSlug, tags = [] } = {}) {
+  const urls = new Set([
+    `${publicOrigin}/`,
+    `${publicOrigin}/api/posts`,
+    `${publicOrigin}/api/tags`,
+    `${publicOrigin}/api/archive`,
+    `${publicOrigin}/feed.xml`,
+    `${publicOrigin}/atom.xml`,
+    `${publicOrigin}/sitemap.xml`,
+  ]);
+
+  for (const s of [slug, previousSlug].filter(Boolean)) {
+    urls.add(`${publicOrigin}/posts/${s}`);
+    urls.add(`${publicOrigin}/api/posts/${s}`);
+  }
+  for (const tag of tags) {
+    urls.add(`${publicOrigin}/api/posts?tag=${encodeURIComponent(tag)}`);
+  }
+
+  await Promise.all([...urls].map((url) => caches.default.delete(url).catch(() => false)));
+}

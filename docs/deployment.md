@@ -5,9 +5,12 @@ Everything needed to run add-blog as a fleet of blogs — one shared Worker scri
 `blog-admin.gcameron.com`, live since Phase 3 (2026-07-27) — hostname routing, public
 read API, R2 media and feeds all real. Phase 4 (Access JWT verification, `GET
 /api/admin/me`) is live too (verified 2026-07-27) — the admin host genuinely requires a
-verified, provisioned identity now. No write path yet (Phase 5). Sections below double
-as the runbook for the *next* site: everything in §1-4 is real, owner-run work for
-`gcameron` already done; repeat it for each new one.
+verified, provisioned identity now. Phase 5's posts write path (create/edit/publish/
+delete/revisions) is code-complete and tested but **not yet deployed** — nothing here
+changes for `gcameron` until it ships; tags, media upload and scheduled-post
+auto-publish are still queued regardless. Sections below double as the runbook for the
+*next* site: everything in §1-4 is real, owner-run work for `gcameron` already done;
+repeat it for each new one.
 
 ---
 
@@ -238,12 +241,24 @@ turned out to be the CI deploy tool installing an unrelated wrangler version, no
 | A request with no `Cf-Access-Jwt-Assertion` at all reaching the Worker | 401 `unauthenticated` (belt-and-suspenders — Access should already have blocked it at the edge) |
 | Visiting a *different* Access application in the same team, then blog-admin | Silent re-authorization with a freshly-minted, blog-admin-scoped token — not a bypass; see [architecture.md](architecture.md) §6 on why this is expected |
 
-**Not built yet (expect 404, not real behaviour):**
+**Phase 5, posts slice (once deployed — code-complete and tested, not yet live for any site):**
+
+| Check | Expected |
+| --- | --- |
+| Create a post through the editor, save | Draft appears in `GET /api/admin/posts`, not on the public site |
+| Publish it | Live at `/posts/<slug>` and in `/api/posts` within the cache window; cache purge means usually immediately |
+| Edit the title/body of a published post | Public copy reflects the change within the cache window |
+| Unpublish, then delete | Gone from the public site at each step; a hard delete (owner only) removes the row entirely |
+| Two tabs editing the same post, second one saves | No conflict prompt yet — the second save silently wins; `ETag`/`If-Match` exist server-side (test-verified) but the editor doesn't send `If-Match` yet |
+
+**Not built yet (expect 404 or demo data, not real behaviour):**
 
 | Check | Expected, once built |
 | --- | --- |
 | `POST https://blog-admin.<site>/mcp` (no token) | 401 with `WWW-Authenticate` (Phase 6) |
-| Publish through the admin UI | Live within seconds; cache purged (Phase 5) |
+| Uploading an image in the media library | Real upload, not a demo-mode no-op (Phase 5, media slice) |
+| A `scheduled` post reaching its `scheduled_for` time with nobody visiting the admin UI | Auto-publishes (Phase 5, cron slice) — today it stays `scheduled` until someone calls publish |
+| Tag rename/merge in Settings | Persists for real, not just this browser's demo store (Phase 5, tags slice) |
 
 ## 7. Rollback
 

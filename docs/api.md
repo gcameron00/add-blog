@@ -16,9 +16,15 @@ The public hostname does not acknowledge that an admin surface exists.
 > **Admin API: identity built and live** (Phase 4) — `GET /me` (`src/admin-api.js`),
 > gated by Access JWT verification (`src/access.js`) and role resolution (`src/auth.js`).
 > Verified against the live Access application on `blog-admin.gcameron.com`.
-> **Everything else below is still specified, not implemented** (Phase 5).
-> `assets/js/api.js` already calls every route in this document; it falls back to demo
-> data per-endpoint until each one is live.
+> **Posts built and tested, not yet deployed** (Phase 5, `src/admin-posts.js`) — every
+> route in the Posts table below, plus `POST /preview`. Role/ownership checks, `ETag`/
+> `If-Match` conflict detection, revisions-with-restore, and a best-effort edge-cache
+> purge on every mutation are all in. Not yet built: the editor's own conflict-prompt UI
+> for a `409` (the server detects it; nothing calls `If-Match` yet), `Idempotency-Key`
+> (its main consumer, MCP, doesn't exist yet either).
+> **Tags, Media, Settings/authors/ops routes below are still specified, not
+> implemented.** `assets/js/api.js` already calls every route in this document; it
+> falls back to demo data per-endpoint until each one is live.
 
 ---
 

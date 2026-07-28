@@ -1,7 +1,9 @@
 # Implementation plan
 
 Phases 1–4 are complete, in this repository, and live in production for the
-`gcameron` site. Phases 5 onward are the proposed build-out.
+`gcameron` site. Phase 5's first slice (the posts write path) is code-complete and
+tested but not yet deployed; the rest of Phase 5, and Phase 6 onward, are the proposed
+build-out — see Phase 5 below for exactly which slice is which.
 
 Each phase is independently deployable and leaves the site working. Phases 2–5 are
 sequential — routing before storage, storage before auth, auth before the write path.
@@ -194,29 +196,74 @@ application, returning the real identity and role.
 
 ---
 
-## Phase 5 — Write path
+## Phase 5 — Write path 🚧 (posts done, tested; rest queued)
 
 **Goal.** The admin UI stops being a prototype.
 
-- Admin post API: create, read, update, soft/hard delete, publish, unpublish,
-  schedule, duplicate.
-- Server-side Markdown rendering with sanitisation; `body_html` written on save.
-- Revisions with autosave, listing, diff and restore.
-- Tag CRUD and merge.
+Phase 5 turned out to be several independently-shippable slices, not one. First slice
+(posts) is code-complete and tested; the rest are queued as explicit follow-ups rather
+than attempted in the same pass at lower quality.
+
+**Built and tested (`src/admin-posts.js`, `src/admin-db.js`, `src/validate.js`,
+`src/cache-purge.js`):**
+
+- Admin post API: create, read, update, soft/hard delete (hard is owner-only),
+  publish, unpublish, schedule, duplicate — every route in
+  [api.md](api.md)'s Posts table.
+- Server-side Markdown rendering (`assets/js/markdown.js`'s escaping-first renderer,
+  already pure/DOM-free and reused server-side as-is); `body_html`, `word_count`,
+  `reading_minutes` computed and stored on every write that changes `body_md`.
+- Role/ownership checks (`src/auth.js`'s table from Phase 4) enforced server-side on
+  every write — `editOwn` vs `editOthers` resolved from the post's actual author, not
+  just the caller's role.
+- Revisions: a row on create and on every content-changing save, `GET` list and
+  single-revision routes, and restore (which itself snapshots the pre-restore state as
+  a new revision first, per the spec). No dedicated diff *endpoint* — none is in the
+  API contract; diffing two revisions' `body_md` is a front-end concern for later.
+- `ETag` / `If-Match`: `GET` returns one, `PATCH` honours `If-Match` and 409s with both
+  versions in `detail` on a mismatch. **Not yet built:** the editor's own conflict-
+  prompt UI — nothing in `assets/js/editor.js` tracks or sends `If-Match` yet, so this
+  is exercised by test (`src/admin-posts.test.js`) but not reachable through the UI.
+- Cache purge on every mutation that touches a published post, via
+  `caches.default` (`src/cache-purge.js`) — no new Cloudflare API token needed. Purges
+  the post's own permalink/API URL (old and new slug on a rename), home, feeds,
+  sitemap, and its tag pages; cannot purge every filtered `/api/posts?…` variant, which
+  still relies on its existing short `max-age`.
+- Same-origin `Origin` check and `Content-Type: application/json` enforcement on every
+  write route, per docs/architecture.md §6.
+- `POST /api/admin/preview`.
+- 32 new tests. One real bug the tests caught before it shipped: the ownership check
+  compared against a field (`post.author_id`) that didn't exist on the mapped response
+  shape (it's nested at `post.author.id`), which would have silently treated every
+  "edit your own post" as "edit someone else's" — 403ing an `author`-role user out of
+  their own drafts.
+
+**Queued — not yet built:**
+
+- Tags as their own resource: `GET/POST /tags`, `PATCH`/`DELETE /tags/:id`,
+  `POST /tags/merge`. (Posts can already *attach* tags — `setPostTags` in
+  `src/admin-db.js` creates a tag on first use — there just isn't a route to manage
+  tags directly yet.)
 - Media upload through the Worker: validation, size cap, checksum keying, SVG
   sanitisation, dimension detection, `media` rows, usage tracking, delete-with-guard.
-- Lazy image variants written back to R2.
-- Cache purge on every mutation, via one shared publish path.
-- Cron trigger for scheduled publishing and revision retention.
-- Optimistic concurrency (`ETag` / `If-Match`) surfaced in the editor as a conflict
-  prompt rather than a silent overwrite.
-- `POST /api/admin/export` and `/import`.
+- Lazy image variants written back to R2 — needs a resizing mechanism (e.g. Cloudflare
+  Images) Workers don't have natively; needs a decision, likely with the owner, before
+  it's built.
+- Settings/authors/`stats`/`audit`/`export`/`import` routes.
+- Cron trigger for scheduled publishing (the `scheduled` status exists and is set by
+  `POST /:id/schedule`, but nothing currently flips it to `published` when the date
+  arrives) and revision retention.
+- The editor's `If-Match` conflict-prompt UI mentioned above.
 
-**Owner action required.** `[triggers] crons` in `wrangler.toml`.
+**Owner action required (when the cron slice lands).** `[triggers] crons` in
+`wrangler.toml` — deliberately not added yet; a cron is a standing, automatically-
+firing job (auto-publishing, auto-deleting old revisions), a different risk category
+from a static var, worth a specific conversation rather than folding into a config diff.
 
-**Exit criteria.** A post can be written, saved, previewed, scheduled, published,
-edited and unpublished entirely through the UI, with the public site reflecting each
-change within the cache window.
+**Exit criteria — partially met.** A post can be created, edited, saved, previewed,
+scheduled, published, unpublished and deleted through the API layer, verified by test;
+not yet verified through the actual admin UI against live D1 (not yet deployed), and
+"scheduled" doesn't yet self-publish without the cron trigger.
 
 ---
 

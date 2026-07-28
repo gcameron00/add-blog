@@ -75,6 +75,27 @@ async function call(path, { method = 'GET', body, query } = {}) {
   return payload;
 }
 
+/** Like call(), for a multipart body — a `FormData` body must not get a manual Content-Type (the browser sets the boundary itself), so this doesn't share call()'s JSON-only body handling. */
+async function callMultipart(path, formData) {
+  if (backend === 'demo') throw new BackendUnavailable();
+
+  const url = new URL(API_BASE + path, location.origin);
+  let response;
+  try {
+    response = await fetch(url, { method: 'POST', body: formData, credentials: 'same-origin' });
+  } catch {
+    throw goDemo();
+  }
+
+  const contentType = response.headers.get('content-type') || '';
+  if (!contentType.includes('application/json')) throw goDemo();
+
+  backend = 'live';
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) throw new ApiError(payload.error, response.status);
+  return payload;
+}
+
 /** Run a live call, falling back to the demo implementation if there is no backend. */
 async function withFallback(live, fallback) {
   try {
@@ -437,12 +458,67 @@ export function listMedia({ q, type } = {}) {
     () => call('/admin/media', { query: { q, type } }),
     async () => {
       await delay();
-      const data = getStore().media.filter((m) => {
-        if (type && type !== 'all' && !m.content_type.startsWith(type)) return false;
-        if (q && !`${m.filename} ${m.alt}`.toLowerCase().includes(q.toLowerCase())) return false;
-        return true;
-      });
+      const data = getStore()
+        .media.filter((m) => {
+          if (type && type !== 'all' && !m.content_type.startsWith(type)) return false;
+          if (q && !`${m.filename} ${m.alt}`.toLowerCase().includes(q.toLowerCase())) return false;
+          return true;
+        })
+        .map((m) => ({ ...m, url: `/media/${m.key}` }));
       return { data };
+    }
+  );
+}
+
+const UPLOAD_MAX_BYTES = 25 * 1024 * 1024;
+const UPLOAD_ALLOWED_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/avif', 'image/gif', 'application/pdf']);
+
+export function uploadMedia(file, alt) {
+  return withFallback(
+    () => {
+      const formData = new FormData();
+      formData.append('file', file);
+      if (alt) formData.append('alt', alt);
+      return callMultipart('/admin/media', formData);
+    },
+    async () => {
+      if (!UPLOAD_ALLOWED_TYPES.has(file.type)) {
+        throw new ApiError({ code: 'unsupported_media_type', message: `"${file.type || 'unknown'}" is not an allowed upload type.` }, 415);
+      }
+      if (file.size > UPLOAD_MAX_BYTES) {
+        throw new ApiError({ code: 'payload_too_large', message: 'Uploads are capped at 25 MB.' }, 413);
+      }
+      await delay();
+      const item = {
+        key: `demo/${Date.now().toString(36)}-${slugify(file.name)}`,
+        filename: file.name,
+        content_type: file.type || 'application/octet-stream',
+        size_bytes: file.size,
+        width: null,
+        height: null,
+        alt: alt || '',
+        checksum: null,
+        created_at: nowIso(),
+        used_by: 0,
+      };
+      getStore().media.unshift(item);
+      logActivity('media.upload', item.filename);
+      persist();
+      return { data: { ...item, url: `/media/${item.key}` } };
+    }
+  );
+}
+
+export function updateMedia(key, patch) {
+  return withFallback(
+    () => call(`/admin/media/${encodeURIComponent(key)}`, { method: 'PATCH', body: patch }),
+    async () => {
+      await delay();
+      const item = getStore().media.find((m) => m.key === key);
+      if (!item) throw new ApiError({ code: 'not_found', message: 'Not found.' }, 404);
+      Object.assign(item, patch);
+      persist();
+      return { data: { ...item, url: `/media/${item.key}` } };
     }
   );
 }

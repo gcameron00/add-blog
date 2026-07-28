@@ -553,6 +553,7 @@ body.admin {
 }
 .dropzone svg { width: 2rem; height: 2rem; color: var(--text-faint); }
 .dropzone strong { display: block; margin: var(--sp-2) 0 var(--sp-1); color: var(--text); }
+.dropzone.is-dragover { border-color: var(--accent); background: var(--accent-subtle); }
 
 /* --- Activity ------------------------------------------------------------- */
 

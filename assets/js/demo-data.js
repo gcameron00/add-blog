@@ -515,13 +515,16 @@ export const POSTS = RAW_POSTS.map((post) => ({
   tags: post.tags.map((slug) => tagBySlug[slug]).filter(Boolean),
 }));
 
+// `key` is the bare R2 storage key — no `media/` prefix, matching the real
+// upload path (src/admin-media.js) and the public read path (src/db.js):
+// the route prefix (`/media/<key>`) is added at read time, never stored.
 export const MEDIA = [
-  { key: 'media/2026/07/9f2c4a1b8e3d5f60-routing-diagram.svg', filename: 'routing-diagram.svg', content_type: 'image/svg+xml', size_bytes: 24_118, width: 1200, height: 630, alt: 'Request routing across two hostnames', created_at: '2026-07-18T08:40:00Z', used_by: 1 },
-  { key: 'media/2026/07/3a71ce09bb42d5e1-cache-timeline.png', filename: 'cache-timeline.png', content_type: 'image/png', size_bytes: 186_402, width: 1600, height: 900, alt: 'Timeline of a cache purge after publishing', created_at: '2026-07-14T15:02:00Z', used_by: 1 },
-  { key: 'media/2026/06/8d40f7a2c1b93e55-d1-console.png', filename: 'd1-console.png', content_type: 'image/png', size_bytes: 342_990, width: 2048, height: 1180, alt: 'The D1 console showing the posts table', created_at: '2026-06-30T09:22:00Z', used_by: 2 },
-  { key: 'media/2026/06/1c5e9b3d7f08a624-editor-shot.webp', filename: 'editor-shot.webp', content_type: 'image/webp', size_bytes: 98_314, width: 1440, height: 900, alt: 'The Markdown editor with live preview', created_at: '2026-06-18T11:47:00Z', used_by: 1 },
-  { key: 'media/2026/06/62b8ad14e9c07f3a-contrast-fail.png', filename: 'contrast-fail.png', content_type: 'image/png', size_bytes: 74_220, width: 900, height: 500, alt: 'Contrast checker reporting a 1.9 to 1 ratio', created_at: '2026-06-02T14:10:00Z', used_by: 0 },
-  { key: 'media/2026/05/f04c72e6a5d3b918-benchmarks.pdf', filename: 'benchmarks.pdf', content_type: 'application/pdf', size_bytes: 512_770, width: null, height: null, alt: 'Edge latency benchmark results', created_at: '2026-05-21T16:35:00Z', used_by: 0 },
+  { key: '2026/07/9f2c4a1b8e3d5f60-routing-diagram.svg', filename: 'routing-diagram.svg', content_type: 'image/svg+xml', size_bytes: 24_118, width: 1200, height: 630, alt: 'Request routing across two hostnames', created_at: '2026-07-18T08:40:00Z', used_by: 1 },
+  { key: '2026/07/3a71ce09bb42d5e1-cache-timeline.png', filename: 'cache-timeline.png', content_type: 'image/png', size_bytes: 186_402, width: 1600, height: 900, alt: 'Timeline of a cache purge after publishing', created_at: '2026-07-14T15:02:00Z', used_by: 1 },
+  { key: '2026/06/8d40f7a2c1b93e55-d1-console.png', filename: 'd1-console.png', content_type: 'image/png', size_bytes: 342_990, width: 2048, height: 1180, alt: 'The D1 console showing the posts table', created_at: '2026-06-30T09:22:00Z', used_by: 2 },
+  { key: '2026/06/1c5e9b3d7f08a624-editor-shot.webp', filename: 'editor-shot.webp', content_type: 'image/webp', size_bytes: 98_314, width: 1440, height: 900, alt: 'The Markdown editor with live preview', created_at: '2026-06-18T11:47:00Z', used_by: 1 },
+  { key: '2026/06/62b8ad14e9c07f3a-contrast-fail.png', filename: 'contrast-fail.png', content_type: 'image/png', size_bytes: 74_220, width: 900, height: 500, alt: 'Contrast checker reporting a 1.9 to 1 ratio', created_at: '2026-06-02T14:10:00Z', used_by: 0 },
+  { key: '2026/05/f04c72e6a5d3b918-benchmarks.pdf', filename: 'benchmarks.pdf', content_type: 'application/pdf', size_bytes: 512_770, width: null, height: null, alt: 'Edge latency benchmark results', created_at: '2026-05-21T16:35:00Z', used_by: 0 },
 ];
 
 export const SETTINGS = {

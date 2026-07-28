@@ -46,17 +46,31 @@
             </select>
           </div>
 
-          <div class="dropzone">
+          <div class="dropzone" data-dropzone>
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
               <path d="M12 16V4m0 0L8 8m4-4 4 4" /><path d="M4 16v3a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-3" />
             </svg>
-            <strong>Uploads arrive in Phase 5</strong>
-            <p class="small" style="margin: 0">
-              The upload path proxies through the Worker so one request can validate the
-              content type, enforce the size cap, hash the bytes into the object key, and
-              write the <code>media</code> row. Alt text will be required, and SVG will be
-              sanitised before it is stored.
+            <strong>Drop a file here, or choose one</strong>
+            <p class="small" style="margin: 0 0 .75rem">
+              Images (JPEG, PNG, WebP, AVIF, GIF) or PDF, up to 25 MB. SVG isn't accepted
+              yet — it's an executable format, and it needs a real sanitiser (not a quick
+              regex) before it's safe to store and serve.
             </p>
+            <div class="field" style="max-width: 22rem; margin: 0 auto; text-align: left">
+              <label for="media-alt">Alt text</label>
+              <input type="text" id="media-alt" data-alt-input placeholder="Describe the image for screen readers" maxlength="300" />
+            </div>
+            <label class="btn btn--sm" style="margin-top: .75rem" for="media-file">
+              Choose file
+              <input
+                type="file"
+                id="media-file"
+                data-file-input
+                class="visually-hidden"
+                accept="image/jpeg,image/png,image/webp,image/avif,image/gif,application/pdf"
+              />
+            </label>
+            <div data-upload-status class="small" style="margin-top: .5rem; min-height: 1.2em" aria-live="polite"></div>
           </div>
 
           <div data-media aria-live="polite"></div>

@@ -1,9 +1,10 @@
 # Implementation plan
 
 Phases 1–4 are complete, in this repository, and live in production for the
-`gcameron` site. Phase 5's first slice (the posts write path) is live too, verified in
-production 2026-07-28 — with one known UI issue open, see Phase 5 below. The rest of
-Phase 5, and Phase 6 onward, are the proposed build-out.
+`gcameron` site. Phase 5 is being delivered in slices: posts, settings and the
+dashboard (5a/5b) are live, verified in production; media upload (5c) is built and
+tested but not yet deployed. Tags, authors, export/import and scheduled-post
+auto-publish remain proposed build-out — see Phase 5 below for the exact breakdown.
 
 Each phase is independently deployable and leaves the site working. Phases 2–5 are
 sequential — routing before storage, storage before auth, auth before the write path.
@@ -196,7 +197,7 @@ application, returning the real identity and role.
 
 ---
 
-## Phase 5 — Write path 🚧 (posts + settings + dashboard live for `gcameron`; rest queued)
+## Phase 5 — Write path 🚧 (posts + settings + dashboard live; media built, pending deploy; rest queued)
 
 **Goal.** The admin UI stops being a prototype.
 
@@ -292,6 +293,57 @@ Phase 1/4 UI copy had gone stale now that real data backs them:
   of it before JS runs) and still works exactly as before for a new site that hasn't
   reached Phase 5 yet, or for the no-Worker `python3 -m http.server` local dev path.
 
+**5c — Media upload. Built and tested, not yet deployed
+(`src/admin-media.js`, `src/admin-db.js`, `src/media-parse.js`):**
+
+- `POST /api/admin/media` (`multipart/form-data`), `GET /api/admin/media` (filters:
+  `q`, `type`, `unused=true`), `GET /api/admin/media/:key/usage`,
+  `PATCH /api/admin/media/:key` (alt/filename), `DELETE /api/admin/media/:key`
+  (`409` if referenced — cover or an inline `/media/<key>` match in `body_md` — unless
+  `?force=true`). `assets/js/admin.js`'s media page has called `listMedia`/
+  `deleteMedia` since Phase 1 against a dropzone that was a static "Uploads arrive in
+  Phase 5" placeholder with no `<input type="file">` at all; both the routes and that
+  placeholder are real now (drag-and-drop plus a keyboard/screen-reader-reachable
+  "Choose file" control, alt text required client-side before upload proceeds).
+- Content-addressed keys (`<yyyy>/<mm>/<sha256-prefix16>-<sanitised-filename>`, per
+  [architecture.md](architecture.md) §4) via `crypto.subtle.digest`. Uploads are
+  idempotent by design: the same bytes uploaded twice return the existing object
+  (`200`) rather than writing a duplicate (`201`) — verified by test, including that a
+  *different filename* with identical bytes still dedupes on content.
+- Dimension detection straight from each format's header (no `Image`/canvas in
+  Workers) — PNG, JPEG, GIF, WebP (VP8/VP8L/VP8X, whichever chunk type the encoder
+  used), each parsed against **real files** (`magick -size WxH xc:color out.ext`),
+  not hand-built byte arrays — see `src/media-parse.test.js`. **AVIF is not
+  parsed** — its dimensions live in a nested ISOBMFF box structure that's real parsing
+  work on its own; AVIF still uploads and stores fine, just with `width`/`height` left
+  `null`, rather than shipping an untested guess.
+- Size cap (25 MB) and a content-type allow-list: `image/jpeg`, `image/png`,
+  `image/webp`, `image/avif`, `image/gif`, `application/pdf`.
+  **`image/svg+xml` is deliberately not in the allow-list.** SVG is an executable
+  format; docs/architecture.md always called for sanitising it before storage, and a
+  regex-based "sanitiser" for something this XSS-sensitive would give false
+  confidence rather than real safety — SVG is off until there's a real parser behind
+  it, not a string-surgery approximation.
+- **Doc/code fix alongside this:** `assets/js/demo-data.js`'s `MEDIA` fixture and
+  `admin.js`'s "Copy URL" button both predated this slice and disagreed with the
+  Phase 3 convention — demo `key`s had a baked-in `media/` prefix, and "Copy URL" did
+  `` `/${item.key}` `` instead of using a proper `url` field, so on live data it would
+  have copied a URL missing `/media/` entirely. Fixed to match `src/db.js`'s
+  established shape: `key` is always the bare storage key, `url` is `/media/<key>`,
+  in both the real API response and the demo fallback.
+- A real D1 issue found and fixed along the way: the delete-guard/usage query used
+  `body_md LIKE '%...%'` to check whether a post references a key inline; D1 rejected
+  some of those as `LIKE or GLOB pattern too complex`. Switched to `instr(body_md, ?)
+  > 0` — a literal substring check, which is what this actually was; there was never
+  a real wildcard pattern here; `LIKE` was the wrong tool, not just a triggered edge
+  case.
+- 20 new tests (154 total) — real multipart `Request`/`FormData`/`File` objects,
+  real R2 (`env.MEDIA.get`/`.delete` asserted directly, not just the JSON response),
+  real audit_log rows, real usage/delete-guard scenarios via actual post rows.
+  Verified by hand too: the demo-mode upload/delete/edit-alt/drag-and-drop flow was
+  driven end-to-end in a real browser (Edge via Playwright) against the static-file
+  dev path, not just asserted against the Worker.
+
 **Queued — not yet built:**
 
 - Tags as their own resource: `GET/POST /tags`, `PATCH`/`DELETE /tags/:id`,
@@ -303,8 +355,7 @@ Phase 1/4 UI copy had gone stale now that real data backs them:
   when built, since the main value (inviting a real teammate without the owner running
   raw SQL — see [deployment.md](deployment.md) §1, which is how the site's own owner
   row was seeded) needs *something* to click, not just an endpoint.
-- Media upload through the Worker: validation, size cap, checksum keying, SVG
-  sanitisation, dimension detection, `media` rows, usage tracking, delete-with-guard.
+- SVG upload — needs a real sanitiser (a parser, not a regex), see above.
 - Lazy image variants written back to R2 — needs a resizing mechanism (e.g. Cloudflare
   Images) Workers don't have natively; needs a decision, likely with the owner, before
   it's built.
@@ -323,10 +374,11 @@ from a static var, worth a specific conversation rather than folding into a conf
 whole.** A post can be created, edited, saved, previewed, scheduled, published,
 unpublished and deleted through the admin UI against live D1 for `gcameron`; settings
 can be changed and persist; the dashboard shows real counts and a real activity feed —
-none of it through tests alone, all confirmed in production. Still open: "scheduled"
-doesn't self-publish without the cron trigger, and tags/authors/media/export remain
-unbuilt — the admin UI still can't do everything Phase 1's demo let you *pretend* to
-do.
+none of it through tests alone, all confirmed in production. Media upload (5c) meets
+the same bar in tests and in a real browser against demo data, but hasn't been
+confirmed against live D1/R2 in production yet. Still open: "scheduled" doesn't
+self-publish without the cron trigger, and tags/authors/export remain unbuilt — the
+admin UI still can't do everything Phase 1's demo let you *pretend* to do.
 
 ---
 

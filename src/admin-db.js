@@ -209,3 +209,94 @@ export async function getRevision(db, postId, revisionId) {
     .bind(revisionId, postId)
     .first();
 }
+
+/* --- Media (Phase 5c) ------------------------------------------------------ */
+
+export async function getMediaByChecksum(db, checksum) {
+  return db.prepare(`SELECT * FROM media WHERE checksum = ?`).bind(checksum).first();
+}
+
+export async function getMediaByKey(db, key) {
+  return db.prepare(`SELECT * FROM media WHERE key = ?`).bind(key).first();
+}
+
+export async function insertMedia(db, media) {
+  await db
+    .prepare(
+      `INSERT INTO media (key, filename, content_type, size_bytes, width, height, alt, checksum, uploaded_by, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    )
+    .bind(
+      media.key, media.filename, media.content_type, media.size_bytes,
+      media.width, media.height, media.alt || null, media.checksum, media.uploaded_by, media.created_at
+    )
+    .run();
+}
+
+export async function updateMediaRow(db, key, fields) {
+  const columns = Object.keys(fields);
+  if (!columns.length) return;
+  const set = columns.map((c) => `${c} = ?`).join(', ');
+  await db.prepare(`UPDATE media SET ${set} WHERE key = ?`).bind(...columns.map((c) => fields[c]), key).run();
+}
+
+export async function deleteMediaRow(db, key) {
+  await db.prepare(`DELETE FROM media WHERE key = ?`).bind(key).run();
+}
+
+/**
+ * Posts referencing this media key — as the cover, or inline via its public
+ * URL in body_md. Backs both `GET /:key/usage` and the delete guard. Uses
+ * `instr()` rather than `LIKE '%...%'` — this is a literal substring check,
+ * not a user-supplied pattern, and a real key can be long enough to trip
+ * D1's "LIKE or GLOB pattern too complex" guard; `instr()` has no pattern
+ * syntax at all, so there's nothing for that guard to object to.
+ */
+export async function listPostsReferencingMedia(db, key) {
+  const { results } = await db
+    .prepare(`SELECT id, slug, title FROM posts WHERE cover_key = ? OR instr(body_md, ?) > 0`)
+    .bind(key, `/media/${key}`)
+    .all();
+  return results;
+}
+
+/**
+ * `unused=true` needs a per-row reference count that isn't cheap to express
+ * as one WHERE clause (cover_key equality vs. a body_md substring search are
+ * different shapes) — computed per row instead, then paginated in JS rather
+ * than SQL, so the filter can't silently break pagination by being applied
+ * after a SQL-level LIMIT already cut the candidate set down. Fine at the
+ * scale a single site's media library operates at.
+ */
+export async function listAdminMedia(db, { q, type, unused, limit = 50, offset = 0 } = {}) {
+  const where = [];
+  const params = [];
+  if (type && type !== 'all') {
+    where.push(`content_type LIKE ?`);
+    params.push(`${type}/%`);
+  }
+  if (q) {
+    where.push(`(filename LIKE ? OR alt LIKE ?)`);
+    params.push(`%${q}%`, `%${q}%`);
+  }
+  const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
+
+  const { results } = await db
+    .prepare(`SELECT * FROM media ${whereSql} ORDER BY created_at DESC`)
+    .bind(...params)
+    .all();
+
+  const withUsage = await Promise.all(
+    results.map(async (row) => ({ ...row, used_by: (await listPostsReferencingMedia(db, row.key)).length }))
+  );
+  const filtered = unused ? withUsage.filter((row) => row.used_by === 0) : withUsage;
+
+  const boundedLimit = Math.min(200, Math.max(1, Number(limit) || 50));
+  const boundedOffset = Math.max(0, Number(offset) || 0);
+  const page = filtered.slice(boundedOffset, boundedOffset + boundedLimit);
+
+  return {
+    data: page,
+    page: { limit: boundedLimit, offset: boundedOffset, total: filtered.length, has_more: boundedOffset + page.length < filtered.length },
+  };
+}

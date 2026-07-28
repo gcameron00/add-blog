@@ -282,10 +282,14 @@ escape hatch if large-file support is ever needed.
 is resized via Cloudflare Images (or `fetch` with `cf.image` options), written back to
 R2 under the derived key, and returned. Subsequent requests hit R2 directly.
 
-> **Not built yet:** everything in this section (uploads and variants) is still queued
-> — see Phase 5's breakdown in [implementation-plan.md](implementation-plan.md). Reads
-> (`GET /media/:key`) are built and live (Phase 3); writing new objects into R2 through
-> the admin UI is not.
+> **Built vs. as-specified (Phase 5c):** uploads (`src/admin-media.js`) are built and
+> tested — validation, size cap, checksum-keyed idempotent writes, header-based
+> dimension detection for every allow-listed format except AVIF — but not yet
+> deployed. SVG is not in the upload allow-list at all (see [api.md](api.md)'s Media
+> section on why "sanitised" isn't a safe claim to make without a real parser behind
+> it). **Image variants are not built** — resizing needs a decision on the mechanism
+> (e.g. enabling Cloudflare Images) this module can't make on its own. Reads
+> (`GET /media/:key`) have been built and live since Phase 3 regardless.
 
 ---
 

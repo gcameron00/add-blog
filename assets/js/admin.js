@@ -393,7 +393,15 @@ async function initMedia() {
               el('div', { class: 'media-item__actions' }, [
                 el('button', {
                   class: 'btn btn--sm btn--ghost', type: 'button', text: 'Copy URL',
-                  onClick: () => copyToClipboard(`/${item.key}`, 'URL copied'),
+                  onClick: () => copyToClipboard(item.url, 'URL copied'),
+                }),
+                el('button', {
+                  class: 'btn btn--sm btn--ghost', type: 'button', text: 'Edit alt',
+                  onClick: () => {
+                    const alt = window.prompt('Alt text', item.alt || '');
+                    if (alt === null || alt === item.alt) return;
+                    act(() => api.updateMedia(item.key, { alt }), 'Alt text updated', load);
+                  },
                 }),
                 el('button', {
                   class: 'btn btn--sm btn--ghost btn--danger', type: 'button', text: 'Delete',
@@ -421,7 +429,57 @@ async function initMedia() {
   });
   filter?.addEventListener('change', () => { state.type = filter.value; load(); });
 
+  initUpload(load);
   load();
+}
+
+function initUpload(onUploaded) {
+  const dropzone = document.querySelector('[data-dropzone]');
+  const fileInput = document.querySelector('[data-file-input]');
+  const altInput = document.querySelector('[data-alt-input]');
+  const status = document.querySelector('[data-upload-status]');
+  if (!dropzone || !fileInput) return;
+
+  async function upload(file) {
+    if (!file) return;
+    if (!altInput.value.trim()) {
+      status.textContent = 'Add alt text before uploading.';
+      altInput.focus();
+      return;
+    }
+    status.textContent = `Uploading ${file.name}…`;
+    fileInput.disabled = true;
+    try {
+      await api.uploadMedia(file, altInput.value.trim());
+      status.textContent = '';
+      altInput.value = '';
+      fileInput.value = '';
+      toast('File uploaded');
+      onUploaded();
+    } catch (error) {
+      status.textContent = error.message || 'Upload failed';
+    } finally {
+      fileInput.disabled = false;
+    }
+  }
+
+  fileInput.addEventListener('change', () => upload(fileInput.files[0]));
+
+  // Drag-and-drop is additive — the label/file-input above already gives a
+  // fully keyboard- and screen-reader-reachable path to the same upload.
+  ['dragenter', 'dragover'].forEach((type) =>
+    dropzone.addEventListener(type, (event) => {
+      event.preventDefault();
+      dropzone.classList.add('is-dragover');
+    })
+  );
+  ['dragleave', 'drop'].forEach((type) =>
+    dropzone.addEventListener(type, (event) => {
+      event.preventDefault();
+      dropzone.classList.remove('is-dragover');
+    })
+  );
+  dropzone.addEventListener('drop', (event) => upload(event.dataTransfer.files[0]));
 }
 
 /* --- MCP page ------------------------------------------------------------- */

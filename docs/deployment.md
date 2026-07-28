@@ -7,7 +7,8 @@ read API, R2 media and feeds all real. Phase 4 (Access JWT verification, `GET
 /api/admin/me`) is live too (verified 2026-07-27) — the admin host genuinely requires a
 verified, provisioned identity now. Phase 5's posts write path (create/edit/publish/
 delete/revisions) and its settings/dashboard slice (`GET`/`PUT /settings`, `stats`,
-`audit`) are both live too (verified 2026-07-28). Tags, authors, media upload,
+`audit`) are both live too (verified 2026-07-28). Media upload is built and tested
+(154 tests) but **not yet deployed** — next push ships it. Tags, authors,
 export/import and scheduled-post auto-publish are still queued — none of them have an
 admin UI page calling them yet, which is deliberate; see
 [implementation-plan.md](implementation-plan.md)'s Phase 5 section. Sections below
@@ -262,12 +263,24 @@ turned out to be the CI deploy tool installing an unrelated wrangler version, no
 | Dashboard tiles (published/draft/scheduled/media/words) | Real counts, not demo numbers | ✅ |
 | Dashboard activity feed | Real entries with a post title per line, newest first | ✅ |
 
+**Phase 5c, media upload (built and tested — check these once deployed, not yet
+confirmed live for `gcameron`):**
+
+| Check | Expected |
+| --- | --- |
+| Upload a JPEG/PNG/WebP/AVIF/GIF or PDF under 25 MB, with alt text | Appears in the library with detected dimensions (all but AVIF) and the alt text you entered |
+| Try to upload without alt text | Client-side refusal, no request sent — "Add alt text before uploading." |
+| Try to upload an SVG | Rejected — SVG isn't on the allow-list at all (see architecture.md §4 on why) |
+| Upload the exact same file twice | Second one returns the first one's record, not a new duplicate |
+| Delete a file used as a post's cover | `409`, refused, with the referencing post(s) named |
+| Delete an unused file | Removed from both R2 and the library listing |
+| "Copy URL" on a real (non-demo) item | Copies `/media/<key>` — this used to be broken (missing `/media/`) before this pass fixed the `key`/`url` shape |
+
 **Not built yet (expect 404 or demo data, not real behaviour):**
 
 | Check | Expected, once built |
 | --- | --- |
 | `POST https://blog-admin.<site>/mcp` (no token) | 401 with `WWW-Authenticate` (Phase 6) |
-| Uploading an image in the media library | Real upload, not a demo-mode no-op (Phase 5, media slice) |
 | A `scheduled` post reaching its `scheduled_for` time with nobody visiting the admin UI | Auto-publishes (Phase 5, cron slice) — today it stays `scheduled` until someone calls publish |
 | Tag rename/merge in Settings | Persists for real, not just this browser's demo store (Phase 5, tags slice) |
 

@@ -30,10 +30,14 @@ The public hostname does not acknowledge that an admin surface exists.
 > `GET /stats`, `GET /audit`. The settings key list below has been corrected to match
 > what's actually seeded and what the settings form actually submits (added
 > `admin_url`, dropped the unused `theme_accent`).
-> **Tags, Authors, Media, `/export`, `/import` routes are still specified, not
-> implemented** — deliberately: nothing in the shipped admin UI calls them yet, unlike
-> everything built so far. `assets/js/api.js` already calls every route in this
-> document; it falls back to demo data per-endpoint until each one is live.
+> **Media built and tested, not yet deployed** (Phase 5c, `src/admin-media.js`) — every
+> route below except `image/svg+xml` uploads, which aren't accepted (see the note under
+> "Uploads" below — needs a real sanitiser, not a stand-in). AVIF uploads are accepted
+> but stored without detected `width`/`height`.
+> **Tags, Authors, `/export`, `/import` routes are still specified, not implemented**
+> — deliberately: nothing in the shipped admin UI calls them yet, unlike everything
+> built so far. `assets/js/api.js` already calls every route in this document; it
+> falls back to demo data per-endpoint until each one is live.
 
 ---
 
@@ -225,11 +229,19 @@ publish path so purge and audit logging cannot diverge between them.
 | `DELETE` | `/media/:key` | Delete from R2 and D1. `409` if referenced, unless `?force=true` |
 | `GET` | `/media/:key/usage` | Posts referencing this object |
 
-Uploads default to a 25 MB cap and an allow-list of `image/jpeg`, `image/png`,
-`image/webp`, `image/avif`, `image/gif`, `image/svg+xml`, `application/pdf`. SVG is
-sanitised on upload — it is an executable format, and an unsanitised SVG served from
-the blog's own origin is a stored XSS. The response includes the derived key, public
-URL and detected dimensions.
+Uploads are capped at 25 MB and allow-listed to `image/jpeg`, `image/png`,
+`image/webp`, `image/avif`, `image/gif`, `application/pdf`.
+
+**`image/svg+xml` is not accepted.** SVG is an executable format, and an unsanitised
+SVG served from the blog's own origin is a stored XSS — this was always going to need
+sanitising before storage, and a regex-based "sanitiser" for something this
+XSS-sensitive would give false confidence rather than real safety. It's off the
+allow-list until there's a real parser behind it, not a stand-in.
+
+The response includes the derived key, public URL and, for every allow-listed format
+except AVIF, detected dimensions — AVIF's live in a nested box structure inside the
+file that isn't parsed yet, so those uploads store with `width`/`height` as `null`
+rather than a guess.
 
 ### Settings, authors, and operations
 

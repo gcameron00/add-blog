@@ -6,9 +6,10 @@ Everything needed to run add-blog as a fleet of blogs — one shared Worker scri
 read API, R2 media and feeds all real. Phase 4 (Access JWT verification, `GET
 /api/admin/me`) is live too (verified 2026-07-27) — the admin host genuinely requires a
 verified, provisioned identity now. Phase 5's posts write path (create/edit/publish/
-delete/revisions) and its settings/dashboard slice (`GET`/`PUT /settings`, `stats`,
-`audit`) are both live too (verified 2026-07-28). Media upload and tag management are built and tested
-(173 tests) but **not yet deployed** — next push ships them. Authors,
+delete/revisions), its settings/dashboard slice (`GET`/`PUT /settings`, `stats`,
+`audit`), and media upload are all live too (media confirmed working in production).
+Tag management and the editor's cover-image/insert-from-library integration are built
+and tested (173 tests) but **not yet deployed** — next push ships them. Authors,
 export/import and scheduled-post auto-publish are still queued — none of them have an
 admin UI page calling them yet, which is deliberate; see
 [implementation-plan.md](implementation-plan.md)'s Phase 5 section. Sections below
@@ -263,26 +264,25 @@ turned out to be the CI deploy tool installing an unrelated wrangler version, no
 | Dashboard tiles (published/draft/scheduled/media/words) | Real counts, not demo numbers | ✅ |
 | Dashboard activity feed | Real entries with a post title per line, newest first | ✅ |
 
-**Phase 5c, media upload (built and tested — check these once deployed, not yet
-confirmed live for `gcameron`):**
+**Phase 5c, media upload (live for `gcameron`, confirmed working):**
 
-| Check | Expected |
-| --- | --- |
-| Upload a JPEG/PNG/WebP/AVIF/GIF or PDF under 25 MB, with alt text | Appears in the library with detected dimensions (all but AVIF) and the alt text you entered |
-| Try to upload without alt text | Client-side refusal, no request sent — "Add alt text before uploading." |
-| Try to upload an SVG | Rejected — SVG isn't on the allow-list at all (see architecture.md §4 on why) |
-| Upload the exact same file twice | Second one returns the first one's record, not a new duplicate |
-| Delete a file used as a post's cover | `409`, refused, with the referencing post(s) named |
-| Delete an unused file | Removed from both R2 and the library listing |
-| "Copy URL" on a real (non-demo) item | Copies `/media/<key>` — this used to be broken (missing `/media/`) before this pass fixed the `key`/`url` shape |
+| Check | Expected | Confirmed |
+| --- | --- | --- |
+| Upload one or more JPEG/PNG/WebP/AVIF/GIF or PDF files, up to 25 MB each | Appears in the library with detected dimensions (all but AVIF); alt text is empty until set via "Edit alt" — no alt is collected at upload time | ✅ |
+| Try to upload an SVG | Rejected — SVG isn't on the allow-list at all (see architecture.md §4 on why) | not yet exercised in prod |
+| Upload the exact same file twice | Second one returns the first one's record, not a new duplicate | not yet exercised in prod |
+| Delete a file used as a post's cover | `409`, refused, with the referencing post(s) named | not yet exercised in prod |
+| Delete an unused file | Removed from both R2 and the library listing | not yet exercised in prod |
+| "Copy URL" on a real (non-demo) item | Copies `/media/<key>` — this used to be broken (missing `/media/`) before this pass fixed the `key`/`url` shape | not yet exercised in prod |
 
 **Not built yet (expect 404 or demo data, not real behaviour):**
 
-| Check | Expected, once built |
+| Check | Expected, once built or deployed |
 | --- | --- |
 | `POST https://blog-admin.<site>/mcp` (no token) | 401 with `WWW-Authenticate` (Phase 6) |
 | A `scheduled` post reaching its `scheduled_for` time with nobody visiting the admin UI | Auto-publishes (Phase 5, cron slice) — today it stays `scheduled` until someone calls publish |
-| Tag rename/merge in Settings | Persists for real, not just this browser's demo store (Phase 5, tags slice) |
+| Tag rename/merge on `/admin/tags/` | Persists for real, not just this browser's demo store — built and tested (Phase 5d), not yet deployed |
+| Cover-image picker / "Insert image from library" in the editor | Both work against the real media library — built and tested, not yet deployed |
 
 ## 7. Rollback
 

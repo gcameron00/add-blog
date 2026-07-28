@@ -594,6 +594,66 @@ body.admin {
 .dropzone strong { display: block; margin: var(--sp-2) 0 var(--sp-1); color: var(--text); }
 .dropzone.is-dragover { border-color: var(--accent); background: var(--accent-subtle); }
 
+/* --- Media picker (editor: cover image + insert-into-body) ---------------- */
+
+.media-picker {
+  width: min(38rem, calc(100vw - 2rem));
+  max-height: min(32rem, calc(100vh - 4rem));
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  color: var(--text);
+  display: flex;
+  flex-direction: column;
+}
+.media-picker::backdrop { background: rgb(0 0 0 / 0.5); }
+.media-picker__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-3);
+  padding: var(--sp-4) var(--sp-5);
+  border-bottom: 1px solid var(--border);
+}
+.media-picker__header h3 { margin: 0; font-size: var(--text-lg); }
+.media-picker__search { margin: var(--sp-4) var(--sp-5) 0; width: calc(100% - 2 * var(--sp-5)); }
+.media-picker__body { padding: var(--sp-4) var(--sp-5); overflow-y: auto; flex: 1; }
+.media-picker__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(7rem, 1fr));
+  gap: var(--sp-3);
+}
+.media-picker__item {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+  padding: var(--sp-1);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg-inset);
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+  text-align: left;
+  cursor: pointer;
+}
+.media-picker__item:hover { border-color: var(--accent); color: var(--text); }
+.media-picker__item img { width: 100%; aspect-ratio: 4 / 3; object-fit: cover; border-radius: calc(var(--radius) - 2px); }
+.media-picker__item span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.cover-preview {
+  aspect-ratio: 16 / 9;
+  border-radius: var(--radius);
+  overflow: hidden;
+  background: var(--bg-inset);
+  display: grid;
+  place-items: center;
+  color: var(--text-faint);
+  font-size: var(--text-xs);
+  margin-bottom: var(--sp-3);
+}
+.cover-preview img { width: 100%; height: 100%; object-fit: cover; }
+
 /* --- Activity ------------------------------------------------------------- */
 
 .activity { list-style: none; padding: 0; margin: 0; }

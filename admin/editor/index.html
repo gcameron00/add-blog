@@ -64,6 +64,20 @@
 
           <aside class="editor-aside">
             <div class="card">
+              <h3>Cover image</h3>
+              <div data-cover-preview class="cover-preview"></div>
+              <div class="field">
+                <label class="visually-hidden" for="cover_alt">Cover alt text</label>
+                <input type="text" id="cover_alt" data-field="cover_alt"
+                       placeholder="Alt text for the cover image" />
+              </div>
+              <div style="display: flex; gap: .5rem; margin-top: .5rem">
+                <button class="btn btn--sm" type="button" data-cover-pick>Choose from library</button>
+                <button class="btn btn--sm btn--ghost" type="button" data-cover-remove hidden>Remove</button>
+              </div>
+            </div>
+
+            <div class="card">
               <h3>Publishing</h3>
               <div class="field">
                 <label for="scheduled_for">Schedule for</label>

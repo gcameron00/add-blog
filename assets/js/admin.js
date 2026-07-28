@@ -135,6 +135,79 @@ export function codeBlock(text) {
   ]);
 }
 
+/* --- Media picker -----------------------------------------------------------
+ * A native <dialog> so Escape-to-close and focus handling come from the
+ * browser rather than hand-rolled — used by the editor for a post's cover
+ * image and for inserting an image into the body. Browsing only: it reuses
+ * the library `GET /api/admin/media` already backs, it doesn't duplicate the
+ * upload form that already lives on the media page.
+ * ---------------------------------------------------------------------- */
+
+export function openMediaPicker({ onSelect }) {
+  const dialog = el('dialog', { class: 'media-picker' });
+  const search = el('input', {
+    type: 'search',
+    class: 'media-picker__search',
+    placeholder: 'Search filenames and alt text…',
+    autocomplete: 'off',
+  });
+  const body = el('div', { class: 'media-picker__body', 'aria-live': 'polite' });
+
+  async function load(q) {
+    clear(body).append(el('p', { class: 'small muted', text: 'Loading…' }));
+    try {
+      const { data } = await api.listMedia({ q, type: 'image' });
+      if (!data.length) {
+        clear(body).append(el('p', { class: 'small muted', text: q ? 'No matches.' : 'No images uploaded yet.' }));
+        return;
+      }
+      clear(body).append(
+        el('div', { class: 'media-picker__grid' },
+          data.map((item) =>
+            el('button', {
+              type: 'button', class: 'media-picker__item', title: item.filename,
+              onClick: () => { dialog.close(); onSelect(item); },
+            }, [
+              el('img', { src: item.url, alt: '', loading: 'lazy' }),
+              el('span', { text: item.filename }),
+            ])
+          )
+        )
+      );
+    } catch (error) {
+      clear(body).append(el('p', { class: 'small muted', text: error.message || 'Could not load media.' }));
+    }
+  }
+
+  let debounce;
+  search.addEventListener('input', () => {
+    clearTimeout(debounce);
+    debounce = setTimeout(() => load(search.value.trim()), 200);
+  });
+
+  // Native <dialog> doesn't close on a backdrop click by default — only
+  // treat it as "outside" when the click lands outside the element's own
+  // box, since the dialog and its backdrop share the same click target.
+  dialog.addEventListener('click', (event) => {
+    const r = dialog.getBoundingClientRect();
+    const inside = event.clientX >= r.left && event.clientX <= r.right && event.clientY >= r.top && event.clientY <= r.bottom;
+    if (!inside) dialog.close();
+  });
+  dialog.addEventListener('close', () => dialog.remove());
+
+  dialog.append(
+    el('div', { class: 'media-picker__header' }, [
+      el('h3', { text: 'Choose from library' }),
+      el('a', { class: 'small', href: '/admin/media/', target: '_blank', rel: 'noopener', text: 'Upload new…' }),
+    ]),
+    search,
+    body
+  );
+  document.body.append(dialog);
+  dialog.showModal();
+  load('');
+}
+
 /* --- Dashboard ------------------------------------------------------------ */
 
 async function initDashboard() {

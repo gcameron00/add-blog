@@ -16,7 +16,7 @@
  */
 
 import * as api from './api.js';
-import { toast, statusBadge } from './admin.js';
+import { openMediaPicker, toast, statusBadge } from './admin.js';
 import { el, clear, append, icon, formatDateTime } from './main.js';
 import { renderMarkdown, slugify, wordCount, readingMinutes } from './markdown.js';
 
@@ -36,11 +36,16 @@ const dom = {
   tagHost: document.querySelector('[data-tags]'),
   schedule: document.querySelector('[data-field="scheduled_for"]'),
   heading: document.querySelector('[data-editor-heading]'),
+  coverPreview: document.querySelector('[data-cover-preview]'),
+  coverAlt: document.querySelector('[data-field="cover_alt"]'),
+  coverPick: document.querySelector('[data-cover-pick]'),
+  coverRemove: document.querySelector('[data-cover-remove]'),
 };
 
 const state = {
   post: null,
   tags: [],
+  cover: { key: null, url: null },
   slugLocked: false,
   dirty: false,
   saving: false,
@@ -106,7 +111,25 @@ function createEditor() {
     toolbar: [
       'bold', 'italic', '|',
       'heading-1', 'heading-2', 'heading-3', '|',
-      'quote', 'unordered-list', 'ordered-list', 'link', '|',
+      'quote', 'unordered-list', 'ordered-list', 'link',
+      {
+        name: 'insert-image',
+        // Opens the same picker the cover-image field uses (openMediaPicker,
+        // admin.js) rather than EasyMDE's default `![](http://)` placeholder
+        // text — browsing the library beats typing a URL from memory.
+        action(editorInstance) {
+          openMediaPicker({
+            onSelect: (item) => {
+              const cm = editorInstance.codemirror;
+              cm.replaceSelection(`![${item.alt || ''}](${item.url})`);
+              cm.focus();
+            },
+          });
+        },
+        className: 'fa fa-picture-o',
+        title: 'Insert image from library',
+      },
+      '|',
       'preview', 'side-by-side', 'fullscreen', '|',
       'guide',
     ],
@@ -313,6 +336,36 @@ function addTag(raw) {
   markDirty();
 }
 
+/* --- Cover image ------------------------------------------------------------
+ * Browsing only — picking reuses the same library the media page uploads
+ * into (openMediaPicker, in admin.js). `state.cover` tracks the key/url
+ * because state.post is wholesale-replaced on save; cover_alt lives in its
+ * own field like subtitle/excerpt do, read directly from the DOM in collect().
+ * ---------------------------------------------------------------------- */
+
+function renderCoverPreview() {
+  clear(dom.coverPreview);
+  if (state.cover.url) {
+    dom.coverPreview.append(el('img', { src: state.cover.url, alt: '' }));
+  } else {
+    dom.coverPreview.append(el('span', { text: 'No cover set' }));
+  }
+  dom.coverRemove.hidden = !state.cover.key;
+}
+
+function setCover(item) {
+  state.cover = { key: item.key, url: item.url };
+  if (!dom.coverAlt.value.trim() && item.alt) dom.coverAlt.value = item.alt;
+  renderCoverPreview();
+  markDirty();
+}
+
+function clearCover() {
+  state.cover = { key: null, url: null };
+  renderCoverPreview();
+  markDirty();
+}
+
 /* --- Load ----------------------------------------------------------------- */
 
 function fill(post) {
@@ -325,7 +378,11 @@ function fill(post) {
   mde.value(post.body_md || '');
   dom.slug.value = post.slug || '';
   dom.excerpt.value = post.excerpt || '';
+  dom.coverAlt.value = post.cover_alt || post.cover?.alt || '';
   if (post.scheduled_for) dom.schedule.value = post.scheduled_for.slice(0, 16);
+
+  state.cover = { key: post.cover_key || null, url: post.cover?.url || null };
+  renderCoverPreview();
 
   dom.heading.textContent = post.id ? 'Edit post' : 'New post';
   renderTags();
@@ -418,6 +475,8 @@ function collect() {
     excerpt: dom.excerpt.value.trim(),
     body_md: mde.value(),
     tags: state.tags.map((t) => t.name),
+    cover_key: state.cover.key || null,
+    cover_alt: dom.coverAlt.value.trim() || null,
   };
 }
 
@@ -482,9 +541,12 @@ function wire() {
     if (cleaned !== dom.slug.value) dom.slug.value = cleaned;
   });
 
-  for (const field of [dom.subtitle, dom.excerpt]) {
+  for (const field of [dom.subtitle, dom.excerpt, dom.coverAlt]) {
     field.addEventListener('input', markDirty);
   }
+
+  dom.coverPick.addEventListener('click', () => openMediaPicker({ onSelect: setCover }));
+  dom.coverRemove.addEventListener('click', clearCover);
 
   document.querySelector('[data-schedule-button]')?.addEventListener('click', () => {
     const when = dom.schedule.value;

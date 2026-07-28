@@ -30,10 +30,13 @@ The public hostname does not acknowledge that an admin surface exists.
 > `GET /stats`, `GET /audit`. The settings key list below has been corrected to match
 > what's actually seeded and what the settings form actually submits (added
 > `admin_url`, dropped the unused `theme_accent`).
-> **Media built and tested, not yet deployed** (Phase 5c, `src/admin-media.js`) — every
-> route below except `image/svg+xml` uploads, which aren't accepted (see the note under
-> "Uploads" below — needs a real sanitiser, not a stand-in). AVIF uploads are accepted
-> but stored without detected `width`/`height`.
+> **Media built, tested, and live for `gcameron`** (Phase 5c, `src/admin-media.js`) —
+> every route below except `image/svg+xml` uploads, which aren't accepted (see the note
+> under "Uploads" below — needs a real sanitiser, not a stand-in). AVIF uploads are
+> accepted but stored without detected `width`/`height`. The editor's cover-image
+> picker and insert-from-library button (`assets/js/admin.js`'s `openMediaPicker`) are
+> built and tested but not yet deployed — media itself was live before anything in the
+> admin UI could reference it.
 > **Tags built and tested, not yet deployed** (Phase 5d, `src/admin-tags.js`) — every
 > route in the Tags table below, including `merge`. Renaming a tag's slug does not leave
 > a redirect for the old one — see the note in `src/admin-tags.js`.

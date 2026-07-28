@@ -11,24 +11,25 @@ bundler. The whole front end ships as Cloudflare Workers static assets.
 
 ## Status
 
-**Phases 1–4 are built and live; Phase 5's posts, settings and dashboard slices are
-built, tested, and live too; media upload and tag management are built and tested,
-pending deployment.** The Worker router (`src/index.js`) enforces the hostname split
-and sends security headers; the public read path (JSON API, server-rendered
-permalinks, R2 media, feeds) is live for `gcameron`, backed by real D1/R2. Access JWT
-verification and identity resolution (`src/access.js`, `src/auth.js`) are live too —
-the admin hostname is genuinely access-controlled, not a public prototype. The admin
-Posts API, Settings, and the dashboard's stats/activity feed are all live and verified
-in production; media upload (`src/admin-media.js`) and the Tags admin page
-(`src/admin-tags.js`) are tested (173 tests total) and browser-verified against demo
-data, but not yet confirmed against live D1/R2. Authors, export/import and
-scheduled-post auto-publishing are still queued — see the Phase 5 breakdown in
-[implementation-plan.md](docs/implementation-plan.md). A *new* site still needs its own
-D1 database, R2 bucket and Access application created before it shows real content and
-requires login instead of demo data — see [`docs/deployment.md`](docs/deployment.md)
-and the "Future considerations" section of the
-[implementation plan](docs/implementation-plan.md) on why that's a one-time manual step
-per site.
+**Phases 1–4 are built and live; Phase 5's posts, settings, dashboard and media
+upload are built, tested, and live too; tag management and the editor's media
+integration are built and tested, pending deployment.** The Worker router
+(`src/index.js`) enforces the hostname split and sends security headers; the public
+read path (JSON API, server-rendered permalinks, R2 media, feeds) is live for
+`gcameron`, backed by real D1/R2. Access JWT verification and identity resolution
+(`src/access.js`, `src/auth.js`) are live too — the admin hostname is genuinely
+access-controlled, not a public prototype. The admin Posts API, Settings, the
+dashboard's stats/activity feed, and media upload (`src/admin-media.js`) are all live
+and verified in production. The Tags admin page (`src/admin-tags.js`) and the editor's
+cover-image/insert-from-library integration are tested (173 tests total) and
+browser-verified against demo data, but not yet confirmed against live D1/R2. Authors,
+export/import and scheduled-post auto-publishing are still queued — see the Phase 5
+breakdown in [implementation-plan.md](docs/implementation-plan.md). A *new* site still
+needs its own D1 database, R2 bucket and Access application created before it shows
+real content and requires login instead of demo data — see
+[`docs/deployment.md`](docs/deployment.md) and the "Future considerations" section of
+the [implementation plan](docs/implementation-plan.md) on why that's a one-time manual
+step per site.
 
 | Layer | State |
 | --- | --- |
@@ -41,7 +42,8 @@ per site.
 | Cloudflare Access / identity (`GET /me`) | Built, tested, live for `gcameron` |
 | Admin Posts API (CRUD, publish, revisions) | Built, tested, live for `gcameron` |
 | Admin Settings + dashboard (`stats`, `audit`) | Built, tested, live for `gcameron` |
-| Media upload (validation, checksum dedupe, dimensions) | Built, tested; not yet deployed. No SVG (needs a real sanitiser); AVIF has no dimensions |
+| Media upload (validation, checksum dedupe, dimensions) | Built, tested, live for `gcameron`. No SVG (parked as a future feature, needs a real sanitiser); AVIF has no dimensions |
+| Media ↔ editor integration (cover picker, insert-into-body) | Built, tested; not yet deployed — media was previously upload-only, disconnected from the editor |
 | Tags admin (CRUD, merge, `admin/tags/`) | Built, tested; not yet deployed |
 | Authors/Export admin routes | Not built — no admin UI page calls them yet |
 | Scheduled-post auto-publish (cron) | Not built — needs an owner decision on `wrangler.toml` `[triggers]` |

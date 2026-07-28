@@ -1,11 +1,11 @@
 # Implementation plan
 
 Phases 1–4 are complete, in this repository, and live in production for the
-`gcameron` site. Phase 5 is being delivered in slices: posts, settings and the
-dashboard (5a/5b) are live, verified in production; media upload (5c) and tags-as-a-
-resource (5d) are built and tested but not yet deployed. Authors, export/import and
-scheduled-post auto-publish remain proposed build-out — see Phase 5 below for the
-exact breakdown.
+`gcameron` site. Phase 5 is being delivered in slices: posts, settings/dashboard, and
+media upload (5a/5b/5c) are live, verified in production; tags-as-a-resource (5d) and
+the editor's cover-image/insert-from-library integration are built and tested but not
+yet deployed. Authors, export/import and scheduled-post auto-publish remain proposed
+build-out — see Phase 5 below for the exact breakdown.
 
 Each phase is independently deployable and leaves the site working. Phases 2–5 are
 sequential — routing before storage, storage before auth, auth before the write path.
@@ -198,7 +198,7 @@ application, returning the real identity and role.
 
 ---
 
-## Phase 5 — Write path 🚧 (posts + settings + dashboard live; media + tags built, pending deploy; rest queued)
+## Phase 5 — Write path 🚧 (posts + settings + dashboard + media live; tags built, pending deploy; rest queued)
 
 **Goal.** The admin UI stops being a prototype.
 
@@ -294,7 +294,7 @@ Phase 1/4 UI copy had gone stale now that real data backs them:
   of it before JS runs) and still works exactly as before for a new site that hasn't
   reached Phase 5 yet, or for the no-Worker `python3 -m http.server` local dev path.
 
-**5c — Media upload. Built and tested, not yet deployed
+**5c — Media upload. Built, tested, and live for `gcameron`
 (`src/admin-media.js`, `src/admin-db.js`, `src/media-parse.js`):**
 
 - `POST /api/admin/media` (`multipart/form-data`), `GET /api/admin/media` (filters:
@@ -405,6 +405,26 @@ Phase 1/4 UI copy had gone stale now that real data backs them:
   apart from the same demo-mode `/api/admin/me` 404 every other admin page produces
   before a Worker is deployed.
 
+**Editor integration, connecting 5a and 5c. Built and tested, not yet deployed** —
+separate from 5c itself (live) and under owner review. Media upload existed but
+nothing could *use* it — the editor had no cover-image field and no way to put a
+library image into a post body except copying a URL by hand from the media page and
+pasting it into Markdown. Closed both gaps:
+- A **cover image** card on the editor (`admin/editor/index.html`) — preview, "Choose
+  from library", "Remove". `cover_key`/`cover_alt` now round-trip through `collect()`/
+  `fill()` the same way tags do, and the demo fallbacks for `createPost`/`updatePost`
+  (`assets/js/api.js`) were extended to carry them too — they didn't before, so a cover
+  picked in demo mode would have been silently dropped on save.
+- A custom EasyMDE toolbar button ("Insert image from library") that inserts
+  `![alt](url)` at the cursor, instead of EasyMDE's default behaviour of dropping in an
+  empty `![](http://)` placeholder for the author to fill in from memory.
+- Both share one new component, `openMediaPicker()` in `assets/js/admin.js` — a native
+  `<dialog>` (Escape and backdrop-click close for free), searchable, filtered to
+  `type=image` since a post cover or an inline image is never a PDF. It browses the
+  existing library only; it doesn't duplicate the upload form already on the media
+  page. Verified in a real browser: pick, remove, re-pick, insert-into-body, and that a
+  saved post's `cover_key` actually persists through demo mode's `localStorage` store.
+
 **Queued — not yet built:**
 
 - Authors: `GET/POST /authors`, `PATCH`/`DELETE /authors/:id` (all owner-only except
@@ -427,15 +447,17 @@ Phase 1/4 UI copy had gone stale now that real data backs them:
 firing job (auto-publishing, auto-deleting old revisions), a different risk category
 from a static var, worth a specific conversation rather than folding into a config diff.
 
-**Exit criteria — met for posts, settings and dashboard reads, not yet for Phase 5 as a
-whole.** A post can be created, edited, saved, previewed, scheduled, published,
-unpublished and deleted through the admin UI against live D1 for `gcameron`; settings
-can be changed and persist; the dashboard shows real counts and a real activity feed —
-none of it through tests alone, all confirmed in production. Media upload (5c) and tag
-management (5d) meet the same bar in tests and in a real browser against demo data, but
-haven't been confirmed against live D1/R2 in production yet. Still open: "scheduled"
-doesn't self-publish without the cron trigger, and authors/export remain unbuilt — the
-admin UI still can't do everything Phase 1's demo let you *pretend* to do.
+**Exit criteria — met for posts, settings, dashboard reads and media upload, not yet
+for Phase 5 as a whole.** A post can be created, edited, saved, previewed, scheduled,
+published, unpublished and deleted through the admin UI against live D1 for
+`gcameron`; settings can be changed and persist; the dashboard shows real counts and a
+real activity feed; media can be uploaded, browsed and deleted against real R2 — none
+of it through tests alone, all confirmed in production. Tag management (5d) and the
+editor's media integration meet the same bar in tests and in a real browser against
+demo data, but haven't been confirmed against live D1/R2 in production yet. Still
+open: "scheduled" doesn't self-publish without the cron trigger, and authors/export
+remain unbuilt — the admin UI still can't do everything Phase 1's demo let you
+*pretend* to do.
 
 ---
 

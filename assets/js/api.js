@@ -340,7 +340,9 @@ export function createPost(input) {
         author: demo.CURRENT_USER,
         author_id: demo.CURRENT_USER.id,
         tags: normaliseTags(input.tags),
-        cover: null,
+        cover_key: input.cover_key || null,
+        cover_alt: input.cover_alt || null,
+        cover: input.cover_key ? { url: `/media/${input.cover_key}`, alt: input.cover_alt || '' } : null,
         word_count: wordCount(input.body_md || ''),
         reading_minutes: readingMinutes(input.body_md || ''),
         created_at: nowIso(),
@@ -383,8 +385,11 @@ export function updatePost(id, patch) {
         excerpt: patch.excerpt || excerptFrom(patch.body_md ?? post.body_md, 190),
         visibility: patch.visibility ?? post.visibility,
         tags: patch.tags ? normaliseTags(patch.tags) : post.tags,
+        cover_key: patch.cover_key !== undefined ? patch.cover_key : post.cover_key,
+        cover_alt: patch.cover_alt !== undefined ? patch.cover_alt : post.cover_alt,
         updated_at: nowIso(),
       });
+      post.cover = post.cover_key ? { url: `/media/${post.cover_key}`, alt: post.cover_alt || '' } : null;
       post.word_count = wordCount(post.body_md);
       post.reading_minutes = readingMinutes(post.body_md);
 

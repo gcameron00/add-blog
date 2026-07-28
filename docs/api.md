@@ -22,12 +22,18 @@ The public hostname does not acknowledge that an admin surface exists.
 > revisions-with-restore, and a best-effort edge-cache purge on every mutation are all
 > in. Not yet built: the editor's own conflict-prompt UI for a `409` (the server detects
 > it; nothing calls `If-Match` yet), `Idempotency-Key` (its main consumer, MCP, doesn't
-> exist yet either). **Known UX gap, found in production:** editing an already-published
-> post is labelled "Save draft" but goes live immediately — see
-> [implementation-plan.md](implementation-plan.md)'s Phase 5 section.
-> **Tags, Media, Settings/authors/ops routes below are still specified, not
-> implemented.** `assets/js/api.js` already calls every route in this document; it
-> falls back to demo data per-endpoint until each one is live.
+> exist yet either). **Fixed in production:** editing an already-published post used to
+> be labelled "Save draft" while going live immediately — the button now says "Save
+> changes" for a published/scheduled post.
+> **Settings and dashboard reads built, tested, and live for `gcameron`** (Phase 5b,
+> `src/admin-settings.js`, `src/admin-dashboard.js`) — `GET`/`PUT /settings`,
+> `GET /stats`, `GET /audit`. The settings key list below has been corrected to match
+> what's actually seeded and what the settings form actually submits (added
+> `admin_url`, dropped the unused `theme_accent`).
+> **Tags, Authors, Media, `/export`, `/import` routes are still specified, not
+> implemented** — deliberately: nothing in the shipped admin UI calls them yet, unlike
+> everything built so far. `assets/js/api.js` already calls every route in this
+> document; it falls back to demo data per-endpoint until each one is live.
 
 ---
 
@@ -240,6 +246,9 @@ URL and detected dimensions.
 | `POST` | `/export` | Full content export to R2 as JSON; returns a short-lived link |
 | `POST` | `/import` | Import from an export bundle or a Markdown/front-matter archive |
 
-Settings keys: `site_title`, `site_description`, `site_url`, `base_path`, `timezone`,
-`posts_per_page`, `allow_raw_html`, `theme_accent`, `social_image_key`,
-`analytics_enabled`, `feed_full_content`.
+Settings keys: `site_title`, `site_description`, `site_url`, `admin_url`, `base_path`,
+`timezone`, `posts_per_page`, `allow_raw_html`, `social_image_key`,
+`analytics_enabled`, `feed_full_content`. `PUT` only touches keys present in the
+request body — not a literal full-replace — since the settings form only submits the
+keys it has inputs for; a stricter reading would silently drop `social_image_key`
+(the one seeded key with no form field) on every save.

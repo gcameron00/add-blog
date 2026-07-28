@@ -231,8 +231,14 @@ function paintStatus() {
 
 function paintActions() {
   const post = state.post;
+  // "Save" edits the row in place — for a draft that's a no-op the reader
+  // never sees; for an already-published or scheduled post it goes out
+  // immediately (the cache purge is near-instant), so the label says so
+  // rather than implying a separate, un-pushed draft copy that doesn't
+  // exist. See docs/implementation-plan.md's Phase 5 "known issue" note.
+  const saveLabel = post.status === 'published' || post.status === 'scheduled' ? 'Save changes' : 'Save draft';
   append(clear(dom.actions),
-    el('button', { class: 'btn', type: 'button', text: 'Save draft', onClick: () => save({ notify: true }) }),
+    el('button', { class: 'btn', type: 'button', text: saveLabel, onClick: () => save({ notify: true }) }),
     post.status === 'published'
       ? el('button', {
           class: 'btn', type: 'button', text: 'Unpublish',

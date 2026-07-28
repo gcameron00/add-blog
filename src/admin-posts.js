@@ -20,52 +20,10 @@ import {
   uniqueSlug,
   updatePostRow,
 } from './admin-db.js';
-import { can } from './auth.js';
+import { apiError, readJsonBody, requirePermission, requireSameOrigin, withErrors } from './admin-http.js';
 import { writeAuditLog } from './audit.js';
 import { purgePostUrls } from './cache-purge.js';
 import { ValidationError, validateBodyMd, validateScheduledFor, validateSlug, validateTags, validateTitle, validateVisibility } from './validate.js';
-
-function apiError(status, code, message, extra = {}) {
-  return Response.json({ error: { code, message, ...extra } }, { status });
-}
-
-function apiFail(status, code, message, extra = {}) {
-  throw Object.assign(new Error(message), { status, code, ...extra });
-}
-
-async function withErrors(fn) {
-  try {
-    return await fn();
-  } catch (err) {
-    if (err.status) {
-      const extra = {};
-      if (err.field) extra.field = err.field;
-      if (err.detail) extra.detail = err.detail;
-      return apiError(err.status, err.code || 'bad_request', err.message, extra);
-    }
-    console.error(err);
-    return apiError(500, 'internal_error', 'Unexpected error.');
-  }
-}
-
-function requireSameOrigin(request, url) {
-  const origin = request.headers.get('Origin');
-  if (!origin || origin !== url.origin) apiFail(403, 'forbidden', 'Cross-origin write rejected.');
-}
-
-async function readJsonBody(request) {
-  const contentType = request.headers.get('Content-Type') || '';
-  if (!contentType.includes('application/json')) throw new ValidationError('Content-Type must be application/json.');
-  try {
-    return await request.json();
-  } catch {
-    throw new ValidationError('Malformed JSON body.');
-  }
-}
-
-function requirePermission(identity, permission) {
-  if (!can(identity.author.role, permission)) apiFail(403, 'forbidden', 'Your role cannot do this.');
-}
 
 function requirePostWriteAccess(identity, post) {
   requirePermission(identity, post.author.id === identity.author.id ? 'post.editOwn' : 'post.editOthers');
@@ -217,7 +175,8 @@ async function patchHandler(request, env, identity, id) {
   }
 
   await writeAuditLog(env.DB, {
-    actor: identity.email, via: 'ui', action: 'post.update', entity: 'post', entityId: id, detail: { fields: Object.keys(fields) },
+    actor: identity.email, via: 'ui', action: 'post.update', entity: 'post', entityId: id,
+    detail: { title: fields.title ?? post.title, fields: Object.keys(fields) },
   });
 
   const updated = await getAdminPostById(env.DB, id);
@@ -241,7 +200,7 @@ async function deleteHandler(url, env, identity, id) {
   }
   await writeAuditLog(env.DB, {
     actor: identity.email, via: 'ui', action: hard ? 'post.delete_hard' : 'post.delete',
-    entity: 'post', entityId: id, detail: { slug: post.slug },
+    entity: 'post', entityId: id, detail: { title: post.title, slug: post.slug },
   });
 
   return { post, hard };
@@ -258,7 +217,9 @@ async function publishHandler(env, identity, id) {
     scheduled_for: null,
     updated_at: nowIso(),
   });
-  await writeAuditLog(env.DB, { actor: identity.email, via: 'ui', action: 'post.publish', entity: 'post', entityId: id });
+  await writeAuditLog(env.DB, {
+    actor: identity.email, via: 'ui', action: 'post.publish', entity: 'post', entityId: id, detail: { title: post.title },
+  });
 
   const updated = await getAdminPostById(env.DB, id);
   return { updated, wasPublished: post.status === 'published' };
@@ -271,7 +232,9 @@ async function unpublishHandler(env, identity, id) {
 
   // published_at is left intact — set once, on first publish, per docs/architecture.md §3.
   await updatePostRow(env.DB, id, { status: 'draft', scheduled_for: null, updated_at: nowIso() });
-  await writeAuditLog(env.DB, { actor: identity.email, via: 'ui', action: 'post.unpublish', entity: 'post', entityId: id });
+  await writeAuditLog(env.DB, {
+    actor: identity.email, via: 'ui', action: 'post.unpublish', entity: 'post', entityId: id, detail: { title: post.title },
+  });
 
   const updated = await getAdminPostById(env.DB, id);
   return { updated, wasPublished: post.status === 'published' };
@@ -287,7 +250,8 @@ async function scheduleHandler(request, env, identity, id) {
 
   await updatePostRow(env.DB, id, { status: 'scheduled', scheduled_for: scheduledFor, updated_at: nowIso() });
   await writeAuditLog(env.DB, {
-    actor: identity.email, via: 'ui', action: 'post.schedule', entity: 'post', entityId: id, detail: { scheduled_for: scheduledFor },
+    actor: identity.email, via: 'ui', action: 'post.schedule', entity: 'post', entityId: id,
+    detail: { title: post.title, scheduled_for: scheduledFor },
   });
 
   const updated = await getAdminPostById(env.DB, id);
@@ -327,7 +291,8 @@ async function duplicateHandler(env, identity, id) {
   if (tagNames.length) await setPostTags(env.DB, post.id, tagNames);
   await insertRevision(env.DB, { postId: post.id, title: post.title, bodyMd: post.body_md, authorId: identity.author.id, note: 'create' });
   await writeAuditLog(env.DB, {
-    actor: identity.email, via: 'ui', action: 'post.duplicate', entity: 'post', entityId: post.id, detail: { source_id: id },
+    actor: identity.email, via: 'ui', action: 'post.duplicate', entity: 'post', entityId: post.id,
+    detail: { title: post.title, source_id: id },
   });
 
   const created = await getAdminPostById(env.DB, post.id);
@@ -363,7 +328,8 @@ async function restoreHandler(env, identity, id, revisionId) {
   });
   await insertRevision(env.DB, { postId: id, title: revision.title, bodyMd: revision.body_md, authorId: identity.author.id, note: 'restore' });
   await writeAuditLog(env.DB, {
-    actor: identity.email, via: 'ui', action: 'post.restore', entity: 'post', entityId: id, detail: { revision_id: revisionId },
+    actor: identity.email, via: 'ui', action: 'post.restore', entity: 'post', entityId: id,
+    detail: { title: revision.title, revision_id: revisionId },
   });
 
   const updated = await getAdminPostById(env.DB, id);

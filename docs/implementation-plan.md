@@ -196,17 +196,18 @@ application, returning the real identity and role.
 
 ---
 
-## Phase 5 — Write path 🚧 (posts live for `gcameron`; rest queued)
+## Phase 5 — Write path 🚧 (posts + settings + dashboard live for `gcameron`; rest queued)
 
 **Goal.** The admin UI stops being a prototype.
 
-Phase 5 turned out to be several independently-shippable slices, not one. First slice
-(posts) is built, tested, and live in production for `gcameron` (deployed and verified
-2026-07-28); the rest are queued as explicit follow-ups rather than attempted in the
-same pass at lower quality.
+Phase 5 turned out to be several independently-shippable slices, not one. Each slice
+was scoped to routes the shipped admin UI already calls (same rule Phase 4's `GET /me`
+followed) — Tags-as-a-resource and Authors CRUD are deliberately not in 5a or 5b
+because nothing in `assets/js/admin.js` calls them yet; building them ahead of a UI
+that uses them would just be untested surface no one exercises.
 
-**Built, tested, and live for `gcameron` (`src/admin-posts.js`, `src/admin-db.js`,
-`src/validate.js`, `src/cache-purge.js`):**
+**5a — Posts. Built, tested, and live for `gcameron` (`src/admin-posts.js`,
+`src/admin-db.js`, `src/validate.js`, `src/cache-purge.js`):**
 
 - Admin post API: create, read, update, soft/hard delete (hard is owner-only),
   publish, unpublish, schedule, duplicate — every route in
@@ -239,31 +240,61 @@ same pass at lower quality.
   "edit your own post" as "edit someone else's" — 403ing an `author`-role user out of
   their own drafts.
 
-**Known issue, found in production (2026-07-28), not yet fixed.** Editing an
-already-published post shows a **"Save draft"** button (`assets/js/editor.js`), but
-saving edits a published post *in place* and purges the public cache — the change goes
-live immediately, not into a pending draft. This isn't an API bug: `PATCH
+**Fixed in production (found 2026-07-28, fixed same session).** Editing an
+already-published post showed a **"Save draft"** button (`assets/js/editor.js`), but
+saving edits a published post *in place* and purges the public cache — the change went
+live immediately, not into a pending draft. This was never an API bug: `PATCH
 /api/admin/posts/:id` does exactly what it's documented to do, and there's no
 "unpublished pending edit of a published post" concept in the data model — a post has
-exactly one row and one status. It's a front-end copy/UX gap left over from Phase 1's
+exactly one row and one status. It was a front-end copy/UX gap left over from Phase 1's
 demo prototype, where "Save draft" only ever applied to genuinely-unpublished posts.
-Options for the fix: relabel the button for a published post (e.g. "Save changes" or
-"Save (live now)"), or actually add the pending-edit concept the label implies — the
-latter is a real design decision (a shadow draft row? a `pending_body_md` column?), not
-a one-line fix, so this is parked here rather than patched reflexively.
+**Fix chosen:** relabel the button — "Save changes" for a published/scheduled post,
+"Save draft" only for an actual draft. The alternative (an actual pending-edit-of-a-
+published-post concept — a shadow draft row, a `pending_body_md` column) is a real
+design decision, not a copy fix, and wasn't warranted for what turned out to be a
+labelling problem.
+
+**5b — Settings and dashboard reads. Built, tested, and live for `gcameron`
+(`src/admin-settings.js`, `src/admin-dashboard.js`):**
+
+- `GET`/`PUT /api/admin/settings` — `assets/js/admin.js`'s settings page has called
+  both since Phase 1. `PUT` is owner-only, rejects unknown keys, and only touches keys
+  present in the request (the settings form only submits fields it has inputs for, so a
+  literal full-replace `PUT` would have silently deleted `social_image_key` — the
+  settings table's only key not on the visible form — every time someone saved).
+  **Doc fix alongside this:** the key allow-list here — and now in [api.md](api.md) —
+  is the actual union of what `migrations/seed.sql` seeds and what
+  `admin/settings/index.html`'s form submits (11 keys, including `admin_url`), not the
+  slightly different list this doc originally sketched (which had an unused
+  `theme_accent` and was missing `admin_url`).
+- `GET /api/admin/stats` — post counts by status, total `word_count`, media count
+  (0 until Phase 5's media slice ships), next scheduled post. No "views" figure —
+  nothing collects page views yet, `analytics_enabled` is a stored preference with no
+  collection code behind it regardless of its value.
+- `GET /api/admin/audit` — filterable by `actor`/`action`/`via`, newest first. Required
+  going back through every `writeAuditLog` call in `src/admin-posts.js` to add a
+  `title` to each one's `detail` (some only had `slug`, `fields`, or a bare id before)
+  so the dashboard's activity feed shows a real post title per entry instead of nothing
+  — `assets/js/admin.js` renders `entry.detail` as plain text, unchanged since Phase 1.
+- 15 new tests (122 total).
 
 **Queued — not yet built:**
 
 - Tags as their own resource: `GET/POST /tags`, `PATCH`/`DELETE /tags/:id`,
   `POST /tags/merge`. (Posts can already *attach* tags — `setPostTags` in
   `src/admin-db.js` creates a tag on first use — there just isn't a route to manage
-  tags directly yet.)
+  tags directly yet, and nothing in the admin UI calls one either.)
+- Authors: `GET/POST /authors`, `PATCH`/`DELETE /authors/:id` (all owner-only except
+  the list). No admin UI page calls these yet — worth pairing with a small authors page
+  when built, since the main value (inviting a real teammate without the owner running
+  raw SQL — see [deployment.md](deployment.md) §1, which is how the site's own owner
+  row was seeded) needs *something* to click, not just an endpoint.
 - Media upload through the Worker: validation, size cap, checksum keying, SVG
   sanitisation, dimension detection, `media` rows, usage tracking, delete-with-guard.
 - Lazy image variants written back to R2 — needs a resizing mechanism (e.g. Cloudflare
   Images) Workers don't have natively; needs a decision, likely with the owner, before
   it's built.
-- Settings/authors/`stats`/`audit`/`export`/`import` routes.
+- `POST /export` and `/import`.
 - Cron trigger for scheduled publishing (the `scheduled` status exists and is set by
   `POST /:id/schedule`, but nothing currently flips it to `published` when the date
   arrives) and revision retention.
@@ -274,12 +305,14 @@ a one-line fix, so this is parked here rather than patched reflexively.
 firing job (auto-publishing, auto-deleting old revisions), a different risk category
 from a static var, worth a specific conversation rather than folding into a config diff.
 
-**Exit criteria — met for the posts slice, in production.** A post can be created,
-edited, saved, previewed, scheduled, published, unpublished and deleted through the
-admin UI against live D1 for `gcameron`, not just through tests. The known issue above
-is a UX gap, not a functional failure — every one of those actions does what it's
-specified to do. Still open: "scheduled" doesn't self-publish without the cron trigger,
-and Phase 5's non-posts slices (tags/media/settings/export) remain unbuilt.
+**Exit criteria — met for posts, settings and dashboard reads, not yet for Phase 5 as a
+whole.** A post can be created, edited, saved, previewed, scheduled, published,
+unpublished and deleted through the admin UI against live D1 for `gcameron`; settings
+can be changed and persist; the dashboard shows real counts and a real activity feed —
+none of it through tests alone, all confirmed in production. Still open: "scheduled"
+doesn't self-publish without the cron trigger, and tags/authors/media/export remain
+unbuilt — the admin UI still can't do everything Phase 1's demo let you *pretend* to
+do.
 
 ---
 

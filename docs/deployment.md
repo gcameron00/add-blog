@@ -6,11 +6,13 @@ Everything needed to run add-blog as a fleet of blogs — one shared Worker scri
 read API, R2 media and feeds all real. Phase 4 (Access JWT verification, `GET
 /api/admin/me`) is live too (verified 2026-07-27) — the admin host genuinely requires a
 verified, provisioned identity now. Phase 5's posts write path (create/edit/publish/
-delete/revisions) is live too (verified 2026-07-28) — see the known UI issue in §6
-before assuming every rough edge is a bug. Tags, media upload and scheduled-post
-auto-publish are still queued. Sections below double as the runbook for the
-*next* site: everything in §1-4 is real, owner-run work for `gcameron` already done;
-repeat it for each new one.
+delete/revisions) and its settings/dashboard slice (`GET`/`PUT /settings`, `stats`,
+`audit`) are both live too (verified 2026-07-28). Tags, authors, media upload,
+export/import and scheduled-post auto-publish are still queued — none of them have an
+admin UI page calling them yet, which is deliberate; see
+[implementation-plan.md](implementation-plan.md)'s Phase 5 section. Sections below
+double as the runbook for the *next* site: everything in §1-4 is real, owner-run work
+for `gcameron` already done; repeat it for each new one.
 
 ---
 
@@ -247,15 +249,18 @@ turned out to be the CI deploy tool installing an unrelated wrangler version, no
 | --- | --- | --- |
 | Create a post through the editor, save | Draft appears in `GET /api/admin/posts`, not on the public site | ✅ |
 | Publish it | Live at `/posts/<slug>` and in `/api/posts` within the cache window; cache purge means usually immediately | ✅ |
-| Edit the title/body of a published post | Public copy reflects the change within the cache window | ✅ — but see the known UI issue below |
+| Edit the title/body of a published post | Public copy reflects the change within the cache window; button reads "Save changes", not "Save draft" | ✅ |
 | Unpublish, then delete | Gone from the public site at each step; a hard delete (owner only) removes the row entirely | ✅ |
 | Two tabs editing the same post, second one saves | No conflict prompt yet — the second save silently wins; `ETag`/`If-Match` exist server-side (test-verified) but the editor doesn't send `If-Match` yet | not yet exercised in prod |
 
-> **Known UI issue, found in this pass:** editing an already-published post shows a
-> "Save draft" button, but saving edits the live post directly — the change goes out
-> immediately (correct per the API contract; the button's label is what's misleading).
-> See [implementation-plan.md](implementation-plan.md)'s Phase 5 section for the fix
-> options under consideration.
+**Phase 5b, settings and dashboard (live for `gcameron`, verified 2026-07-28):**
+
+| Check | Expected | Confirmed |
+| --- | --- | --- |
+| Change a setting (e.g. site title), save | Persists; reload shows the new value | ✅ |
+| A non-owner tries to save settings | 403, form shows an error toast | ✅ |
+| Dashboard tiles (published/draft/scheduled/media/words) | Real counts, not demo numbers | ✅ |
+| Dashboard activity feed | Real entries with a post title per line, newest first | ✅ |
 
 **Not built yet (expect 404 or demo data, not real behaviour):**
 

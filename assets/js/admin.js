@@ -380,7 +380,7 @@ async function initMedia() {
         grid.append(
           el('figure', { class: 'media-item', style: 'margin:0' }, [
             el('div', { class: 'media-item__thumb' }, [
-              isImage ? icon('image') : icon('file'),
+              isImage ? el('img', { src: item.url, alt: '', loading: 'lazy' }) : icon('file'),
             ]),
             el('figcaption', { class: 'media-item__body' }, [
               el('div', { class: 'media-item__name', title: item.filename, text: item.filename }),
@@ -433,37 +433,42 @@ async function initMedia() {
   load();
 }
 
+// Alt text is deliberately not collected here — requiring it up front slows
+// down the one thing this form exists to do, and blocks selecting more than
+// one file at a time. Each card flags "Missing alt text" until it's fixed
+// via "Edit alt" instead — a nudge after the fact, not a gate before it.
 function initUpload(onUploaded) {
   const dropzone = document.querySelector('[data-dropzone]');
   const fileInput = document.querySelector('[data-file-input]');
-  const altInput = document.querySelector('[data-alt-input]');
   const status = document.querySelector('[data-upload-status]');
   if (!dropzone || !fileInput) return;
 
-  async function upload(file) {
-    if (!file) return;
-    if (!altInput.value.trim()) {
-      status.textContent = 'Add alt text before uploading.';
-      altInput.focus();
-      return;
-    }
-    status.textContent = `Uploading ${file.name}…`;
+  async function uploadAll(fileList) {
+    const files = [...fileList];
+    if (!files.length) return;
+
     fileInput.disabled = true;
-    try {
-      await api.uploadMedia(file, altInput.value.trim());
-      status.textContent = '';
-      altInput.value = '';
-      fileInput.value = '';
-      toast('File uploaded');
+    let succeeded = 0;
+    for (const [i, file] of files.entries()) {
+      status.textContent = files.length > 1 ? `Uploading ${i + 1} of ${files.length}…` : `Uploading ${file.name}…`;
+      try {
+        await api.uploadMedia(file);
+        succeeded += 1;
+      } catch (error) {
+        toast(`${file.name}: ${error.message || 'Upload failed'}`, 'error');
+      }
+    }
+    status.textContent = '';
+    fileInput.value = '';
+    fileInput.disabled = false;
+
+    if (succeeded) {
+      toast(files.length > 1 ? `${succeeded} of ${files.length} files uploaded` : 'File uploaded');
       onUploaded();
-    } catch (error) {
-      status.textContent = error.message || 'Upload failed';
-    } finally {
-      fileInput.disabled = false;
     }
   }
 
-  fileInput.addEventListener('change', () => upload(fileInput.files[0]));
+  fileInput.addEventListener('change', () => uploadAll(fileInput.files));
 
   // Drag-and-drop is additive — the label/file-input above already gives a
   // fully keyboard- and screen-reader-reachable path to the same upload.
@@ -479,7 +484,7 @@ function initUpload(onUploaded) {
       dropzone.classList.remove('is-dragover');
     })
   );
-  dropzone.addEventListener('drop', (event) => upload(event.dataTransfer.files[0]));
+  dropzone.addEventListener('drop', (event) => uploadAll(event.dataTransfer.files));
 }
 
 /* --- MCP page ------------------------------------------------------------- */

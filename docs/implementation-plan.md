@@ -303,8 +303,9 @@ Phase 1/4 UI copy had gone stale now that real data backs them:
   `?force=true`). `assets/js/admin.js`'s media page has called `listMedia`/
   `deleteMedia` since Phase 1 against a dropzone that was a static "Uploads arrive in
   Phase 5" placeholder with no `<input type="file">` at all; both the routes and that
-  placeholder are real now (drag-and-drop plus a keyboard/screen-reader-reachable
-  "Choose file" control, alt text required client-side before upload proceeds).
+  placeholder are real now (drag-and-drop, multi-file, plus a keyboard/screen-reader-
+  reachable "Choose files" control — see the follow-up note below on why alt text
+  isn't collected at upload time).
 - Content-addressed keys (`<yyyy>/<mm>/<sha256-prefix16>-<sanitised-filename>`, per
   [architecture.md](architecture.md) §4) via `crypto.subtle.digest`. Uploads are
   idempotent by design: the same bytes uploaded twice return the existing object
@@ -320,10 +321,10 @@ Phase 1/4 UI copy had gone stale now that real data backs them:
 - Size cap (25 MB) and a content-type allow-list: `image/jpeg`, `image/png`,
   `image/webp`, `image/avif`, `image/gif`, `application/pdf`.
   **`image/svg+xml` is deliberately not in the allow-list.** SVG is an executable
-  format; docs/architecture.md always called for sanitising it before storage, and a
-  regex-based "sanitiser" for something this XSS-sensitive would give false
-  confidence rather than real safety — SVG is off until there's a real parser behind
-  it, not a string-surgery approximation.
+  format, and a regex-based "sanitiser" for something this XSS-sensitive would give
+  false confidence rather than real safety — a real sanitiser is a parser, not a
+  string-surgery approximation. Owner call (2026-07-28): parked as a possible future
+  feature, not a near-term priority — revisit only if SVG upload is actually wanted.
 - **Doc/code fix alongside this:** `assets/js/demo-data.js`'s `MEDIA` fixture and
   `admin.js`'s "Copy URL" button both predated this slice and disagreed with the
   Phase 3 convention — demo `key`s had a baked-in `media/` prefix, and "Copy URL" did
@@ -343,6 +344,22 @@ Phase 1/4 UI copy had gone stale now that real data backs them:
   Verified by hand too: the demo-mode upload/delete/edit-alt/drag-and-drop flow was
   driven end-to-end in a real browser (Edge via Playwright) against the static-file
   dev path, not just asserted against the Worker.
+
+**Follow-up fixes (2026-07-28), from the owner's first real upload in production:**
+- **The thumbnail was never real.** The media grid showed a generic image icon for
+  every image regardless of content — `admin.js` never rendered an `<img>`. Fixed to
+  show the actual file via its `url`, `object-fit: cover` inside the existing
+  aspect-ratio box.
+- **Action buttons overflowed the card.** Three text-labelled buttons ("Copy URL",
+  "Edit alt", "Delete") in an 11rem-minimum grid cell clipped the last one. Fixed with
+  `flex-wrap` on the action row plus a wider 13rem minimum card size, rather than
+  shrinking to icon-only buttons that would've cost the clear labelling.
+- **Alt text is no longer collected at upload time.** The owner's read: requiring it
+  up front slows down the one thing the form exists to do, and rules out selecting
+  more than one file at once. Uploads now go through immediately with no alt text,
+  the file input takes multiple files (and so does drag-and-drop), and each card's
+  existing "Missing alt text" flag — unchanged — is the nudge to fix it afterward via
+  "Edit alt", not a blocker before it.
 
 **Queued — not yet built:**
 

@@ -278,6 +278,20 @@ labelling problem.
   — `assets/js/admin.js` renders `entry.detail` as plain text, unchanged since Phase 1.
 - 15 new tests (122 total).
 
+**Follow-up UI cleanup (2026-07-28), once 5a/5b were confirmed live.** Two pieces of
+Phase 1/4 UI copy had gone stale now that real data backs them:
+- The dashboard's "Access-controlled; still a read-only prototype" callout
+  (`admin/index.html`) is gone — it described the Phase 4→5 gap, which has closed, and
+  it duplicated what the existing per-page "Demo data" banner (`assets/js/main.js`,
+  fires on `addblog:demo-mode`) already signals automatically, page by page, more
+  accurately than a static blanket notice could.
+- Settings' "Reset demo data" card (`admin/settings/index.html`) is now conditional on
+  `api.isDemoMode()` rather than always shown — `initSettings()` in `assets/js/admin.js`
+  reveals it only after `getSettings()` resolves and confirms the page is actually
+  running against demo data. It stays hidden by default in the markup (avoids a flash
+  of it before JS runs) and still works exactly as before for a new site that hasn't
+  reached Phase 5 yet, or for the no-Worker `python3 -m http.server` local dev path.
+
 **Queued — not yet built:**
 
 - Tags as their own resource: `GET/POST /tags`, `PATCH`/`DELETE /tags/:id`,

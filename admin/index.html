@@ -29,22 +29,6 @@
           </div>
         </div>
 
-        <div class="callout callout--info">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" aria-hidden="true">
-            <path d="M12 9v4m0 3.5v.01M10.3 3.9 2.5 17.4A1.5 1.5 0 0 0 3.8 19.7h16.4a1.5 1.5 0 0 0 1.3-2.3L13.7 3.9a1.5 1.5 0 0 0-2.6 0Z" />
-          </svg>
-          <div>
-            <strong>Access-controlled; still a read-only prototype.</strong>
-            <p style="margin: 0">
-              Cloudflare Access now gates this hostname, and the Worker verifies your
-              identity on every request (Phase 4). The write API hasn't shipped yet
-              (Phase 5), so posts, media and settings below are still demo content — the
-              "demo" badge means the same thing it always has, nothing you edit here
-              persists.
-            </p>
-          </div>
-        </div>
-
         <div class="stat-grid" data-stats></div>
         <div data-next-scheduled></div>
 
@@ -61,7 +45,8 @@
           <div data-activity></div>
           <p class="small muted" style="margin: 1rem 0 0">
             Every write is recorded with the identity that made it and whether it came from
-            the UI or MCP. Backed by the <code>audit_log</code> table from Phase 4 onward.
+            the UI or MCP. Backed by the <code>audit_log</code> table, written to since
+            Phase 5.
           </p>
         </div>
       </main>

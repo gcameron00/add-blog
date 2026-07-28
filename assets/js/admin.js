@@ -497,6 +497,7 @@ async function initMcp() {
 async function initSettings() {
   const form = document.querySelector('[data-settings-form]');
   const reset = document.querySelector('[data-reset-demo]');
+  const prototypeCard = document.querySelector('[data-prototype-card]');
   if (!form) return;
 
   let current = {};
@@ -506,6 +507,11 @@ async function initSettings() {
     renderError(form, error, initSettings);
     return;
   }
+
+  // Only meaningful once we know whether this call actually hit demo data —
+  // isDemoMode() is decided by the getSettings() call just above (see
+  // assets/js/api.js), so it isn't reliable any earlier than this.
+  if (prototypeCard) prototypeCard.hidden = !api.isDemoMode();
 
   for (const [key, value] of Object.entries(current)) {
     const field = form.elements[key];

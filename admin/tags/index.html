@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light dark" />
+    <meta name="robots" content="noindex, nofollow" />
+    <title>Tags — add-blog admin</title>
+    <link rel="icon" href="/assets/favicon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="/assets/css/styles.css" />
+    <link rel="stylesheet" href="/assets/css/admin.css" />
+    <script type="module" src="/assets/js/admin.js"></script>
+  </head>
+  <body class="admin" data-page="tags">
+    <a class="skip-link" href="#main">Skip to content</a>
+
+    <div class="admin-layout">
+      <aside class="admin-sidebar" data-sidebar></aside>
+
+      <main class="admin-main" id="main" data-demo-slot>
+        <div class="admin-header">
+          <div>
+            <h1>Tags</h1>
+            <p>Every tag, used or not. Rename, delete, or merge duplicates.</p>
+          </div>
+          <div class="admin-header__actions">
+            <button class="btn" type="button" data-theme-toggle aria-label="Toggle theme"></button>
+            <button class="btn" type="button" data-merge-selected disabled>Merge selected&hellip;</button>
+          </div>
+        </div>
+
+        <div class="card card--flush">
+          <div class="filters">
+            <form data-tag-form style="display:flex;gap:var(--sp-2);flex:1 1 20rem">
+              <label class="visually-hidden" for="tag-name">New tag name</label>
+              <input type="text" id="tag-name" name="name" placeholder="New tag name&hellip;" maxlength="40" required autocomplete="off" />
+              <button class="btn btn--primary" type="submit">Add tag</button>
+            </form>
+          </div>
+
+          <div data-tags aria-live="polite"></div>
+        </div>
+      </main>
+    </div>
+  </body>
+</html>

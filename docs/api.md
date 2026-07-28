@@ -34,10 +34,13 @@ The public hostname does not acknowledge that an admin surface exists.
 > route below except `image/svg+xml` uploads, which aren't accepted (see the note under
 > "Uploads" below — needs a real sanitiser, not a stand-in). AVIF uploads are accepted
 > but stored without detected `width`/`height`.
-> **Tags, Authors, `/export`, `/import` routes are still specified, not implemented**
-> — deliberately: nothing in the shipped admin UI calls them yet, unlike everything
-> built so far. `assets/js/api.js` already calls every route in this document; it
-> falls back to demo data per-endpoint until each one is live.
+> **Tags built and tested, not yet deployed** (Phase 5d, `src/admin-tags.js`) — every
+> route in the Tags table below, including `merge`. Renaming a tag's slug does not leave
+> a redirect for the old one — see the note in `src/admin-tags.js`.
+> **Authors, `/export`, `/import` routes are still specified, not implemented** —
+> deliberately: nothing in the shipped admin UI calls them yet, unlike everything built
+> so far. `assets/js/api.js` already calls every route in this document; it falls back
+> to demo data per-endpoint until each one is live.
 
 ---
 
@@ -211,13 +214,23 @@ publish path so purge and audit logging cannot diverge between them.
 
 ### Tags
 
+`POST`/`PATCH`/`DELETE`/`merge` require `owner` or `editor` — same level as
+`post.editOthers`, since renaming or deleting a tag touches every post that carries it,
+not just the caller's own. `GET` only requires a signed-in identity.
+
 | Method | Path | Purpose |
 | --- | --- | --- |
-| `GET` | `/tags` | All tags with counts, including unused |
-| `POST` | `/tags` | Create |
-| `PATCH` | `/tags/:id` | Rename or re-slug; existing links redirect |
+| `GET` | `/tags` | All tags with counts, including unused — counted across every post status, not just published (unlike the public `GET /api/tags` above) |
+| `POST` | `/tags` | Create. `slug` is optional — derived from `name` if omitted |
+| `PATCH` | `/tags/:id` | Rename or re-slug |
 | `DELETE` | `/tags/:id` | Remove, detaching from posts |
-| `POST` | `/tags/merge` | `{ "from": ["css3"], "into": "css" }` |
+| `POST` | `/tags/merge` | `{ "from": ["css3"], "into": "css" }` — folds `from` into `into`, both by slug |
+
+**Renaming a tag's slug does not leave a redirect behind.** The public tag page
+(`/tags/?tag=<slug>`) is a live query-parameter filter against the *current* slug, not a
+static route with its own history, so a bookmark or inbound link built on the old slug
+just returns zero posts rather than 404ing — annoying, not broken. A redirect table is
+real schema work that wasn't warranted to make tag management usable.
 
 ### Media
 

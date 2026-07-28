@@ -119,6 +119,7 @@ function seed() {
   return {
     posts: demo.POSTS.map((p) => ({ ...p })),
     media: demo.MEDIA.map((m) => ({ ...m })),
+    tags: demo.TAGS.map((t) => ({ id: t.slug, description: null, ...t })),
     settings: { ...demo.SETTINGS },
     activity: demo.ACTIVITY.map((a) => ({ ...a })),
   };
@@ -248,7 +249,7 @@ export function listTags() {
           counts.set(tag.slug, (counts.get(tag.slug) || 0) + 1);
         }
       }
-      const data = demo.TAGS.filter((t) => counts.has(t.slug))
+      const data = getStore().tags.filter((t) => counts.has(t.slug))
         .map((t) => ({ ...t, post_count: counts.get(t.slug) }))
         .sort((a, b) => b.post_count - a.post_count || a.name.localeCompare(b.name));
       return { data };
@@ -545,6 +546,133 @@ export function deleteMedia(key) {
   );
 }
 
+function tagPostCount(state, slug) {
+  return state.posts.filter((p) => p.tags.some((t) => t.slug === slug)).length;
+}
+
+export function adminListTags() {
+  return withFallback(
+    () => call('/admin/tags'),
+    async () => {
+      await delay(60);
+      const state = getStore();
+      const data = state.tags
+        .map((t) => ({ ...t, post_count: tagPostCount(state, t.slug) }))
+        .sort((a, b) => a.name.localeCompare(b.name));
+      return { data };
+    }
+  );
+}
+
+export function createTag(input) {
+  return withFallback(
+    () => call('/admin/tags', { method: 'POST', body: input }),
+    async () => {
+      await delay();
+      const state = getStore();
+      const name = input.name?.trim() || '';
+      if (!name) throw new ApiError({ code: 'bad_request', message: 'name must be 1-40 characters.', field: 'name' }, 400);
+      const slug = input.slug?.trim() || slugify(name);
+      if (state.tags.some((t) => t.slug === slug)) {
+        throw new ApiError({ code: 'conflict', message: `The slug "${slug}" is already in use.`, field: 'slug' }, 409);
+      }
+      const tag = { id: `t${Date.now().toString(36)}`, slug, name, description: input.description || null };
+      state.tags.push(tag);
+      logActivity('tag.create', name);
+      persist();
+      return { data: { ...tag, post_count: 0 } };
+    }
+  );
+}
+
+export function updateTag(id, patch) {
+  return withFallback(
+    () => call(`/admin/tags/${encodeURIComponent(id)}`, { method: 'PATCH', body: patch }),
+    async () => {
+      await delay();
+      const state = getStore();
+      const tag = state.tags.find((t) => t.id === id);
+      if (!tag) throw new ApiError({ code: 'not_found', message: 'Not found.' }, 404);
+
+      const nextSlug = patch.slug !== undefined ? patch.slug : tag.slug;
+      if (nextSlug !== tag.slug && state.tags.some((t) => t.id !== id && t.slug === nextSlug)) {
+        throw new ApiError({ code: 'conflict', message: `The slug "${nextSlug}" is already in use.`, field: 'slug' }, 409);
+      }
+
+      const oldSlug = tag.slug;
+      Object.assign(tag, {
+        name: patch.name !== undefined ? patch.name : tag.name,
+        slug: nextSlug,
+        description: patch.description !== undefined ? patch.description : tag.description,
+      });
+
+      // Posts carry a denormalised copy of each tag ({slug, name}), same as
+      // the real schema's post_tags → tags join collapsed client-side — a
+      // rename has to walk every post to stay consistent, not just the tag row.
+      for (const post of state.posts) {
+        for (const t of post.tags) {
+          if (t.slug === oldSlug) {
+            t.slug = tag.slug;
+            t.name = tag.name;
+          }
+        }
+      }
+
+      logActivity('tag.update', tag.name);
+      persist();
+      return { data: { ...tag, post_count: tagPostCount(state, tag.slug) } };
+    }
+  );
+}
+
+export function deleteTag(id) {
+  return withFallback(
+    () => call(`/admin/tags/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+    async () => {
+      await delay();
+      const state = getStore();
+      const index = state.tags.findIndex((t) => t.id === id);
+      if (index === -1) throw new ApiError({ code: 'not_found', message: 'Not found.' }, 404);
+      const [removed] = state.tags.splice(index, 1);
+      for (const post of state.posts) {
+        post.tags = post.tags.filter((t) => t.slug !== removed.slug);
+      }
+      logActivity('tag.delete', removed.name);
+      persist();
+      return { data: { id } };
+    }
+  );
+}
+
+export function mergeTags(fromSlugs, intoSlug) {
+  return withFallback(
+    () => call('/admin/tags/merge', { method: 'POST', body: { from: fromSlugs, into: intoSlug } }),
+    async () => {
+      await delay();
+      const state = getStore();
+      const into = state.tags.find((t) => t.slug === intoSlug);
+      const missing = [intoSlug, ...fromSlugs].filter((slug) => !state.tags.some((t) => t.slug === slug));
+      if (missing.length) {
+        throw new ApiError({ code: 'not_found', message: `Unknown tag slug(s): ${missing.join(', ')}.` }, 404);
+      }
+
+      const fromSet = new Set(fromSlugs.filter((slug) => slug !== intoSlug));
+      for (const post of state.posts) {
+        if (!post.tags.some((t) => fromSet.has(t.slug))) continue;
+        post.tags = post.tags.filter((t) => !fromSet.has(t.slug));
+        if (!post.tags.some((t) => t.slug === intoSlug)) {
+          post.tags.push({ slug: into.slug, name: into.name });
+        }
+      }
+      state.tags = state.tags.filter((t) => !fromSet.has(t.slug));
+
+      logActivity('tag.merge', into.name);
+      persist();
+      return { data: { ...into, post_count: tagPostCount(state, into.slug) } };
+    }
+  );
+}
+
 export function getSettings() {
   return withFallback(
     () => call('/admin/settings'),
@@ -623,7 +751,7 @@ function normaliseTags(tags) {
     .slice(0, 10)
     .map((name) => {
       const slug = slugify(name);
-      return demo.TAGS.find((t) => t.slug === slug) || { slug, name };
+      return getStore().tags.find((t) => t.slug === slug) || { slug, name };
     });
 }
 

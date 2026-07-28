@@ -300,3 +300,80 @@ export async function listAdminMedia(db, { q, type, unused, limit = 50, offset =
     page: { limit: boundedLimit, offset: boundedOffset, total: filtered.length, has_more: boundedOffset + page.length < filtered.length },
   };
 }
+
+/** Every tag with its post count, including tags on zero posts — the admin list is a management view, not the public "tags with content" one in src/db.js, so it counts across every post status, not just published. */
+export async function listAdminTags(db) {
+  const { results } = await db
+    .prepare(`
+      SELECT t.id, t.slug, t.name, t.description, COUNT(pt.post_id) AS post_count
+      FROM tags t
+      LEFT JOIN post_tags pt ON pt.tag_id = t.id
+      GROUP BY t.id
+      ORDER BY t.name ASC
+    `)
+    .all();
+  return results;
+}
+
+export async function getTagById(db, id) {
+  return db.prepare(`SELECT * FROM tags WHERE id = ?`).bind(id).first();
+}
+
+/** Same shape as one row of `listAdminTags`, for routes that need a single tag's current post count after a write (rename, merge). */
+export async function getAdminTagById(db, id) {
+  return db
+    .prepare(`
+      SELECT t.id, t.slug, t.name, t.description, COUNT(pt.post_id) AS post_count
+      FROM tags t
+      LEFT JOIN post_tags pt ON pt.tag_id = t.id
+      WHERE t.id = ?
+      GROUP BY t.id
+    `)
+    .bind(id)
+    .first();
+}
+
+export async function getTagBySlug(db, slug) {
+  return db.prepare(`SELECT * FROM tags WHERE slug = ?`).bind(slug).first();
+}
+
+export async function tagSlugExists(db, slug, excludeId = null) {
+  const row = await db.prepare(`SELECT 1 FROM tags WHERE slug = ? AND id != ? LIMIT 1`).bind(slug, excludeId || '').first();
+  return Boolean(row);
+}
+
+export async function insertTag(db, { id, slug, name, description = null }) {
+  await db.prepare(`INSERT INTO tags (id, slug, name, description) VALUES (?, ?, ?, ?)`).bind(id, slug, name, description).run();
+}
+
+export async function updateTagRow(db, id, fields) {
+  const columns = Object.keys(fields);
+  if (!columns.length) return;
+  const set = columns.map((c) => `${c} = ?`).join(', ');
+  await db.prepare(`UPDATE tags SET ${set} WHERE id = ?`).bind(...columns.map((c) => fields[c]), id).run();
+}
+
+/** `post_tags` rows cascade via its `tag_id` FK (same reliance as `deletePostRow` above) — this "detaches from posts" per docs/api.md without a separate DELETE statement. */
+export async function deleteTagRow(db, id) {
+  await db.prepare(`DELETE FROM tags WHERE id = ?`).bind(id).run();
+}
+
+/**
+ * Folds every `fromIds` tag into `intoId`: re-points each of its posts at
+ * `intoId` (via `INSERT OR IGNORE`, since a post already carrying both tags
+ * would collide with `post_tags`'s composite primary key on a plain UPDATE),
+ * then deletes the now-empty `from` tag, cascading its own leftover
+ * `post_tags` rows the same way `deleteTagRow` does.
+ */
+export async function mergeTagsRows(db, fromIds, intoId) {
+  const statements = [];
+  for (const fromId of fromIds) {
+    if (fromId === intoId) continue;
+    const { results } = await db.prepare(`SELECT post_id FROM post_tags WHERE tag_id = ?`).bind(fromId).all();
+    for (const { post_id } of results) {
+      statements.push(db.prepare(`INSERT OR IGNORE INTO post_tags (post_id, tag_id) VALUES (?, ?)`).bind(post_id, intoId));
+    }
+    statements.push(db.prepare(`DELETE FROM tags WHERE id = ?`).bind(fromId));
+  }
+  if (statements.length) await db.batch(statements);
+}

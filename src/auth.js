@@ -14,6 +14,7 @@ const PERMISSIONS = {
   'media.delete': ['owner', 'editor'],
   'settings.manage': ['owner'],
   'authors.manage': ['owner'],
+  'tags.manage': ['owner', 'editor'],
 };
 
 /** Does this role hold this permission? Unknown permissions deny by default. */

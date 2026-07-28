@@ -2,9 +2,10 @@
 
 Phases 1–4 are complete, in this repository, and live in production for the
 `gcameron` site. Phase 5 is being delivered in slices: posts, settings and the
-dashboard (5a/5b) are live, verified in production; media upload (5c) is built and
-tested but not yet deployed. Tags, authors, export/import and scheduled-post
-auto-publish remain proposed build-out — see Phase 5 below for the exact breakdown.
+dashboard (5a/5b) are live, verified in production; media upload (5c) and tags-as-a-
+resource (5d) are built and tested but not yet deployed. Authors, export/import and
+scheduled-post auto-publish remain proposed build-out — see Phase 5 below for the
+exact breakdown.
 
 Each phase is independently deployable and leaves the site working. Phases 2–5 are
 sequential — routing before storage, storage before auth, auth before the write path.
@@ -197,7 +198,7 @@ application, returning the real identity and role.
 
 ---
 
-## Phase 5 — Write path 🚧 (posts + settings + dashboard live; media built, pending deploy; rest queued)
+## Phase 5 — Write path 🚧 (posts + settings + dashboard live; media + tags built, pending deploy; rest queued)
 
 **Goal.** The admin UI stops being a prototype.
 
@@ -361,12 +362,51 @@ Phase 1/4 UI copy had gone stale now that real data backs them:
   existing "Missing alt text" flag — unchanged — is the nudge to fix it afterward via
   "Edit alt", not a blocker before it.
 
+**5d — Tags as their own resource. Built and tested, not yet deployed
+(`src/admin-tags.js`, `src/admin-db.js`):**
+
+- `GET /api/admin/tags` (all tags with counts, including ones on zero posts — counted
+  across every post status, unlike the public `GET /api/tags`, which only counts
+  published), `POST /api/admin/tags` (slug derived from `name` if omitted),
+  `PATCH /api/admin/tags/:id` (rename and/or re-slug), `DELETE /api/admin/tags/:id`
+  (cascades its `post_tags` rows, detaching it from every post), and
+  `POST /api/admin/tags/merge` (`{ from: [slugs], into: slug }`, reassigns every
+  `from`-tagged post onto `into` and deletes the `from` tags). Posts could already
+  *attach* tags — `setPostTags` in `src/admin-db.js` has created a tag on first use
+  since Phase 5a — this is the missing piece: managing the tag list on its own, and the
+  admin UI page (`admin/tags/index.html`) to do it from.
+- `tags.manage` added to the role table (`src/auth.js`) — `owner`/`editor`, the same
+  level as `post.editOthers`, since a rename or delete touches every post carrying that
+  tag, not just the caller's own. `GET` only requires a signed-in identity, matching
+  every other admin list route.
+- Merging is a straight `INSERT OR IGNORE` into `post_tags` per carried-over post,
+  keyed on the table's composite primary key — a post already carrying both the `from`
+  and `into` tag would collide with a plain `UPDATE tag_id`, so this goes row-by-row
+  through the junction table instead; then the `from` tag is deleted, which cascades
+  its own now-redundant `post_tags` rows the same way `DELETE /tags/:id` does.
+- The admin UI (`admin/tags/index.html`, `assets/js/admin.js`'s `initTags`) is a single
+  table: a name field to add a tag, per-row Rename/Delete (via `prompt()`/`confirm()`,
+  the same pattern as Media's "Edit alt"/"Delete" rather than a new dialog component
+  for two single-field forms), and a checkbox column feeding "Merge selected…" — the
+  only action here whose meaning depends on more than one row being picked.
+- **Not built:** renaming a tag's slug doesn't leave a redirect behind. The public tag
+  page (`/tags/?tag=<slug>`) is a live query-parameter filter against the *current*
+  slug, not a static route with its own history, so a bookmark or inbound link to the
+  old slug just returns zero posts rather than 404ing — annoying, not broken. A
+  redirect table is real schema work this slice didn't need to do to make tag
+  management usable.
+- 19 new tests (173 total) — permission checks per role, slug-collision 409s, the
+  cascade-delete detaching a tag from a live `post_tags` row, and both merge scenarios
+  (a post carrying only the `from` tag, and one already carrying both — the
+  `INSERT OR IGNORE` path, asserted by checking `post_count` doesn't double-count).
+  Verified by hand too, in a real browser (Playwright-driven Chromium) against the
+  demo-mode static-file dev path: add, rename, delete and a two-tag merge, each
+  reflected immediately in the table and via a toast, with `console --errors` clean
+  apart from the same demo-mode `/api/admin/me` 404 every other admin page produces
+  before a Worker is deployed.
+
 **Queued — not yet built:**
 
-- Tags as their own resource: `GET/POST /tags`, `PATCH`/`DELETE /tags/:id`,
-  `POST /tags/merge`. (Posts can already *attach* tags — `setPostTags` in
-  `src/admin-db.js` creates a tag on first use — there just isn't a route to manage
-  tags directly yet, and nothing in the admin UI calls one either.)
 - Authors: `GET/POST /authors`, `PATCH`/`DELETE /authors/:id` (all owner-only except
   the list). No admin UI page calls these yet — worth pairing with a small authors page
   when built, since the main value (inviting a real teammate without the owner running
@@ -391,10 +431,10 @@ from a static var, worth a specific conversation rather than folding into a conf
 whole.** A post can be created, edited, saved, previewed, scheduled, published,
 unpublished and deleted through the admin UI against live D1 for `gcameron`; settings
 can be changed and persist; the dashboard shows real counts and a real activity feed —
-none of it through tests alone, all confirmed in production. Media upload (5c) meets
-the same bar in tests and in a real browser against demo data, but hasn't been
-confirmed against live D1/R2 in production yet. Still open: "scheduled" doesn't
-self-publish without the cron trigger, and tags/authors/export remain unbuilt — the
+none of it through tests alone, all confirmed in production. Media upload (5c) and tag
+management (5d) meet the same bar in tests and in a real browser against demo data, but
+haven't been confirmed against live D1/R2 in production yet. Still open: "scheduled"
+doesn't self-publish without the cron trigger, and authors/export remain unbuilt — the
 admin UI still can't do everything Phase 1's demo let you *pretend* to do.
 
 ---

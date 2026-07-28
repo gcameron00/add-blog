@@ -51,6 +51,20 @@ export function validateTags(tags) {
   return tags.map((t) => t.trim());
 }
 
+export function validateTagName(name) {
+  if (typeof name !== 'string' || name.trim().length < 1 || name.length > 40) {
+    throw new ValidationError('name must be 1-40 characters.', 'name');
+  }
+  return name.trim();
+}
+
+export function validateTagSlug(slug) {
+  if (typeof slug !== 'string' || slug.length < 1 || slug.length > 40 || !SLUG_RE.test(slug)) {
+    throw new ValidationError('slug must match ^[a-z0-9]+(-[a-z0-9]+)*$, 1-40 characters.', 'slug');
+  }
+  return slug;
+}
+
 export function validateVisibility(visibility) {
   if (visibility === undefined) return 'public';
   if (visibility !== 'public' && visibility !== 'unlisted') {

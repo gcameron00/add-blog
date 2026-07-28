@@ -323,11 +323,11 @@ minutes, never permanent staleness.
 
 > **Built vs. as-specified (Phase 4 + 5):** the JWT verification, `authors` resolution
 > and role table below are implemented (`src/access.js`, `src/auth.js`) and live for
-> `gcameron`, verified against the real Access application. Role-gated *write* actions
-> are implemented too, for posts specifically (`src/admin-posts.js`) — tested against
-> every row of the table below and verified live in production. Tags/media/settings/
-> authors writes don't exist yet (still Phase 5, queued) — see
-> [implementation-plan.md](implementation-plan.md).
+> `gcameron`. Role-gated *write* actions are implemented for posts (`src/admin-posts.js`,
+> live), settings (`src/admin-settings.js`, live), media (`src/admin-media.js`, tested,
+> not yet deployed) and tags (`src/admin-tags.js`, tested, not yet deployed) — each
+> tested against every row of its own permission table. Authors writes don't exist yet
+> (still Phase 5, queued) — see [implementation-plan.md](implementation-plan.md).
 
 **Cloudflare Access is the front door, not the only lock.** Access authenticates users
 at the edge and no unauthenticated request reaches the admin Worker. The Worker

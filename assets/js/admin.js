@@ -21,6 +21,7 @@ import {
 const NAV = [
   { href: '/admin/', label: 'Dashboard', icon: 'home' },
   { href: '/admin/posts/', label: 'Posts', icon: 'file' },
+  { href: '/admin/tags/', label: 'Tags', icon: 'tag' },
   { href: '/admin/media/', label: 'Media', icon: 'image' },
   { href: '/admin/mcp/', label: 'MCP access', icon: 'plug' },
   { href: '/admin/settings/', label: 'Settings', icon: 'gear' },
@@ -487,6 +488,144 @@ function initUpload(onUploaded) {
   dropzone.addEventListener('drop', (event) => uploadAll(event.dataTransfer.files));
 }
 
+/* --- Tags page -------------------------------------------------------------
+ * A checkbox column feeds "Merge selected…" — the only multi-row action
+ * here — rather than a dedicated selection mode, since it's the one
+ * button whose meaning depends on more than one row being picked. Rename
+ * and delete reuse the same prompt()/confirm() pattern as media's "Edit
+ * alt" and "Delete" (assets/js/admin.js, initMedia) rather than a new
+ * dialog component for two single-field forms.
+ * -------------------------------------------------------------------------- */
+
+function tagsTable(tags, { selected, onToggle, onChange }) {
+  const table = el('table', { class: 'table' }, [
+    el('thead', {}, [
+      el('tr', {}, [
+        el('th', {}, [el('span', { class: 'visually-hidden', text: 'Select for merge' })]),
+        el('th', { text: 'Name' }),
+        el('th', { text: 'Slug' }),
+        el('th', { text: 'Posts' }),
+        el('th', {}, [el('span', { class: 'visually-hidden', text: 'Actions' })]),
+      ]),
+    ]),
+  ]);
+
+  const body = el('tbody');
+  for (const tag of tags) {
+    body.append(
+      el('tr', {}, [
+        el('td', {}, [
+          el('input', {
+            type: 'checkbox',
+            'aria-label': `Select "${tag.name}" for merging`,
+            checked: selected.has(tag.id) ? '' : null,
+            onChange: (event) => {
+              if (event.target.checked) selected.add(tag.id);
+              else selected.delete(tag.id);
+              onToggle();
+            },
+          }),
+        ]),
+        el('td', { text: tag.name }),
+        el('td', {}, [el('code', { text: tag.slug })]),
+        el('td', { text: String(tag.post_count) }),
+        el('td', {}, [
+          el('div', { class: 'table__actions' }, [
+            el('button', {
+              class: 'btn btn--sm btn--ghost', type: 'button', text: 'Rename',
+              onClick: () => {
+                const name = window.prompt('Tag name', tag.name);
+                if (name === null || !name.trim() || name.trim() === tag.name) return;
+                act(() => api.updateTag(tag.id, { name: name.trim() }), 'Tag renamed', onChange);
+              },
+            }),
+            el('button', {
+              class: 'btn btn--sm btn--ghost btn--danger', type: 'button', text: 'Delete',
+              onClick: () => {
+                const warning = tag.post_count
+                  ? `"${tag.name}" is used on ${tag.post_count} post${tag.post_count === 1 ? '' : 's'}. Delete it anyway? It will be removed from all of them.`
+                  : `Delete "${tag.name}"?`;
+                if (!confirm(warning)) return;
+                act(() => api.deleteTag(tag.id), 'Tag deleted', onChange);
+              },
+            }),
+          ]),
+        ]),
+      ])
+    );
+  }
+  table.append(body);
+  return table;
+}
+
+async function initTags() {
+  const host = document.querySelector('[data-tags]');
+  const form = document.querySelector('[data-tag-form]');
+  const mergeBtn = document.querySelector('[data-merge-selected]');
+  if (!host) return;
+
+  const selected = new Set();
+
+  function paintMergeButton() {
+    if (!mergeBtn) return;
+    mergeBtn.disabled = selected.size < 2;
+  }
+
+  async function load() {
+    host.setAttribute('aria-busy', 'true');
+    try {
+      const { data } = await api.adminListTags();
+      selected.clear();
+      paintMergeButton();
+      clear(host);
+      if (!data.length) {
+        renderEmpty(host, { title: 'No tags yet', body: 'Add one above, or attach one to a post from the editor.' });
+        return;
+      }
+      host.append(tagsTable(data, { selected, onToggle: paintMergeButton, onChange: load }));
+    } catch (error) {
+      renderError(host, error, load);
+    } finally {
+      host.removeAttribute('aria-busy');
+    }
+  }
+
+  form?.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const input = form.elements.name;
+    const name = input.value.trim();
+    if (!name) return;
+    const submit = form.querySelector('[type="submit"]');
+    submit.disabled = true;
+    try {
+      await api.createTag({ name });
+      input.value = '';
+      toast('Tag added');
+      load();
+    } catch (error) {
+      toast(error.message || 'Could not create tag', 'error');
+    } finally {
+      submit.disabled = false;
+    }
+  });
+
+  mergeBtn?.addEventListener('click', async () => {
+    const { data } = await api.adminListTags();
+    const chosen = data.filter((t) => selected.has(t.id));
+    if (chosen.length < 2) return;
+    const slugs = chosen.map((t) => t.slug);
+    const target = window.prompt(
+      `Merge ${chosen.map((t) => t.name).join(', ')} into which one? Enter its slug: ${slugs.join(', ')}`,
+      slugs[0]
+    );
+    if (!target || !slugs.includes(target)) return;
+    const from = slugs.filter((slug) => slug !== target);
+    await act(() => api.mergeTags(from, target), 'Tags merged', load);
+  });
+
+  load();
+}
+
 /* --- MCP page ------------------------------------------------------------- */
 
 const MCP_TOOLS = [
@@ -618,6 +757,7 @@ async function initSettings() {
 const PAGES = {
   dashboard: initDashboard,
   posts: initPosts,
+  tags: initTags,
   media: initMedia,
   mcp: initMcp,
   settings: initSettings,

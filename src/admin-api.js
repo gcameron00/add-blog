@@ -1,11 +1,11 @@
 /**
  * Admin API dispatcher. Phase 4 built identity (`GET /me`); Phase 5 adds the
  * Posts write path (src/admin-posts.js), Settings and the dashboard's
- * stats/audit reads (src/admin-settings.js, src/admin-dashboard.js), and
- * media upload (src/admin-media.js). Tags-as-a-resource and Authors are
- * still unbuilt — deliberately: nothing in the shipped admin UI calls them
- * yet, unlike everything built so far. This returns `null` for them, same
- * as any other not-yet-implemented route.
+ * stats/audit reads (src/admin-settings.js, src/admin-dashboard.js), media
+ * upload (src/admin-media.js) and tags-as-a-resource (src/admin-tags.js).
+ * Authors is still unbuilt — deliberately: nothing in the shipped admin UI
+ * calls it yet, unlike everything built so far. This returns `null` for it,
+ * same as any other not-yet-implemented route.
  *
  * By the time a request reaches here, src/index.js has already verified the
  * Access JWT and resolved `identity.author` — a null `identity` means Access
@@ -18,6 +18,7 @@ import { handleDashboardApi } from './admin-dashboard.js';
 import { handleMediaApi } from './admin-media.js';
 import { handlePostsApi } from './admin-posts.js';
 import { handleSettingsApi } from './admin-settings.js';
+import { handleTagsApi } from './admin-tags.js';
 import { permissionsFor } from './auth.js';
 
 function mapAuthor(author) {
@@ -44,6 +45,7 @@ export async function handleAdminApi(request, url, ctxBundle) {
     (await handlePostsApi(request, url, ctxBundle)) ||
     (await handleSettingsApi(request, url, ctxBundle)) ||
     (await handleDashboardApi(request, url, ctxBundle)) ||
-    (await handleMediaApi(request, url, ctxBundle))
+    (await handleMediaApi(request, url, ctxBundle)) ||
+    (await handleTagsApi(request, url, ctxBundle))
   );
 }

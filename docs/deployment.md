@@ -7,8 +7,8 @@ read API, R2 media and feeds all real. Phase 4 (Access JWT verification, `GET
 /api/admin/me`) is live too (verified 2026-07-27) — the admin host genuinely requires a
 verified, provisioned identity now. Phase 5's posts write path (create/edit/publish/
 delete/revisions) and its settings/dashboard slice (`GET`/`PUT /settings`, `stats`,
-`audit`) are both live too (verified 2026-07-28). Media upload is built and tested
-(154 tests) but **not yet deployed** — next push ships it. Tags, authors,
+`audit`) are both live too (verified 2026-07-28). Media upload and tag management are built and tested
+(173 tests) but **not yet deployed** — next push ships them. Authors,
 export/import and scheduled-post auto-publish are still queued — none of them have an
 admin UI page calling them yet, which is deliberate; see
 [implementation-plan.md](implementation-plan.md)'s Phase 5 section. Sections below

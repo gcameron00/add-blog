@@ -132,18 +132,133 @@ function refreshCounts() {
   );
 }
 
-/* --- Tags ----------------------------------------------------------------- */
+/* --- Tags -------------------------------------------------------------------
+ * Free-text entry made it easy to create a near-duplicate of a tag that
+ * already exists ("cloud flare" next to "Cloudflare") — the admin Tags page
+ * (Phase 5d) has a merge tool specifically for cleaning that up after the
+ * fact. This suggests from the real pool instead, so an author sees an
+ * existing tag before typing a close cousin of it. Suggestions only —
+ * typing something genuinely new and pressing Enter still creates it, same
+ * as before; the pool guides, it doesn't gate.
+ * ---------------------------------------------------------------------- */
+
+let tagPool = [];
+
+async function loadTagPool() {
+  try {
+    const { data } = await api.adminListTags();
+    tagPool = data;
+  } catch {
+    // Suggestions are a nicety, not a requirement — free-text entry below
+    // still works with an empty pool.
+  }
+}
+
+function matchingTags(query) {
+  const q = query.trim().toLowerCase();
+  if (!q) return [];
+  const chosen = new Set(state.tags.map((t) => t.slug));
+  return tagPool
+    .filter((t) => !chosen.has(t.slug) && t.name.toLowerCase().includes(q))
+    .sort((a, b) => {
+      const ai = a.name.toLowerCase().indexOf(q);
+      const bi = b.name.toLowerCase().indexOf(q);
+      return ai - bi || a.name.localeCompare(b.name);
+    })
+    .slice(0, 8);
+}
 
 function renderTags() {
+  let matches = [];
+  let activeIndex = -1;
+
+  const list = el('ul', { class: 'tag-suggestions', role: 'listbox', id: 'tag-suggestions' });
+  list.hidden = true;
+
+  function closeList() {
+    matches = [];
+    activeIndex = -1;
+    list.hidden = true;
+    clear(list);
+    input.setAttribute('aria-expanded', 'false');
+    input.removeAttribute('aria-activedescendant');
+  }
+
+  function paintList() {
+    clear(list).append(
+      ...matches.map((tag, i) =>
+        el('li', {
+          id: `tag-option-${tag.slug}`,
+          role: 'option',
+          'aria-selected': String(i === activeIndex),
+          onMousedown: (event) => {
+            // preventDefault keeps focus in the input, so this fires
+            // instead of the blur handler below committing the raw text.
+            // Value has to be cleared *before* addTag() — it rebuilds this
+            // whole widget and removes the still-focused input from the DOM,
+            // which synchronously re-fires blur on it; clearing first makes
+            // that reentrant blur see nothing to commit (otherwise it
+            // re-adds the raw query text as a second, bogus tag).
+            event.preventDefault();
+            input.value = '';
+            addTag(tag.name);
+          },
+        }, [
+          el('span', { text: tag.name }),
+          el('span', { class: 'tag-suggestions__count', text: String(tag.post_count ?? 0) }),
+        ])
+      )
+    );
+    list.hidden = matches.length === 0;
+    input.setAttribute('aria-expanded', String(matches.length > 0));
+    if (activeIndex >= 0) input.setAttribute('aria-activedescendant', `tag-option-${matches[activeIndex].slug}`);
+    else input.removeAttribute('aria-activedescendant');
+  }
+
+  function updateMatches() {
+    matches = matchingTags(input.value);
+    // No item pre-selected — Enter on fresh input text still creates a new
+    // tag; arrowing down is what opts into picking a suggestion instead.
+    activeIndex = -1;
+    paintList();
+  }
+
   const input = el('input', {
     type: 'text',
     placeholder: state.tags.length ? 'Add tag…' : 'cloudflare, workers…',
     'aria-label': 'Add a tag',
+    role: 'combobox',
+    'aria-autocomplete': 'list',
+    'aria-expanded': 'false',
+    'aria-controls': 'tag-suggestions',
+    autocomplete: 'off',
+    onInput: updateMatches,
     onKeydown: (event) => {
+      if (event.key === 'ArrowDown' && matches.length) {
+        event.preventDefault();
+        activeIndex = (activeIndex + 1) % matches.length;
+        paintList();
+        return;
+      }
+      if (event.key === 'ArrowUp' && matches.length) {
+        event.preventDefault();
+        activeIndex = (activeIndex - 1 + matches.length) % matches.length;
+        paintList();
+        return;
+      }
+      if (event.key === 'Escape' && !list.hidden) {
+        event.preventDefault();
+        closeList();
+        return;
+      }
       if (event.key === 'Enter' || event.key === ',') {
         event.preventDefault();
-        addTag(event.target.value);
+        const chosen = activeIndex >= 0 ? matches[activeIndex] : null;
+        const raw = event.target.value;
+        // Same ordering reason as the suggestion click above: clear before
+        // addTag() rebuilds and removes this (still-focused) input.
         event.target.value = '';
+        addTag(chosen ? chosen.name : raw);
       } else if (event.key === 'Backspace' && !event.target.value && state.tags.length) {
         state.tags.pop();
         renderTags();
@@ -155,6 +270,7 @@ function renderTags() {
         addTag(event.target.value);
         event.target.value = '';
       }
+      closeList();
     },
   });
 
@@ -174,7 +290,8 @@ function renderTags() {
         }),
       ])
     ),
-    input
+    input,
+    list
   );
   return input;
 }
@@ -189,6 +306,9 @@ function addTag(raw) {
     return;
   }
   state.tags.push({ slug, name });
+  // Keeps a tag created earlier in this same session suggestible again —
+  // dedup by slug so re-picking it from the pool doesn't add a second copy.
+  if (!tagPool.some((t) => t.slug === slug)) tagPool.push({ slug, name, post_count: 0 });
   renderTags().focus();
   markDirty();
 }
@@ -400,6 +520,7 @@ function wire() {
 async function init() {
   createEditor();
   wire();
+  loadTagPool(); // fire-and-forget — suggestions fill in whenever this resolves, no need to block the post load on it
 
   if (!postId) {
     fill({ status: 'draft', tags: [], body_md: '', title: '' });

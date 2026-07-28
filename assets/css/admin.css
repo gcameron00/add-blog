@@ -460,6 +460,7 @@ body.admin {
 }
 
 .token-input {
+  position: relative;
   display: flex;
   flex-wrap: wrap;
   gap: var(--sp-2);
@@ -502,6 +503,41 @@ body.admin {
   opacity: 0.6;
 }
 .token button:hover { opacity: 1; }
+
+.tag-suggestions {
+  position: absolute;
+  top: calc(100% + var(--sp-1));
+  left: 0;
+  right: 0;
+  z-index: 20;
+  margin: 0;
+  padding: var(--sp-1);
+  list-style: none;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  max-height: 14rem;
+  overflow-y: auto;
+}
+.tag-suggestions li {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: var(--sp-2);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  font-size: var(--text-sm);
+}
+.tag-suggestions li:hover,
+.tag-suggestions li[aria-selected="true"] {
+  background: var(--bg-inset);
+}
+.tag-suggestions__count {
+  margin-left: auto;
+  color: var(--text-faint);
+  font-size: var(--text-xs);
+}
 
 /* --- Media ---------------------------------------------------------------- */
 

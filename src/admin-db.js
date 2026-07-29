@@ -85,6 +85,19 @@ export async function getAdminPostById(db, id) {
   return { ...mapAdminPost(row), revision_count: row.revision_count };
 }
 
+/** Posts still `scheduled` whose time has arrived — the cron sweep's input (Phase 5f). */
+export async function getDueScheduledPosts(db, nowIso) {
+  const { results } = await db
+    .prepare(`
+      SELECT p.*, a.name AS author_name, ${TAGS_SUBQUERY} AS tags_json
+      FROM posts p JOIN authors a ON a.id = p.author_id
+      WHERE p.status = 'scheduled' AND p.scheduled_for <= ?
+    `)
+    .bind(nowIso)
+    .all();
+  return results.map(mapAdminPost);
+}
+
 export async function listAdminPosts(db, { status, tag, author, q, limit = 20, offset = 0, sort = 'updated' } = {}) {
   const where = [];
   const params = [];
@@ -188,10 +201,23 @@ export async function deletePostRow(db, id) {
   await db.prepare(`DELETE FROM posts WHERE id = ?`).bind(id).run();
 }
 
+// Phase 5f: capped per post so a long-lived, frequently-saved post doesn't grow
+// its history unboundedly. Trimmed on write rather than by a separate cron sweep
+// — it's a cheap, immediate DELETE, not a standing job.
+const MAX_REVISIONS_PER_POST = 20;
+
 export async function insertRevision(db, { postId, title, bodyMd, authorId, note }) {
   await db
     .prepare(`INSERT INTO revisions (id, post_id, title, body_md, author_id, note, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)`)
     .bind(crypto.randomUUID(), postId, title, bodyMd, authorId, note, new Date().toISOString())
+    .run();
+  await db
+    .prepare(`
+      DELETE FROM revisions WHERE post_id = ? AND id NOT IN (
+        SELECT id FROM revisions WHERE post_id = ? ORDER BY created_at DESC LIMIT ?
+      )
+    `)
+    .bind(postId, postId, MAX_REVISIONS_PER_POST)
     .run();
 }
 

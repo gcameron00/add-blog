@@ -324,6 +324,16 @@ describe('revisions and restore', () => {
     const res = await call(owner, 'POST', `/api/admin/posts/${post.id}/revisions/nope/restore`);
     expect(res.status).toBe(404);
   });
+
+  it('caps history at 20 revisions per post, newest kept (Phase 5f retention)', async () => {
+    const post = await createPost(owner, { body_md: 'v0' });
+    for (let i = 1; i <= 25; i += 1) {
+      await call(owner, 'PATCH', `/api/admin/posts/${post.id}`, { body: { body_md: `v${i}` } });
+    }
+    const revisions = await (await call(owner, 'GET', `/api/admin/posts/${post.id}/revisions`)).json();
+    expect(revisions.data).toHaveLength(20);
+    expect(revisions.data.every((r) => r.note !== 'create')).toBe(true);
+  });
 });
 
 describe('POST /api/admin/preview', () => {

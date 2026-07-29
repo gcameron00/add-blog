@@ -175,9 +175,9 @@ CREATE TABLE settings (
 
 CREATE TABLE audit_log (
   id         TEXT PRIMARY KEY,
-  actor      TEXT NOT NULL,              -- email from the Access identity
-  via        TEXT NOT NULL               -- 'ui' | 'mcp' | 'api'
-             CHECK (via IN ('ui','mcp','api')),
+  actor      TEXT NOT NULL,              -- email from the Access identity, or 'system' for via='cron'
+  via        TEXT NOT NULL               -- 'ui' | 'mcp' | 'api' | 'cron'
+             CHECK (via IN ('ui','mcp','api','cron')),
   action     TEXT NOT NULL,              -- 'post.publish', 'media.delete', …
   entity     TEXT,
   entity_id  TEXT,
@@ -185,6 +185,8 @@ CREATE TABLE audit_log (
   created_at TEXT NOT NULL
 );
 CREATE INDEX idx_audit_created ON audit_log(created_at DESC);
+-- 'cron' added by migrations/0003_audit_via_cron.sql (Phase 5f) — the
+-- scheduled-post auto-publish sweep has no human actor to log as ui/mcp/api.
 
 -- Full-text search over published content. External-content FTS5 indexes
 -- posts without duplicating body_md, but is then only ever as fresh as these

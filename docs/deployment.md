@@ -57,7 +57,15 @@ npx wrangler r2 bucket create gcameron-blog-media
 # Apply the schema (see docs/architecture.md §3) — one --file per migration, in order
 npx wrangler d1 execute gcameron-blog --file=./migrations/0001_init.sql --remote
 npx wrangler d1 execute gcameron-blog --file=./migrations/0002_authors_disabled.sql --remote
+npx wrangler d1 execute gcameron-blog --file=./migrations/0003_audit_via_cron.sql --remote
 ```
+
+**0003 is a rebuild, not a plain `ALTER TABLE ADD COLUMN` like 0002** — SQLite can't
+widen a `CHECK` constraint in place, so it creates a new `audit_log`, copies every
+existing row into it, drops the old table, and renames. No data is lost (every column
+is copied as-is before the drop), but it's a different risk shape than an additive
+column add — worth running it on its own, confirming the row count matches after
+(`SELECT COUNT(*) FROM audit_log`), rather than batching it with unrelated changes.
 
 Seed the first owner so there is an identity that can log in — the email must match
 exactly the identity Access will present:
@@ -124,9 +132,14 @@ ADMIN_HOST  = "blog-admin.gcameron.com" # Phase 2
 # binding = "MEDIA"
 # bucket_name = "gcameron-blog-media"
 
-# [env.gcameron.triggers]               # Phase 5
-# crons = ["*/5 * * * *"]
+# [env.gcameron.triggers]               # Phase 5f — src/cron.js, built; uncomment
+# crons = ["*/5 * * * *"]               # to turn on auto-publish for this site
 ```
+
+`gcameron`'s real `wrangler.toml` already has this block uncommented (owner decision,
+2026-07-29: check every 5 minutes) — it's shown commented here only because this is the
+generic new-site template, and a new site's owner should decide for themselves whether
+they want a standing cron before it starts firing against their D1.
 
 **`[assets] binding = "ASSETS"` and `run_worker_first = true` are not optional.**
 Without `run_worker_first`, Cloudflare serves a matching static file *before* the
@@ -288,12 +301,20 @@ live — not yet hands-on verified):**
 | Try to disable/delete the only remaining owner | `409`, blocked | not yet exercised in prod |
 | Delete an author with posts | `200`; their posts now show the deleting owner as author on `/admin/posts/` | not yet exercised in prod |
 
+**Phase 5f, cron (built and tested, migration + `wrangler.toml` diff written, not yet
+applied/deployed for `gcameron`):**
+
+| Check | Expected | Confirmed |
+| --- | --- | --- |
+| Schedule a post a few minutes out, then wait past that time with nobody visiting the admin UI | Auto-publishes; shows up at `/posts/<slug>` and in the feed within one cron tick (up to 5 min) | not yet exercised in prod — needs migration 0003 applied and the `[triggers]` deploy first |
+| `audit_log` row for that publish | `actor = 'system'`, `via = 'cron'` | not yet exercised in prod |
+| Save a post's body more than 20 times | `GET .../revisions` never returns more than 20 rows, newest kept | test-verified; not yet exercised in prod |
+
 **Not built yet (expect 404 or demo data, not real behaviour):**
 
 | Check | Expected, once built or deployed |
 | --- | --- |
 | `POST https://blog-admin.<site>/mcp` (no token) | 401 with `WWW-Authenticate` (Phase 6) |
-| A `scheduled` post reaching its `scheduled_for` time with nobody visiting the admin UI | Auto-publishes (Phase 5, cron slice) — today it stays `scheduled` until someone calls publish |
 | Tag rename/merge on `/admin/tags/` | Persists for real, not just this browser's demo store — built and tested (Phase 5d), not yet deployed |
 | Cover-image picker / "Insert image from library" in the editor | Both work against the real media library — built and tested, not yet deployed |
 

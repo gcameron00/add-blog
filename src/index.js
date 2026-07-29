@@ -44,6 +44,7 @@ import { handleFeeds } from './feeds.js';
 import { verifyAccessIdentity } from './access.js';
 import { resolveAuthor } from './auth.js';
 import { handleAdminApi } from './admin-api.js';
+import { publishDuePosts } from './cron.js';
 
 const DEFAULT_ADMIN_HOST = 'blog-admin.mysite.com';
 
@@ -194,5 +195,12 @@ export default {
     }));
 
     return response;
+  },
+
+  // Phase 5f — fires on the `crons` schedule in wrangler.toml's
+  // [env.NAME.triggers]. ctx.waitUntil keeps the invocation alive until the
+  // sweep finishes; there is no request/response here to hang off instead.
+  async scheduled(event, env, ctx) {
+    ctx.waitUntil(publishDuePosts(env));
   },
 };

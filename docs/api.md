@@ -221,9 +221,13 @@ characters, unique; `body_md` at most 512 KB; at most 10 tags, each at most 40
 characters; `scheduled_for` strictly in the future. `word_count`, `reading_minutes`,
 `excerpt` (when omitted) and `body_html` are computed server-side and are read-only.
 
-**A publish is not complete until the cache is purged.** `publish`, `unpublish`,
-`PATCH` on a published post, and the scheduler cron all route through the same internal
-publish path so purge and audit logging cannot diverge between them.
+**A publish is not complete until the cache is purged.** `publish`, `unpublish` and
+`PATCH` on a published post (`src/admin-posts.js`) share one purge helper
+(`purgeIfPublic` → `src/cache-purge.js`'s `purgePostUrls`) so none of them can diverge
+from the others. The scheduler cron (`src/cron.js`, Phase 5f) has no request or
+identity to route through that admin-API layer, so it calls `purgePostUrls` and
+`writeAuditLog` directly instead — same primitives, different caller, `via: 'cron'` /
+`actor: 'system'` instead of a signed-in identity's.
 
 ### Tags
 

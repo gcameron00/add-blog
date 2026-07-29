@@ -13,24 +13,24 @@ bundler. The whole front end ships as Cloudflare Workers static assets.
 
 **Phases 1–4 are built and live; Phase 5's posts, settings, dashboard and media
 upload are built, tested, and live too; author management is deployed for `gcameron`
-pending a hands-on verification pass; tag management and the editor's media
-integration are built and tested, pending deployment.** The Worker router
-(`src/index.js`) enforces the hostname split and sends security headers; the public
-read path (JSON API, server-rendered permalinks, R2 media, feeds) is live for
-`gcameron`, backed by real D1/R2. Access JWT verification and identity resolution
-(`src/access.js`, `src/auth.js`) are live too — the admin hostname is genuinely
-access-controlled, not a public prototype. The admin Posts API, Settings, the
-dashboard's stats/activity feed, and media upload (`src/admin-media.js`) are all live
-and verified in production. The Authors admin page (`src/admin-authors.js`) has its
-migration applied and its Worker code deployed for `gcameron`, but hasn't had the
-hands-on production check the other live slices got yet (see
-[deployment.md](docs/deployment.md) §6). The Tags admin page (`src/admin-tags.js`) and
-the editor's cover-image/insert-from-library integration are tested (196 tests total)
-and browser-verified against demo data, but not yet deployed. Export/import and
-scheduled-post auto-publishing are still queued — see the Phase 5 breakdown in
-[implementation-plan.md](docs/implementation-plan.md). A *new* site still
-needs its own D1 database, R2 bucket and Access application created before it shows
-real content and requires login instead of demo data — see
+pending a hands-on verification pass; tag management, the cron-driven scheduled-post
+publisher, and the editor's media integration are built and tested, pending
+deployment.** The Worker router (`src/index.js`) enforces the hostname split and
+sends security headers; the public read path (JSON API, server-rendered permalinks,
+R2 media, feeds) is live for `gcameron`, backed by real D1/R2. Access JWT verification
+and identity resolution (`src/access.js`, `src/auth.js`) are live too — the admin
+hostname is genuinely access-controlled, not a public prototype. The admin Posts API,
+Settings, the dashboard's stats/activity feed, and media upload (`src/admin-media.js`)
+are all live and verified in production. The Authors admin page
+(`src/admin-authors.js`) has its migration applied and its Worker code deployed for
+`gcameron`, but hasn't had the hands-on production check the other live slices got yet
+(see [deployment.md](docs/deployment.md) §6). The Tags admin page
+(`src/admin-tags.js`), the scheduled-post cron sweep (`src/cron.js`) and the editor's
+cover-image/insert-from-library integration are tested (200 tests total) and
+browser-verified against demo data, but not yet deployed. Export/import is still
+queued — see the Phase 5 breakdown in [implementation-plan.md](docs/implementation-plan.md).
+A *new* site still needs its own D1 database, R2 bucket and Access application created
+before it shows real content and requires login instead of demo data — see
 [`docs/deployment.md`](docs/deployment.md) and the "Future considerations" section of
 the [implementation plan](docs/implementation-plan.md) on why that's a one-time manual
 step per site.
@@ -51,7 +51,7 @@ step per site.
 | Tags admin (CRUD, merge, `admin/tags/`) | Built, tested; not yet deployed |
 | Authors admin (CRUD, disable, `admin/authors/`) | Deployed for `gcameron`; not yet hands-on verified in production |
 | Export/import admin routes | Not built — no admin UI page calls them yet |
-| Scheduled-post auto-publish (cron) | Not built — needs an owner decision on `wrangler.toml` `[triggers]` |
+| Scheduled-post auto-publish + revision retention (cron) | Built, tested (`src/cron.js`); `wrangler.toml` `[triggers]` written and migration `0003` ready — not yet applied/deployed |
 | Managed OAuth (for `/mcp`) | Enabled on the Access app; unused until Phase 6 |
 | MCP server | Specified, not built |
 
@@ -159,13 +159,15 @@ with D1 keeping the metadata row that points at each R2 object.
 │   ├── admin-tags.js           Admin Tags API — CRUD, merge (Phase 5d)
 │   ├── admin-authors.js        Admin Authors API — CRUD, disable, last-owner guard (Phase 5e)
 │   ├── cache-purge.js          Edge cache purge on mutation, via caches.default (Phase 5)
+│   ├── cron.js                 scheduled() handler — auto-publish due posts (Phase 5f)
 │   ├── admin-api.js           GET /api/admin/me (Phase 4) + dispatch to the Phase 5 routes
 │   ├── test-jwt.js             Test-only helper: signs fake Access JWTs
 │   ├── test-setup.js          Applies migrations + seeds a local D1 before tests run
-│   └── *.test.js              196 tests (`npm test`) — real local D1/R2, not mocks
+│   └── *.test.js              200 tests (`npm test`) — real local D1/R2, not mocks
 ├── migrations/
 │   ├── 0001_init.sql          Schema — see docs/architecture.md §3
 │   ├── 0002_authors_disabled.sql  Additive: authors.disabled (Phase 5e)
+│   ├── 0003_audit_via_cron.sql    Rebuild: audit_log.via + 'cron' (Phase 5f)
 │   └── seed.sql               Generated — see scripts/generate-seed.mjs
 ├── scripts/
 │   ├── generate-seed.mjs      assets/js/demo-data.js → migrations/seed.sql

@@ -3,9 +3,9 @@
 Phases 1–4 are complete, in this repository, and live in production for the
 `gcameron` site. Phase 5 is being delivered in slices: posts, settings/dashboard, and
 media upload (5a/5b/5c) are live, verified in production; tags-as-a-resource (5d),
-authors-as-a-resource (5e), and the editor's cover-image/insert-from-library
-integration are built and tested but not yet deployed. Export/import and
-scheduled-post auto-publish remain proposed build-out — see Phase 5 below for the
+authors-as-a-resource (5e), scheduled-post auto-publish + revision retention (5f), and
+the editor's cover-image/insert-from-library integration are built and tested but not
+yet deployed. Export/import remains proposed build-out — see Phase 5 below for the
 exact breakdown.
 
 Each phase is independently deployable and leaves the site working. Phases 2–5 are
@@ -199,7 +199,7 @@ application, returning the real identity and role.
 
 ---
 
-## Phase 5 — Write path 🚧 (posts + settings + dashboard + media live; tags + authors built, pending deploy; rest queued)
+## Phase 5 — Write path 🚧 (posts + settings + dashboard + media live; tags + authors + cron built, pending deploy; export/import queued)
 
 **Goal.** The admin UI stops being a prototype.
 
@@ -516,6 +516,29 @@ author for real, per [deployment.md](deployment.md) §6's table format) — unti
 run, this stays "built and tested, not yet confirmed live" rather than moving to the
 "verified in production" tier posts/settings/dashboard/media are at.
 
+**5f — Cron: scheduled-post auto-publish + revision retention. Built and tested
+(`src/cron.js`, `migrations/0003_audit_via_cron.sql`), not yet deployed:**
+
+- `scheduled(event, env, ctx)` in `src/index.js`, wired to `[env.gcameron.triggers]
+  crons = ["*/5 * * * *"]` in `wrangler.toml` (owner decision, 2026-07-29: every 5
+  minutes). `src/cron.js`'s `publishDuePosts` finds every `status = 'scheduled'` post
+  with `scheduled_for <= now`, flips it to `published`, clears `scheduled_for`, purges
+  its public URLs the same way a manual publish does, and writes an audit-log row —
+  `actor: 'system', via: 'cron'`, a `via` the original schema didn't allow (see below).
+- Revision retention turned out not to need the cron at all: `insertRevision`
+  (`src/admin-db.js`) now deletes anything past the newest 20 rows for that post in the
+  same write, right after inserting — immediate, no standing job, no need to reason
+  about which of multiple cron expressions fired. The plan's original phrasing bundled
+  this with the publish sweep; trim-on-write turned out simpler once actually
+  designed.
+- `migrations/0003_audit_via_cron.sql` — `audit_log.via`'s `CHECK` only allowed
+  `'ui'/'mcp'/'api'`; a cron-fired action has no human actor to log as any of those.
+  SQLite can't `ALTER` a `CHECK` constraint in place, so this is the standard
+  create-copy-drop-rename rebuild, widening it to include `'cron'`.
+- 4 new tests (200 total): a due post publishes and logs `via: 'cron'`; a
+  not-yet-due post is untouched; `publishDuePosts` no-ops with no `DB` binding; revision
+  history caps at 20 after 25 saves.
+
 **Queued — not yet built:**
 
 - SVG upload — needs a real sanitiser (a parser, not a regex), see above.
@@ -523,15 +546,13 @@ run, this stays "built and tested, not yet confirmed live" rather than moving to
   Images) Workers don't have natively; needs a decision, likely with the owner, before
   it's built.
 - `POST /export` and `/import`.
-- Cron trigger for scheduled publishing (the `scheduled` status exists and is set by
-  `POST /:id/schedule`, but nothing currently flips it to `published` when the date
-  arrives) and revision retention.
 - The editor's `If-Match` conflict-prompt UI mentioned above.
 
-**Owner action required (when the cron slice lands).** `[triggers] crons` in
-`wrangler.toml` — deliberately not added yet; a cron is a standing, automatically-
-firing job (auto-publishing, auto-deleting old revisions), a different risk category
-from a static var, worth a specific conversation rather than folding into a config diff.
+**Owner action required (5f).** Same as every Cloudflare-account-reaching change in
+this project (per the project's own convention): the code and `wrangler.toml` diff are
+written, but running `migrations/0003_audit_via_cron.sql` against production D1 and
+letting `deploy.yml` push the new `[triggers]` block are for the owner to trigger, not
+this session — see [deployment.md](deployment.md) §1 and §6.
 
 **Exit criteria — met for posts, settings, dashboard reads and media upload, not yet
 for Phase 5 as a whole.** A post can be created, edited, saved, previewed, scheduled,
@@ -539,11 +560,10 @@ published, unpublished and deleted through the admin UI against live D1 for
 `gcameron`; settings can be changed and persist; the dashboard shows real counts and a
 real activity feed; media can be uploaded, browsed and deleted against real R2 — none
 of it through tests alone, all confirmed in production. Tag management (5d), author
-management (5e) and the editor's media integration meet the same bar in tests and in a
-real browser against demo data, but haven't been confirmed against live D1/R2 in
-production yet. Still open: "scheduled" doesn't self-publish without the cron trigger,
-and export/import remain unbuilt — the admin UI still can't do everything Phase 1's
-demo let you *pretend* to do.
+management (5e), the cron sweep (5f) and the editor's media integration meet the same
+bar in tests and in a real browser against demo data, but haven't been confirmed
+against live D1/R2 in production yet. Still open: export/import remain unbuilt — the
+admin UI still can't do everything Phase 1's demo let you *pretend* to do.
 
 ---
 

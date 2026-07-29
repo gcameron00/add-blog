@@ -7,11 +7,14 @@ read API, R2 media and feeds all real. Phase 4 (Access JWT verification, `GET
 /api/admin/me`) is live too (verified 2026-07-27) — the admin host genuinely requires a
 verified, provisioned identity now. Phase 5's posts write path (create/edit/publish/
 delete/revisions), its settings/dashboard slice (`GET`/`PUT /settings`, `stats`,
-`audit`), and media upload are all live too (media confirmed working in production).
-Tag management and the editor's cover-image/insert-from-library integration are built
-and tested (173 tests) but **not yet deployed** — next push ships them. Authors,
-export/import and scheduled-post auto-publish are still queued — none of them have an
-admin UI page calling them yet, which is deliberate; see
+`audit`), media upload, tags (5d), authors (5e), the editor's cover-image/
+insert-from-library integration, and the scheduled-post auto-publish cron (5f) are all
+deployed and running for `gcameron` — `deploy.yml` ships the whole Worker script on
+every push to `main`, so "merged" and "live" are the same moment here, not two separate
+steps. What's still open per slice is hands-on production *verification* (someone
+actually exercising it against real D1/R2 through the browser), not deployment — see
+§6's table for which slices have had that pass and which haven't yet. Export/import is
+the one Phase 5 slice with no code at all — see
 [implementation-plan.md](implementation-plan.md)'s Phase 5 section. Sections below
 double as the runbook for the *next* site: everything in §1-4 is real, owner-run work
 for `gcameron` already done; repeat it for each new one.
@@ -289,6 +292,24 @@ turned out to be the CI deploy tool installing an unrelated wrangler version, no
 | Delete an unused file | Removed from both R2 and the library listing | not yet exercised in prod |
 | "Copy URL" on a real (non-demo) item | Copies `/media/<key>` — this used to be broken (missing `/media/`) before this pass fixed the `key`/`url` shape | not yet exercised in prod |
 
+**Phase 5d, tags (deployed for `gcameron` since 2026-07-28 — not yet hands-on
+verified):**
+
+| Check | Expected | Confirmed |
+| --- | --- | --- |
+| Rename a tag on `/admin/tags/` | Persists for real; every post carrying it shows the new name, not just this browser's demo store | not yet exercised in prod |
+| Merge two tags | Posts on the losing tag now carry the surviving one; the losing tag is gone from `/admin/tags/` and `/tags/` | not yet exercised in prod |
+| Delete an unused tag | Removed from the list | not yet exercised in prod |
+| Add a tag to a post from the editor | Appears on `/admin/tags/` and the post's public tag list | not yet exercised in prod |
+
+**Editor media integration (deployed for `gcameron` since 2026-07-28 — not yet
+hands-on verified):**
+
+| Check | Expected | Confirmed |
+| --- | --- | --- |
+| Set a post's cover image from the media library, in the editor | Cover appears on the post list, the editor, and the public permalink | not yet exercised in prod |
+| "Insert image from library" into the body | Markdown image reference inserted at the cursor; renders in the live preview and on the published post | not yet exercised in prod |
+
 **Phase 5e, authors (deployed for `gcameron` 2026-07-29 — migration applied, Worker
 live — not yet hands-on verified):**
 
@@ -310,13 +331,12 @@ live for `gcameron`, 2026-07-29):**
 | `audit_log` row for that publish | `actor = 'system'`, `via = 'cron'` | ✅ — visible in the dashboard activity feed |
 | Save a post's body more than 20 times | `GET .../revisions` never returns more than 20 rows, newest kept | test-verified; not yet exercised in prod |
 
-**Not built yet (expect 404 or demo data, not real behaviour):**
+**Not built yet (expect 404, not real behaviour):**
 
-| Check | Expected, once built or deployed |
+| Check | Expected, once built |
 | --- | --- |
 | `POST https://blog-admin.<site>/mcp` (no token) | 401 with `WWW-Authenticate` (Phase 6) |
-| Tag rename/merge on `/admin/tags/` | Persists for real, not just this browser's demo store — built and tested (Phase 5d), not yet deployed |
-| Cover-image picker / "Insert image from library" in the editor | Both work against the real media library — built and tested, not yet deployed |
+| `POST /api/admin/export` / `/import` | No route exists yet — Phase 5's one unbuilt slice |
 
 ## 7. Rollback
 

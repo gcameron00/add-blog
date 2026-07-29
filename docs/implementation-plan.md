@@ -199,7 +199,7 @@ application, returning the real identity and role.
 
 ---
 
-## Phase 5 — Write path 🚧 (posts + settings + dashboard + media + cron live; tags + authors built, pending deploy; export/import queued)
+## Phase 5 — Write path 🚧 (everything deployed and live for `gcameron` except export/import; tags, authors, and the editor's media integration await a hands-on verification pass)
 
 **Goal.** The admin UI stops being a prototype.
 
@@ -363,8 +363,9 @@ Phase 1/4 UI copy had gone stale now that real data backs them:
   existing "Missing alt text" flag — unchanged — is the nudge to fix it afterward via
   "Edit alt", not a blocker before it.
 
-**5d — Tags as their own resource. Built and tested, not yet deployed
-(`src/admin-tags.js`, `src/admin-db.js`):**
+**5d — Tags as their own resource. Built, tested, and deployed for `gcameron` since
+2026-07-28 — not yet hands-on verified in production (`src/admin-tags.js`,
+`src/admin-db.js`):**
 
 - `GET /api/admin/tags` (all tags with counts, including ones on zero posts — counted
   across every post status, unlike the public `GET /api/tags`, which only counts
@@ -406,8 +407,8 @@ Phase 1/4 UI copy had gone stale now that real data backs them:
   apart from the same demo-mode `/api/admin/me` 404 every other admin page produces
   before a Worker is deployed.
 
-**Editor integration, connecting 5a and 5c. Built and tested, not yet deployed** —
-separate from 5c itself (live) and under owner review. Media upload existed but
+**Editor integration, connecting 5a and 5c. Built, tested, and deployed for `gcameron`
+since 2026-07-28 — not yet hands-on verified in production.** Media upload existed but
 nothing could *use* it — the editor had no cover-image field and no way to put a
 library image into a post body except copying a URL by hand from the media page and
 pasting it into Markdown. Closed both gaps:
@@ -426,8 +427,9 @@ pasting it into Markdown. Closed both gaps:
   page. Verified in a real browser: pick, remove, re-pick, insert-into-body, and that a
   saved post's `cover_key` actually persists through demo mode's `localStorage` store.
 
-**5e — Authors as their own resource. Built and tested, not yet deployed
-(`src/admin-authors.js`, `src/admin-db.js`, additive migration `0002_authors_disabled`):**
+**5e — Authors as their own resource. Built, tested, and deployed for `gcameron` since
+2026-07-29 — not yet hands-on verified in production (`src/admin-authors.js`,
+`src/admin-db.js`, additive migration `0002_authors_disabled`):**
 
 - `GET /api/admin/authors` (every author, each with a `post_count` — every post
   regardless of status, same "management view" reasoning as tags), `POST

@@ -478,7 +478,7 @@ pasting it into Markdown. Closed both gaps:
   from the same demo-mode `/api/admin/me` 404 every other admin page produces before a
   Worker is deployed.
 
-**Follow-up fixes (owner review, 2026-07-29), before this slice ever deployed:**
+**Follow-up fixes (owner review, 2026-07-29), before this slice's first deploy:**
 
 - **Role as a `<select>`, not a prompt** — the initial cut used `window.prompt()` for
   role same as the other single-field edits; caught in review as worse than the other
@@ -507,12 +507,14 @@ pasting it into Markdown. Closed both gaps:
   "by &lt;name&gt;" line next to the status badge in the editor. Read-only — reassigning
   a post to a different author isn't exposed anywhere in the UI yet, on either page.
 
-**Owner action required (before 5e can go live for `gcameron`).** Migration
-`0002_authors_disabled.sql` is additive and safe to run against the live database at
-any time (per [deployment.md](deployment.md) §1's updated apply command), but it
-hasn't been run against `gcameron`'s production D1 yet — someone with dashboard/CLI
-access needs to do that before this slice is deployed, same as every other D1/R2/Access
-change in this project (see [deployment.md](deployment.md) §1).
+**Migration and Worker deploy — done for `gcameron` (2026-07-29).** Migration
+`0002_authors_disabled.sql` has been applied to production D1 (per
+[deployment.md](deployment.md) §1's apply command), and both 5e commits (`9a6d020`,
+`cd6b8fa`) deployed successfully via `deploy.yml`. Not yet done: the hands-on
+post-deploy verification pass the other live slices got (create/disable/delete an
+author for real, per [deployment.md](deployment.md) §6's table format) — until that's
+run, this stays "built and tested, not yet confirmed live" rather than moving to the
+"verified in production" tier posts/settings/dashboard/media are at.
 
 **Queued — not yet built:**
 

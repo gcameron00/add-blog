@@ -276,6 +276,18 @@ turned out to be the CI deploy tool installing an unrelated wrangler version, no
 | Delete an unused file | Removed from both R2 and the library listing | not yet exercised in prod |
 | "Copy URL" on a real (non-demo) item | Copies `/media/<key>` — this used to be broken (missing `/media/`) before this pass fixed the `key`/`url` shape | not yet exercised in prod |
 
+**Phase 5e, authors (deployed for `gcameron` 2026-07-29 — migration applied, Worker
+live — not yet hands-on verified):**
+
+| Check | Expected | Confirmed |
+| --- | --- | --- |
+| Add an author via `/admin/authors/` | Row created; UI explains the Cloudflare Access policy step and that no invite email is sent | not yet exercised in prod |
+| Change a role via the dropdown | Persists; a non-owner identity signed in as that author sees the corresponding permission set | not yet exercised in prod |
+| Disable an author, then have them try to sign in | Access still lets them through; the Worker `403`s — same response as no `authors` row at all | not yet exercised in prod |
+| Try to disable/delete your own signed-in account | `409`, blocked outright, regardless of how many other owners exist | not yet exercised in prod |
+| Try to disable/delete the only remaining owner | `409`, blocked | not yet exercised in prod |
+| Delete an author with posts | `200`; their posts now show the deleting owner as author on `/admin/posts/` | not yet exercised in prod |
+
 **Not built yet (expect 404 or demo data, not real behaviour):**
 
 | Check | Expected, once built or deployed |
@@ -283,7 +295,6 @@ turned out to be the CI deploy tool installing an unrelated wrangler version, no
 | `POST https://blog-admin.<site>/mcp` (no token) | 401 with `WWW-Authenticate` (Phase 6) |
 | A `scheduled` post reaching its `scheduled_for` time with nobody visiting the admin UI | Auto-publishes (Phase 5, cron slice) — today it stays `scheduled` until someone calls publish |
 | Tag rename/merge on `/admin/tags/` | Persists for real, not just this browser's demo store — built and tested (Phase 5d), not yet deployed |
-| Add/disable/delete an author on `/admin/authors/` | Persists for real, not just this browser's demo store — built and tested (Phase 5e), not yet deployed; needs migration `0002_authors_disabled.sql` applied first (§1) |
 | Cover-image picker / "Insert image from library" in the editor | Both work against the real media library — built and tested, not yet deployed |
 
 ## 7. Rollback

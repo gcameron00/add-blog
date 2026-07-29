@@ -12,19 +12,22 @@ bundler. The whole front end ships as Cloudflare Workers static assets.
 ## Status
 
 **Phases 1–4 are built and live; Phase 5's posts, settings, dashboard and media
-upload are built, tested, and live too; tag management, author management, and the
-editor's media integration are built and tested, pending deployment.** The Worker
-router (`src/index.js`) enforces the hostname split and sends security headers; the
-public read path (JSON API, server-rendered permalinks, R2 media, feeds) is live for
+upload are built, tested, and live too; author management is deployed for `gcameron`
+pending a hands-on verification pass; tag management and the editor's media
+integration are built and tested, pending deployment.** The Worker router
+(`src/index.js`) enforces the hostname split and sends security headers; the public
+read path (JSON API, server-rendered permalinks, R2 media, feeds) is live for
 `gcameron`, backed by real D1/R2. Access JWT verification and identity resolution
 (`src/access.js`, `src/auth.js`) are live too — the admin hostname is genuinely
 access-controlled, not a public prototype. The admin Posts API, Settings, the
 dashboard's stats/activity feed, and media upload (`src/admin-media.js`) are all live
-and verified in production. The Tags admin page (`src/admin-tags.js`), the Authors
-admin page (`src/admin-authors.js`) and the editor's cover-image/insert-from-library
-integration are tested (196 tests total) and browser-verified against demo data, but
-not yet confirmed against live D1/R2. Export/import and scheduled-post auto-publishing
-are still queued — see the Phase 5 breakdown in
+and verified in production. The Authors admin page (`src/admin-authors.js`) has its
+migration applied and its Worker code deployed for `gcameron`, but hasn't had the
+hands-on production check the other live slices got yet (see
+[deployment.md](docs/deployment.md) §6). The Tags admin page (`src/admin-tags.js`) and
+the editor's cover-image/insert-from-library integration are tested (196 tests total)
+and browser-verified against demo data, but not yet deployed. Export/import and
+scheduled-post auto-publishing are still queued — see the Phase 5 breakdown in
 [implementation-plan.md](docs/implementation-plan.md). A *new* site still
 needs its own D1 database, R2 bucket and Access application created before it shows
 real content and requires login instead of demo data — see
@@ -46,7 +49,7 @@ step per site.
 | Media upload (validation, checksum dedupe, dimensions) | Built, tested, live for `gcameron`. No SVG (parked as a future feature, needs a real sanitiser); AVIF has no dimensions |
 | Media ↔ editor integration (cover picker, insert-into-body) | Built, tested; not yet deployed — media was previously upload-only, disconnected from the editor |
 | Tags admin (CRUD, merge, `admin/tags/`) | Built, tested; not yet deployed |
-| Authors admin (CRUD, disable, `admin/authors/`) | Built, tested; not yet deployed |
+| Authors admin (CRUD, disable, `admin/authors/`) | Deployed for `gcameron`; not yet hands-on verified in production |
 | Export/import admin routes | Not built — no admin UI page calls them yet |
 | Scheduled-post auto-publish (cron) | Not built — needs an owner decision on `wrangler.toml` `[triggers]` |
 | Managed OAuth (for `/mcp`) | Enabled on the Access app; unused until Phase 6 |

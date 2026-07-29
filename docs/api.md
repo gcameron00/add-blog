@@ -40,9 +40,11 @@ The public hostname does not acknowledge that an admin surface exists.
 > **Tags built and tested, not yet deployed** (Phase 5d, `src/admin-tags.js`) — every
 > route in the Tags table below, including `merge`. Renaming a tag's slug does not leave
 > a redirect for the old one — see the note in `src/admin-tags.js`.
-> **Authors built and tested, not yet deployed** (Phase 5e, `src/admin-authors.js`) —
-> every route in the Authors row below, plus `disabled` (additive migration `0002`,
-> [architecture.md](architecture.md) §3). There is no invite email; `POST /authors`
+> **Authors built, tested, and deployed for `gcameron`** (Phase 5e,
+> `src/admin-authors.js`) — migration `0002` (additive, `disabled` column, see
+> [architecture.md](architecture.md) §3) applied 2026-07-29; not yet hands-on verified
+> in production (see [deployment.md](deployment.md) §6). Every route in the Authors row
+> below is live. There is no invite email; `POST /authors`
 > only creates the row, and the admin UI explains the two out-of-band steps (Cloudflare
 > Access policy, telling the person directly) after a successful create. Disabling,
 > deleting, or demoting the only remaining active owner is rejected with `409 conflict`

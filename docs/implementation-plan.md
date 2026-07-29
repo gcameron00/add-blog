@@ -227,9 +227,24 @@ that uses them would just be untested surface no one exercises.
   a new revision first, per the spec). No dedicated diff *endpoint* — none is in the
   API contract; diffing two revisions' `body_md` is a front-end concern for later.
 - `ETag` / `If-Match`: `GET` returns one, `PATCH` honours `If-Match` and 409s with both
-  versions in `detail` on a mismatch. **Not yet built:** the editor's own conflict-
-  prompt UI — nothing in `assets/js/editor.js` tracks or sends `If-Match` yet, so this
-  is exercised by test (`src/admin-posts.test.js`) but not reachable through the UI.
+  versions in `detail` on a mismatch. **The editor's conflict handling, built
+  2026-07-29 (owner decision) — not a merge/overwrite prompt.** `save()`
+  (`assets/js/editor.js`) now sends `If-Match: "${state.post.updated_at}"` on every
+  `PATCH`, using the `updated_at` already in the loaded post — no extra fetch needed,
+  since that's literally what the ETag is. On a `409`: an explicit Save (not autosave)
+  forks the local edits into a brand-new draft via `POST /posts` instead of overwriting
+  or discarding either side's changes — the server's own `uniqueSlug` auto-suffixes the
+  colliding slug, so no special-casing was needed there. The user is told directly
+  ("...saved as a new draft instead of overwriting theirs") and the editor switches to
+  the new draft (URL `id`, `state.post`) so further saves target it, not the original.
+  Autosave never forks silently on its own conflict — it sets a distinct `conflict`
+  save-state pill ("Someone else edited this post — click Save...") and stops
+  re-attempting until the user takes that explicit action, so two open tabs on the same
+  post don't spawn a duplicate draft every 2.5 seconds. `assets/js/api.js`'s `ApiError`
+  didn't previously expose `detail` at all — a prerequisite gap fixed alongside this.
+  Built, not yet deployed; verifying it for real needs two concurrent editor sessions
+  (two tabs/browsers signed in as different or the same author), so it hasn't had a
+  hands-on production check yet either.
 - Cache purge on every mutation that touches a published post, via
   `caches.default` (`src/cache-purge.js`) — no new Cloudflare API token needed. Purges
   the post's own permalink/API URL (old and new slug on a rename), home, feeds,
@@ -562,14 +577,13 @@ again as bindings) before pushing. The comment above `[env.gcameron.triggers]` i
 `wrangler.toml` now calls this out explicitly so the next table added to this file
 doesn't repeat it.
 
-**Queued — not yet built:**
+**Parked — not Phase 5 blockers:**
 
-- SVG upload — needs a real sanitiser (a parser, not a regex), see above. Parked as a
-  future feature, not a Phase 5 blocker — the media library works without it.
+- SVG upload — needs a real sanitiser (a parser, not a regex), see above. The media
+  library works without it.
 - Lazy image variants written back to R2 — needs a resizing mechanism (e.g. Cloudflare
   Images) Workers don't have natively; needs a decision, likely with the owner, before
-  it's built. Same "parked, not blocking" status as SVG.
-- The editor's `If-Match` conflict-prompt UI mentioned above.
+  it's built.
 
 **Export/import moved to Phase 7 (owner decision, 2026-07-29)** — see Phase 7 below.
 Phase 5's write path doesn't need a backup/restore route to be complete; every other
@@ -587,7 +601,10 @@ logged `via: 'cron'` in the live activity feed. Tag management (5d), author mana
 bar, but haven't had their hands-on production verification pass yet — author
 verification specifically is waiting on setting up a real second author to
 disable/re-enable through the interface (not Cloudflare Access), per the owner
-(2026-07-29). Still open otherwise: the editor's own `If-Match` conflict-prompt UI.
+(2026-07-29). The editor's conflict handling is built but not yet deployed, and its own
+verification bar is unusual — it needs two concurrent editor sessions on the same post,
+not just one person clicking through. With that landed, Phase 5 has no unbuilt code
+left at all; what remains is entirely verification passes, not new work.
 
 ---
 

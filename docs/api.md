@@ -20,11 +20,16 @@ The public hostname does not acknowledge that an admin surface exists.
 > verified in production 2026-07-28) — every route in the Posts table below, plus
 > `POST /preview`. Role/ownership checks, `ETag`/`If-Match` conflict detection,
 > revisions-with-restore, and a best-effort edge-cache purge on every mutation are all
-> in. Not yet built: the editor's own conflict-prompt UI for a `409` (the server detects
-> it; nothing calls `If-Match` yet), `Idempotency-Key` (its main consumer, MCP, doesn't
-> exist yet either). **Fixed in production:** editing an already-published post used to
-> be labelled "Save draft" while going live immediately — the button now says "Save
-> changes" for a published/scheduled post.
+> in. **The editor now sends `If-Match` and handles a `409`** (built 2026-07-29, not yet
+> deployed) — not a merge/overwrite prompt, an owner decision: rather than let the
+> editor overwrite someone else's edit or discard the local one, a conflicting explicit
+> Save forks the local content into a new draft post instead (`assets/js/editor.js`'s
+> `save()`); autosave never forks on its own, it just surfaces the conflict in the
+> save-state indicator and stops retrying until the user acts. Still not built:
+> `Idempotency-Key` (its main consumer, MCP, doesn't exist yet either). **Fixed in
+> production:** editing an already-published post used to be labelled "Save draft"
+> while going live immediately — the button now says "Save changes" for a
+> published/scheduled post.
 > **Settings and dashboard reads built, tested, and live for `gcameron`** (Phase 5b,
 > `src/admin-settings.js`, `src/admin-dashboard.js`) — `GET`/`PUT /settings`,
 > `GET /stats`, `GET /audit`. The settings key list below has been corrected to match
@@ -103,8 +108,10 @@ The public hostname does not acknowledge that an admin surface exists.
 | `500 internal_error` | Unhandled; correlate with `X-Request-Id` in the response |
 
 **Concurrency.** `GET` of a single post returns an `ETag`. `PATCH` may send
-`If-Match`; a mismatch is `409 conflict` with both versions in `detail` so the editor
-can offer a merge rather than silently clobbering a co-editor's work.
+`If-Match`; a mismatch is `409 conflict` with both versions in `detail`. The admin
+editor's own handling of that `409` (built 2026-07-29) isn't a merge — it forks the
+local edit into a new draft post rather than clobbering or discarding either side's
+work; see the Posts status note above.
 
 **Idempotency.** `POST` endpoints accept `Idempotency-Key`. A repeat within 24 hours
 returns the original response instead of creating a duplicate — this matters most for

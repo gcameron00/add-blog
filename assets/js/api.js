@@ -30,6 +30,7 @@ export class ApiError extends Error {
     this.name = 'ApiError';
     this.code = payload?.code || 'unknown';
     this.field = payload?.field;
+    this.detail = payload?.detail;
     this.status = status;
   }
 }
@@ -44,7 +45,7 @@ function goDemo() {
   return new BackendUnavailable();
 }
 
-async function call(path, { method = 'GET', body, query } = {}) {
+async function call(path, { method = 'GET', body, query, headers } = {}) {
   if (backend === 'demo') throw new BackendUnavailable();
 
   const url = new URL(API_BASE + path, location.origin);
@@ -56,7 +57,7 @@ async function call(path, { method = 'GET', body, query } = {}) {
   try {
     response = await fetch(url, {
       method,
-      headers: body ? { 'Content-Type': 'application/json' } : {},
+      headers: { ...(body ? { 'Content-Type': 'application/json' } : {}), ...headers },
       body: body ? JSON.stringify(body) : undefined,
       credentials: 'same-origin',
     });
@@ -364,9 +365,11 @@ export function createPost(input) {
   );
 }
 
-export function updatePost(id, patch) {
+export function updatePost(id, patch, { ifMatch } = {}) {
   return withFallback(
-    () => call(`/admin/posts/${encodeURIComponent(id)}`, { method: 'PATCH', body: patch }),
+    () => call(`/admin/posts/${encodeURIComponent(id)}`, {
+      method: 'PATCH', body: patch, headers: ifMatch ? { 'If-Match': ifMatch } : undefined,
+    }),
     async () => {
       await delay();
       const state = getStore();

@@ -448,6 +448,7 @@ body.admin {
 .save-state[data-state="saved"] { color: var(--ok); }
 .save-state[data-state="error"] { color: var(--danger); }
 .save-state[data-state="dirty"] { color: var(--text-muted); }
+.save-state[data-state="conflict"] { color: var(--danger); }
 
 .editor-aside { display: flex; flex-direction: column; gap: var(--sp-4); }
 .editor-aside .card { padding: var(--sp-4); }

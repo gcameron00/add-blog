@@ -11,8 +11,12 @@
  * Two behaviours worth knowing about:
  *  - The slug follows the title until you edit it, then it stops following.
  *    Renaming a published post never silently changes its URL.
- *  - Saving sends the version we loaded. If the post changed underneath us the
- *    API answers 409 and we prompt, rather than overwriting someone's work.
+ *  - Saving sends `If-Match` for the version we loaded. If the post changed
+ *    underneath us the API answers 409 — rather than overwrite or discard
+ *    either side's edits, an explicit Save forks our content into a new
+ *    draft post instead (see save()'s conflict branch). Autosave never
+ *    forks silently: it just flags the conflict in the save-state pill and
+ *    stops retrying until the user takes that explicit action.
  */
 
 import * as api from './api.js';
@@ -49,6 +53,7 @@ const state = {
   slugLocked: false,
   dirty: false,
   saving: false,
+  conflict: false,
 };
 
 let mde;
@@ -61,6 +66,7 @@ const SAVE_LABELS = {
   saving: 'Saving…',
   saved: 'Saved',
   error: 'Save failed',
+  conflict: 'Someone else edited this post — click Save to keep your changes as a new draft',
 };
 
 function setSaveState(key) {
@@ -464,7 +470,10 @@ let autosaveTimer;
 function scheduleAutosave() {
   clearTimeout(autosaveTimer);
   autosaveTimer = setTimeout(() => {
-    if (state.dirty && state.post?.id) save({ notify: false });
+    // A flagged conflict waits for the explicit Save button (which forks
+    // into a new draft, see save()) rather than retrying silently — nothing
+    // about typing more resolves the underlying conflict on its own.
+    if (state.dirty && state.post?.id && !state.conflict) save({ notify: false });
   }, 2500);
 }
 
@@ -496,17 +505,44 @@ async function save({ notify = false } = {}) {
   clearTimeout(autosaveTimer);
 
   try {
-    const { data } = state.post.id
-      ? await api.updatePost(state.post.id, input)
-      : await api.createPost(input);
+    const isUpdate = Boolean(state.post.id);
+    const ifMatch = isUpdate && state.post.updated_at ? `"${state.post.updated_at}"` : undefined;
+
+    let data;
+    let forked = false;
+    try {
+      ({ data } = isUpdate
+        ? await api.updatePost(state.post.id, input, { ifMatch })
+        : await api.createPost(input));
+    } catch (error) {
+      if (error.code !== 'conflict') throw error;
+
+      if (!notify) {
+        // Autosave never forks on its own — just flag it and wait for an
+        // explicit Save, which is the one action that creates the new draft.
+        state.conflict = true;
+        setSaveState('conflict');
+        return;
+      }
+
+      // Someone else changed this post since it loaded. Rather than overwrite
+      // their edit or discard ours, fork our content into a brand-new draft —
+      // the server auto-suffixes the slug (uniqueSlug) since it collides with
+      // the post we forked from.
+      ({ data } = await api.createPost(input));
+      forked = true;
+      state.conflict = false;
+      toast('Someone else edited this post while you were working on it — your changes were saved as a new draft instead of overwriting theirs.', 'error');
+    }
 
     state.post = data;
     state.dirty = false;
     setSaveState('saved');
-    if (notify) toast('Saved');
+    if (notify && !forked) toast('Saved');
 
-    if (!params.get('id')) {
-      // First save of a new post — put the id in the URL so a refresh keeps it.
+    if (!params.get('id') || forked) {
+      // First save of a new post, or a conflict fork — either way the URL
+      // needs to point at data.id now, not whatever post it pointed at before.
       params.set('id', data.id);
       history.replaceState(null, '', `${location.pathname}?${params}`);
     }

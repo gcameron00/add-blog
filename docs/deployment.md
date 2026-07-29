@@ -13,9 +13,10 @@ deployed and running for `gcameron` — `deploy.yml` ships the whole Worker scri
 every push to `main`, so "merged" and "live" are the same moment here, not two separate
 steps. What's still open per slice is hands-on production *verification* (someone
 actually exercising it against real D1/R2 through the browser), not deployment — see
-§6's table for which slices have had that pass and which haven't yet. Export/import is
-the one Phase 5 slice with no code at all — see
-[implementation-plan.md](implementation-plan.md)'s Phase 5 section. Sections below
+§6's table for which slices have had that pass and which haven't yet. Export/import
+moved to Phase 7 (owner decision, 2026-07-29) — Phase 5 has no unbuilt slice left. See
+[implementation-plan.md](implementation-plan.md)'s Phase 5 and Phase 7 sections.
+Sections below
 double as the runbook for the *next* site: everything in §1-4 is real, owner-run work
 for `gcameron` already done; repeat it for each new one.
 
@@ -336,7 +337,7 @@ live for `gcameron`, 2026-07-29):**
 | Check | Expected, once built |
 | --- | --- |
 | `POST https://blog-admin.<site>/mcp` (no token) | 401 with `WWW-Authenticate` (Phase 6) |
-| `POST /api/admin/export` / `/import` | No route exists yet — Phase 5's one unbuilt slice |
+| `POST /api/admin/export` / `/import` | No route exists yet — moved to Phase 7 (owner decision, 2026-07-29) |
 
 ## 7. Rollback
 

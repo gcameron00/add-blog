@@ -35,11 +35,12 @@ The public hostname does not acknowledge that an admin surface exists.
 > under "Uploads" below — needs a real sanitiser, not a stand-in). AVIF uploads are
 > accepted but stored without detected `width`/`height`. The editor's cover-image
 > picker and insert-from-library button (`assets/js/admin.js`'s `openMediaPicker`) are
-> built and tested but not yet deployed — media itself was live before anything in the
-> admin UI could reference it.
-> **Tags built and tested, not yet deployed** (Phase 5d, `src/admin-tags.js`) — every
-> route in the Tags table below, including `merge`. Renaming a tag's slug does not leave
-> a redirect for the old one — see the note in `src/admin-tags.js`.
+> deployed for `gcameron` too — not yet hands-on verified in production (see
+> [deployment.md](deployment.md) §6).
+> **Tags built, tested, and deployed for `gcameron`** (Phase 5d, `src/admin-tags.js`) —
+> every route in the Tags table below, including `merge`, live but not yet hands-on
+> verified in production. Renaming a tag's slug does not leave a redirect for the old
+> one — see the note in `src/admin-tags.js`.
 > **Authors built, tested, and deployed for `gcameron`** (Phase 5e,
 > `src/admin-authors.js`) — migration `0002` (additive, `disabled` column, see
 > [architecture.md](architecture.md) §3) applied 2026-07-29; not yet hands-on verified
@@ -50,8 +51,14 @@ The public hostname does not acknowledge that an admin surface exists.
 > deleting, or demoting the only remaining active owner is rejected with `409 conflict`
 > (`assertNotLastOwner`), and so is disabling or deleting *your own* row regardless of
 > how many other owners exist (`assertNotSelf`) — both in `src/admin-authors.js`.
-> **`/export`, `/import` are still specified, not implemented** — deliberately: nothing
-> in the shipped admin UI calls them yet, unlike everything built so far.
+> **Cron (scheduled-post auto-publish) built, tested, and verified live for `gcameron`**
+> (Phase 5f, `src/cron.js`) — a `scheduled` post's `scheduled_for` time arriving now
+> flips it to `published` without anyone visiting the admin UI, confirmed in production
+> 2026-07-29.
+> **`/export`, `/import` are specified, not implemented, and moved to Phase 7** (owner
+> decision, 2026-07-29) — Phase 5's write path doesn't need a backup/restore route to be
+> complete. Owner-only when built, same tier as `/settings`. See
+> [implementation-plan.md](implementation-plan.md)'s Phase 7 section for the full spec.
 > `assets/js/api.js` already calls every route in this document; it falls back to
 > demo data per-endpoint until each one is live.
 

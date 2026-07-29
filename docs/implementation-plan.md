@@ -2,11 +2,12 @@
 
 Phases 1–4 are complete, in this repository, and live in production for the
 `gcameron` site. Phase 5 is being delivered in slices: posts, settings/dashboard, media
-upload, and scheduled-post auto-publish + revision retention (5a/5b/5c/5f) are live,
+upload, and scheduled-post auto-publish + revision retention (5a/5b/5c/5f) are live and
 verified in production; tags-as-a-resource (5d), authors-as-a-resource (5e), and the
-editor's cover-image/insert-from-library integration are built and tested but not yet
-deployed. Export/import remains proposed build-out — see Phase 5 below for the exact
-breakdown.
+editor's cover-image/insert-from-library integration are deployed for `gcameron` too,
+awaiting only a hands-on verification pass (not a deploy) — see Phase 5 below for the
+exact breakdown. Export/import moved to Phase 7 (2026-07-29, owner decision) — Phase 5
+turned out not to need it to be a complete write path.
 
 Each phase is independently deployable and leaves the site working. Phases 2–5 are
 sequential — routing before storage, storage before auth, auth before the write path.
@@ -199,7 +200,7 @@ application, returning the real identity and role.
 
 ---
 
-## Phase 5 — Write path 🚧 (everything deployed and live for `gcameron` except export/import; tags, authors, and the editor's media integration await a hands-on verification pass)
+## Phase 5 — Write path 🚧 (everything deployed and live for `gcameron`; tags, authors, and the editor's media integration await a hands-on verification pass)
 
 **Goal.** The admin UI stops being a prototype.
 
@@ -563,12 +564,16 @@ doesn't repeat it.
 
 **Queued — not yet built:**
 
-- SVG upload — needs a real sanitiser (a parser, not a regex), see above.
+- SVG upload — needs a real sanitiser (a parser, not a regex), see above. Parked as a
+  future feature, not a Phase 5 blocker — the media library works without it.
 - Lazy image variants written back to R2 — needs a resizing mechanism (e.g. Cloudflare
   Images) Workers don't have natively; needs a decision, likely with the owner, before
-  it's built.
-- `POST /export` and `/import`.
+  it's built. Same "parked, not blocking" status as SVG.
 - The editor's `If-Match` conflict-prompt UI mentioned above.
+
+**Export/import moved to Phase 7 (owner decision, 2026-07-29)** — see Phase 7 below.
+Phase 5's write path doesn't need a backup/restore route to be complete; every other
+Phase 5 slice ships without it.
 
 **Exit criteria — met for posts, settings, dashboard reads, media upload and cron, not
 yet for Phase 5 as a whole.** A post can be created, edited, saved, previewed, scheduled,
@@ -578,10 +583,11 @@ real activity feed; media can be uploaded, browsed and deleted against real R2 �
 of it through tests alone, all confirmed in production; the cron sweep (5f) now meets
 that same bar too — a scheduled post auto-published within its 5-minute window and
 logged `via: 'cron'` in the live activity feed. Tag management (5d), author management
-(5e) and the editor's media integration meet the tests-and-demo-data bar but haven't
-been confirmed against live D1/R2 in production yet. Still open: export/import remain
-unbuilt — the admin UI still can't do everything Phase 1's demo let you *pretend* to
-do.
+(5e) and the editor's media integration are deployed for `gcameron` and meet the tests
+bar, but haven't had their hands-on production verification pass yet — author
+verification specifically is waiting on setting up a real second author to
+disable/re-enable through the interface (not Cloudflare Access), per the owner
+(2026-07-29). Still open otherwise: the editor's own `If-Match` conflict-prompt UI.
 
 ---
 
@@ -611,10 +617,23 @@ identity does not see `publish_post`. Every action appears in the audit log.
 - Related posts, reading progress, copy-link-to-heading.
 - OG image generation for posts without a cover.
 - Privacy-preserving view counts (no cookies, no third-party analytics).
-- Scheduled content export to R2.
 - Dashboard stats from real data.
 - Lighthouse budget in CI; accessibility audit; RSS validation.
-- Import from Ghost, WordPress and Markdown archives.
+- **On-demand export/import (moved from Phase 5, owner decision, 2026-07-29;
+  owner-only — same tier as `/settings`).** `POST /export` — full content (every post
+  regardless of status, tags, authors, settings) as one JSON document, written to R2 at
+  `exports/<iso-date>-backup.json` (see [architecture.md](architecture.md) §4); the
+  response returns a short-lived link, not the JSON inline. `POST /import` accepts
+  either of two shapes: an export bundle (this project's own round-trip format) or a
+  generic Markdown/front-matter archive. Not yet reflected in the role table
+  (`src/auth.js` has no `export`/`import` permission entry).
+- **Scheduled (automatic, periodic) export to R2** — distinct from the on-demand
+  `/export` above: this one fires on its own schedule, no one has to click anything.
+  Natural pairing with Phase 5f's cron infrastructure once it exists.
+- **Import from Ghost, WordPress and Markdown archives** — distinct from `/import`
+  above: parsers for other platforms' own proprietary export formats (Ghost's JSON
+  export, WordPress's WXR/XML), a bigger scope than the two generic shapes `/import`
+  handles.
 
 ---
 

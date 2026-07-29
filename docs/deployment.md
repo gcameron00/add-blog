@@ -54,8 +54,9 @@ npx wrangler d1 create gcameron-blog
 # R2
 npx wrangler r2 bucket create gcameron-blog-media
 
-# Apply the schema (see docs/architecture.md §3)
+# Apply the schema (see docs/architecture.md §3) — one --file per migration, in order
 npx wrangler d1 execute gcameron-blog --file=./migrations/0001_init.sql --remote
+npx wrangler d1 execute gcameron-blog --file=./migrations/0002_authors_disabled.sql --remote
 ```
 
 Seed the first owner so there is an identity that can log in — the email must match
@@ -282,6 +283,7 @@ turned out to be the CI deploy tool installing an unrelated wrangler version, no
 | `POST https://blog-admin.<site>/mcp` (no token) | 401 with `WWW-Authenticate` (Phase 6) |
 | A `scheduled` post reaching its `scheduled_for` time with nobody visiting the admin UI | Auto-publishes (Phase 5, cron slice) — today it stays `scheduled` until someone calls publish |
 | Tag rename/merge on `/admin/tags/` | Persists for real, not just this browser's demo store — built and tested (Phase 5d), not yet deployed |
+| Add/disable/delete an author on `/admin/authors/` | Persists for real, not just this browser's demo store — built and tested (Phase 5e), not yet deployed; needs migration `0002_authors_disabled.sql` applied first (§1) |
 | Cover-image picker / "Insert image from library" in the editor | Both work against the real media library — built and tested, not yet deployed |
 
 ## 7. Rollback

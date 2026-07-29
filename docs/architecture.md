@@ -95,7 +95,10 @@ CREATE TABLE authors (
   avatar_key  TEXT,                      -- R2 object key
   role        TEXT NOT NULL DEFAULT 'author'
               CHECK (role IN ('owner','editor','author')),
-  created_at  TEXT NOT NULL
+  created_at  TEXT NOT NULL,
+  disabled    INTEGER NOT NULL DEFAULT 0 -- Phase 5e, migration 0002 — 0/1, not a CHECK
+                                          -- boolean (SQLite has none); blocks resolveAuthor
+                                          -- without touching role or post history
 );
 
 CREATE TABLE posts (

@@ -24,6 +24,7 @@ const NAV = [
   { href: '/admin/tags/', label: 'Tags', icon: 'tag' },
   { href: '/admin/media/', label: 'Media', icon: 'image' },
   { href: '/admin/mcp/', label: 'MCP access', icon: 'plug' },
+  { href: '/admin/authors/', label: 'Authors', icon: 'users' },
   { href: '/admin/settings/', label: 'Settings', icon: 'gear' },
 ];
 
@@ -699,6 +700,152 @@ async function initTags() {
   load();
 }
 
+/* --- Authors page -----------------------------------------------------------
+ * Only owner/editor/author are exposed as role choices and only name, email
+ * and role are editable from here — bio and avatar exist in the schema and
+ * the API (docs/api.md) but nothing in this prototype UI sets them yet, same
+ * gap as tags' slug/description (see initTags above). Disable is the default
+ * "remove access" action in the table; delete sits next to it as the
+ * separate, harder-to-undo one, same danger-button treatment as tags' delete.
+ * -------------------------------------------------------------------------- */
+
+function authorsTable(authors, { canManage, onChange }) {
+  const table = el('table', { class: 'table' }, [
+    el('thead', {}, [
+      el('tr', {}, [
+        el('th', { text: 'Name' }),
+        el('th', { text: 'Email' }),
+        el('th', { text: 'Role' }),
+        el('th', { text: 'Status' }),
+        el('th', { text: 'Posts' }),
+        canManage ? el('th', {}, [el('span', { class: 'visually-hidden', text: 'Actions' })]) : null,
+      ]),
+    ]),
+  ]);
+
+  const body = el('tbody');
+  for (const author of authors) {
+    body.append(
+      el('tr', {}, [
+        el('td', {}, [
+          el('div', { style: 'display:flex;align-items:center;gap:var(--sp-2)' }, [
+            author.avatar
+              ? el('img', { src: author.avatar, alt: '', style: 'width:1.75rem;height:1.75rem;border-radius:50%' })
+              : null,
+            el('span', { text: author.name }),
+          ]),
+        ]),
+        el('td', {}, [el('code', { text: author.email })]),
+        el('td', { text: author.role }),
+        el('td', {}, [
+          el('span', { class: `badge badge--${author.disabled ? 'archived' : 'published'}`, text: author.disabled ? 'Disabled' : 'Active' }),
+        ]),
+        el('td', { text: String(author.post_count) }),
+        canManage
+          ? el('td', {}, [
+              el('div', { class: 'table__actions' }, [
+                el('button', {
+                  class: 'btn btn--sm btn--ghost', type: 'button', text: 'Rename',
+                  onClick: () => {
+                    const name = window.prompt('Name', author.name);
+                    if (name === null || !name.trim() || name.trim() === author.name) return;
+                    act(() => api.updateAuthor(author.id, { name: name.trim() }), 'Author updated', onChange);
+                  },
+                }),
+                el('button', {
+                  class: 'btn btn--sm btn--ghost', type: 'button', text: 'Role',
+                  onClick: () => {
+                    const role = window.prompt('Role — owner, editor, or author', author.role);
+                    if (role === null || role.trim() === author.role) return;
+                    act(() => api.updateAuthor(author.id, { role: role.trim() }), 'Role updated', onChange);
+                  },
+                }),
+                el('button', {
+                  class: 'btn btn--sm btn--ghost', type: 'button', text: author.disabled ? 'Enable' : 'Disable',
+                  onClick: () => {
+                    const warning = author.disabled
+                      ? `Re-enable "${author.name}"? They'll be able to sign in again.`
+                      : `Disable "${author.name}"? They'll be signed out of the admin immediately — this doesn't touch Cloudflare Access, so remove them there too if they should lose access entirely.`;
+                    if (!confirm(warning)) return;
+                    act(() => api.updateAuthor(author.id, { disabled: !author.disabled }), author.disabled ? 'Author enabled' : 'Author disabled', onChange);
+                  },
+                }),
+                el('button', {
+                  class: 'btn btn--sm btn--ghost btn--danger', type: 'button', text: 'Delete',
+                  onClick: () => {
+                    const warning = author.post_count
+                      ? `Delete "${author.name}"? Their ${author.post_count} post${author.post_count === 1 ? '' : 's'} will be reassigned to you.`
+                      : `Delete "${author.name}"?`;
+                    if (!confirm(warning)) return;
+                    act(() => api.deleteAuthor(author.id), 'Author deleted', onChange);
+                  },
+                }),
+              ]),
+            ])
+          : null,
+      ])
+    );
+  }
+  table.append(body);
+  return table;
+}
+
+async function initAuthors() {
+  const host = document.querySelector('[data-authors]');
+  const form = document.querySelector('[data-author-form]');
+  if (!host) return;
+
+  let canManage = true;
+  try {
+    canManage = (await api.me()).data.role === 'owner';
+  } catch { /* fall back to showing everything */ }
+  if (form && !canManage) form.hidden = true;
+
+  async function load() {
+    host.setAttribute('aria-busy', 'true');
+    try {
+      const { data } = await api.adminListAuthors();
+      clear(host);
+      if (!data.length) {
+        renderEmpty(host, { title: 'No authors yet', body: 'Add one above.' });
+        return;
+      }
+      host.append(authorsTable(data, { canManage, onChange: load }));
+    } catch (error) {
+      renderError(host, error, load);
+    } finally {
+      host.removeAttribute('aria-busy');
+    }
+  }
+
+  form?.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const name = form.elements.name.value.trim();
+    const email = form.elements.email.value.trim();
+    const role = form.elements.role.value;
+    if (!name || !email) return;
+    const submit = form.querySelector('[type="submit"]');
+    submit.disabled = true;
+    try {
+      await api.createAuthor({ name, email, role });
+      form.reset();
+      window.alert(
+        `"${name}" is created but can't sign in yet:\n\n` +
+        `1. Add ${email} to the Cloudflare Access policy for this admin (Zero Trust → Access → Applications → your app → Policy).\n` +
+        `2. There's no invite email — let them know directly.`
+      );
+      toast('Author added');
+      load();
+    } catch (error) {
+      toast(error.message || 'Could not add author', 'error');
+    } finally {
+      submit.disabled = false;
+    }
+  });
+
+  load();
+}
+
 /* --- MCP page ------------------------------------------------------------- */
 
 const MCP_TOOLS = [
@@ -833,6 +980,7 @@ const PAGES = {
   tags: initTags,
   media: initMedia,
   mcp: initMcp,
+  authors: initAuthors,
   settings: initSettings,
 };
 

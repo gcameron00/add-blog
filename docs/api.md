@@ -40,10 +40,17 @@ The public hostname does not acknowledge that an admin surface exists.
 > **Tags built and tested, not yet deployed** (Phase 5d, `src/admin-tags.js`) — every
 > route in the Tags table below, including `merge`. Renaming a tag's slug does not leave
 > a redirect for the old one — see the note in `src/admin-tags.js`.
-> **Authors, `/export`, `/import` routes are still specified, not implemented** —
-> deliberately: nothing in the shipped admin UI calls them yet, unlike everything built
-> so far. `assets/js/api.js` already calls every route in this document; it falls back
-> to demo data per-endpoint until each one is live.
+> **Authors built and tested, not yet deployed** (Phase 5e, `src/admin-authors.js`) —
+> every route in the Authors row below, plus `disabled` (additive migration `0002`,
+> [architecture.md](architecture.md) §3). There is no invite email; `POST /authors`
+> only creates the row, and the admin UI explains the two out-of-band steps (Cloudflare
+> Access policy, telling the person directly) after a successful create. Disabling,
+> deleting, or demoting the only remaining active owner is rejected with `409 conflict`
+> — see `src/admin-authors.js`'s `assertNotLastOwner`.
+> **`/export`, `/import` are still specified, not implemented** — deliberately: nothing
+> in the shipped admin UI calls them yet, unlike everything built so far.
+> `assets/js/api.js` already calls every route in this document; it falls back to
+> demo data per-endpoint until each one is live.
 
 ---
 
@@ -265,10 +272,16 @@ rather than a guess.
 | --- | --- | --- |
 | `GET` | `/settings` | All settings as one object |
 | `PUT` | `/settings` | Replace (owner only); unknown keys rejected |
-| `GET` | `/authors` | List |
-| `POST` | `/authors` | Invite by email (owner only) — creates the row Access identities map onto |
-| `PATCH` | `/authors/:id` | Update profile or role (owner only) |
-| `DELETE` | `/authors/:id` | Remove (owner only); their posts are reassigned to the owner |
+| `GET` | `/authors` | List, with each author's `post_count` |
+| `POST` | `/authors` | Create by email (owner only) — the row Access identities map onto; no email is sent |
+| `PATCH` | `/authors/:id` | Update name, email, role, or `disabled` (owner only) |
+| `DELETE` | `/authors/:id` | Remove (owner only); their posts are reassigned to whoever performed the delete |
+
+`disabled` blocks sign-in (`resolveAuthor` stops matching the row — same `403` as no row
+at all) without touching the row, its role, or its post history; it's the reversible
+half of removing someone, `DELETE` the harder-to-undo one. Both `disabled: true` and
+`DELETE`, plus a `role` change away from `owner`, are rejected with `409 conflict` if
+the target is the only remaining active (non-disabled) owner.
 | `GET` | `/audit` | Audit log, newest first, filterable by `actor`, `action`, `via` |
 | `GET` | `/stats` | Dashboard counters: posts by status, views, recent activity |
 | `POST` | `/export` | Full content export to R2 as JSON; returns a short-lived link |

@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light dark" />
+    <meta name="robots" content="noindex, nofollow" />
+    <title>Authors — add-blog admin</title>
+    <link rel="icon" href="/assets/favicon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="/assets/css/styles.css" />
+    <link rel="stylesheet" href="/assets/css/admin.css" />
+    <script type="module" src="/assets/js/admin.js"></script>
+  </head>
+  <body class="admin" data-page="authors">
+    <a class="skip-link" href="#main">Skip to content</a>
+
+    <div class="admin-layout">
+      <aside class="admin-sidebar" data-sidebar></aside>
+
+      <main class="admin-main" id="main" data-demo-slot>
+        <div class="admin-header">
+          <div>
+            <h1>Authors</h1>
+            <p>Who can sign in to this admin, and what they're allowed to do once they're in.</p>
+          </div>
+          <div class="admin-header__actions">
+            <button class="btn" type="button" data-theme-toggle aria-label="Toggle theme"></button>
+          </div>
+        </div>
+
+        <div class="callout callout--info">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" aria-hidden="true">
+            <circle cx="12" cy="12" r="9" /><path d="M12 11v5m0-8.5v.01" />
+          </svg>
+          <div>
+            <strong>Adding someone here isn't enough on its own.</strong>
+            <p style="margin: 0">
+              This creates the row their identity resolves onto once they sign in — it
+              doesn't grant that sign-in. Their email also has to be added to the
+              Cloudflare Access policy for this admin (Zero Trust &rarr; Access &rarr;
+              Applications &rarr; your app &rarr; Policy). There's no invite email either
+              way — let them know directly once both are done.
+            </p>
+          </div>
+        </div>
+
+        <form data-author-form>
+          <div class="card">
+            <div class="card__header"><h2>Add an author</h2></div>
+            <div class="form-row">
+              <div class="field">
+                <label for="author-name">Name</label>
+                <input type="text" id="author-name" name="name" maxlength="100" required autocomplete="off" />
+              </div>
+              <div class="field">
+                <label for="author-email">Email</label>
+                <input type="email" id="author-email" name="email" maxlength="200" required autocomplete="off" />
+                <p class="field__hint">Must match the identity Cloudflare Access will present for them.</p>
+              </div>
+              <div class="field">
+                <label for="author-role">Role</label>
+                <select id="author-role" name="role">
+                  <option value="author">Author — write and edit own posts</option>
+                  <option value="editor">Editor — edit and publish any post, manage tags</option>
+                  <option value="owner">Owner — everything, including authors and settings</option>
+                </select>
+              </div>
+            </div>
+            <button class="btn btn--primary" type="submit">Add author</button>
+          </div>
+        </form>
+
+        <div class="card card--flush">
+          <div data-authors aria-live="polite"></div>
+        </div>
+      </main>
+    </div>
+  </body>
+</html>

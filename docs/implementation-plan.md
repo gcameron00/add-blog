@@ -2,10 +2,11 @@
 
 Phases 1–4 are complete, in this repository, and live in production for the
 `gcameron` site. Phase 5 is being delivered in slices: posts, settings/dashboard, and
-media upload (5a/5b/5c) are live, verified in production; tags-as-a-resource (5d) and
-the editor's cover-image/insert-from-library integration are built and tested but not
-yet deployed. Authors, export/import and scheduled-post auto-publish remain proposed
-build-out — see Phase 5 below for the exact breakdown.
+media upload (5a/5b/5c) are live, verified in production; tags-as-a-resource (5d),
+authors-as-a-resource (5e), and the editor's cover-image/insert-from-library
+integration are built and tested but not yet deployed. Export/import and
+scheduled-post auto-publish remain proposed build-out — see Phase 5 below for the
+exact breakdown.
 
 Each phase is independently deployable and leaves the site working. Phases 2–5 are
 sequential — routing before storage, storage before auth, auth before the write path.
@@ -198,7 +199,7 @@ application, returning the real identity and role.
 
 ---
 
-## Phase 5 — Write path 🚧 (posts + settings + dashboard + media live; tags built, pending deploy; rest queued)
+## Phase 5 — Write path 🚧 (posts + settings + dashboard + media live; tags + authors built, pending deploy; rest queued)
 
 **Goal.** The admin UI stops being a prototype.
 
@@ -425,13 +426,64 @@ pasting it into Markdown. Closed both gaps:
   page. Verified in a real browser: pick, remove, re-pick, insert-into-body, and that a
   saved post's `cover_key` actually persists through demo mode's `localStorage` store.
 
+**5e — Authors as their own resource. Built and tested, not yet deployed
+(`src/admin-authors.js`, `src/admin-db.js`, additive migration `0002_authors_disabled`):**
+
+- `GET /api/admin/authors` (every author, each with a `post_count` — every post
+  regardless of status, same "management view" reasoning as tags), `POST
+  /api/admin/authors` (name, email, role — creates the row an Access identity resolves
+  onto; role defaults to `author`), `PATCH /api/admin/authors/:id` (name, email, role,
+  or `disabled`), `DELETE /api/admin/authors/:id` (reassigns the target's posts to
+  whoever performed the delete, then removes the row). All owner-only except the list,
+  per `authors.manage` in `src/auth.js`'s role table — same level as `settings.manage`,
+  since a role change or removal reaches every post the target has ever written.
+- **No invite email, by design (owner decision, 2026-07-29).** `POST /authors` only
+  creates the row; there is no email-sending mechanism to trigger. Two steps stay
+  manual on purpose: adding the email to the Cloudflare Access policy (still the only
+  thing that actually grants sign-in), and telling the person directly. The admin UI
+  (`admin/authors/index.html`) surfaces both as a blocking `alert()` right after a
+  successful create — the moment the new email is on screen and the reminder is most
+  likely to be acted on — plus a standing `callout--info` above the form for anyone who
+  lands on the page without creating anyone.
+- **Disable, alongside delete (owner decision, 2026-07-29).** `disabled` (migration
+  `0002`, additive) is the reversible half of removing someone: `src/auth.js`'s
+  `resolveAuthor` stops matching a disabled row, so the next sign-in `403`s exactly like
+  a missing row, but the row, its role, and its post history all stay put. `DELETE` is
+  the other, harder-to-undo half — it also reassigns the target's post history rather
+  than leaving it in place. The admin UI defaults to Disable as the row action, with
+  Delete next to it in the same danger styling as tags' delete.
+- **Self-protection.** Disabling, deleting, or changing the `role` away from `owner` is
+  rejected with `409 conflict` if the target is the only remaining active (non-disabled)
+  owner — `assertNotLastOwner` in `src/admin-authors.js`, backed by
+  `countActiveOwners` in `src/admin-db.js`. Checked server-side, not just hidden in the
+  UI: the same guard runs whether the call comes from the admin UI or (once Phase 6
+  ships) an MCP client. The demo fallback (`assets/js/api.js`) reimplements the same
+  check against `localStorage` so it behaves identically before a Worker is deployed.
+- The admin UI (`admin/authors/index.html`, `assets/js/admin.js`'s `initAuthors`) is a
+  single table plus a create form, gated by `GET /me`'s role the same way the MCP page
+  gates its tools table — a non-owner sees the list but not the form or the row
+  actions, backed by the server-side `403` either way. Per-row actions (Rename, Role,
+  Disable/Enable, Delete) reuse the `prompt()`/`confirm()` pattern from tags and media
+  rather than a new dialog component. Email and bio aren't exposed as UI edit actions
+  yet — same "UI surface narrower than the API" gap as tags' slug/description.
+- 21 new tests (194 total) — permission checks per role, email-uniqueness 409s, the
+  disable/enable round trip verified against `resolveAuthor` directly (not just the
+  API response), the last-owner guard for disable/delete/demote, and delete's post
+  reassignment. Verified by hand too, in a real browser (Playwright-driven Chromium)
+  against the demo-mode static-file dev path: create (with the Access/no-email alert),
+  disable, and the last-owner guard's error toast, with `console --errors` clean apart
+  from the same demo-mode `/api/admin/me` 404 every other admin page produces before a
+  Worker is deployed.
+
+**Owner action required (before 5e can go live for `gcameron`).** Migration
+`0002_authors_disabled.sql` is additive and safe to run against the live database at
+any time (per [deployment.md](deployment.md) §1's updated apply command), but it
+hasn't been run against `gcameron`'s production D1 yet — someone with dashboard/CLI
+access needs to do that before this slice is deployed, same as every other D1/R2/Access
+change in this project (see [deployment.md](deployment.md) §1).
+
 **Queued — not yet built:**
 
-- Authors: `GET/POST /authors`, `PATCH`/`DELETE /authors/:id` (all owner-only except
-  the list). No admin UI page calls these yet — worth pairing with a small authors page
-  when built, since the main value (inviting a real teammate without the owner running
-  raw SQL — see [deployment.md](deployment.md) §1, which is how the site's own owner
-  row was seeded) needs *something* to click, not just an endpoint.
 - SVG upload — needs a real sanitiser (a parser, not a regex), see above.
 - Lazy image variants written back to R2 — needs a resizing mechanism (e.g. Cloudflare
   Images) Workers don't have natively; needs a decision, likely with the owner, before
@@ -452,12 +504,12 @@ for Phase 5 as a whole.** A post can be created, edited, saved, previewed, sched
 published, unpublished and deleted through the admin UI against live D1 for
 `gcameron`; settings can be changed and persist; the dashboard shows real counts and a
 real activity feed; media can be uploaded, browsed and deleted against real R2 — none
-of it through tests alone, all confirmed in production. Tag management (5d) and the
-editor's media integration meet the same bar in tests and in a real browser against
-demo data, but haven't been confirmed against live D1/R2 in production yet. Still
-open: "scheduled" doesn't self-publish without the cron trigger, and authors/export
-remain unbuilt — the admin UI still can't do everything Phase 1's demo let you
-*pretend* to do.
+of it through tests alone, all confirmed in production. Tag management (5d), author
+management (5e) and the editor's media integration meet the same bar in tests and in a
+real browser against demo data, but haven't been confirmed against live D1/R2 in
+production yet. Still open: "scheduled" doesn't self-publish without the cron trigger,
+and export/import remain unbuilt — the admin UI still can't do everything Phase 1's
+demo let you *pretend* to do.
 
 ---
 

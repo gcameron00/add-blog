@@ -120,6 +120,7 @@ function seed() {
     posts: demo.POSTS.map((p) => ({ ...p })),
     media: demo.MEDIA.map((m) => ({ ...m })),
     tags: demo.TAGS.map((t) => ({ id: t.slug, description: null, ...t })),
+    authors: demo.AUTHORS.map((a) => ({ ...a })),
     settings: { ...demo.SETTINGS },
     activity: demo.ACTIVITY.map((a) => ({ ...a })),
   };
@@ -132,6 +133,11 @@ function getStore() {
     if (raw) {
       const parsed = JSON.parse(raw);
       if (parsed?.posts?.length) {
+        // `authors` (Phase 5e) postdates this store key — backfill it for
+        // anyone whose localStorage predates the field, same as reseeding
+        // from scratch would give them, rather than bumping STORE_KEY and
+        // discarding every other edit they've made in the demo.
+        parsed.authors ||= demo.AUTHORS.map((a) => ({ ...a }));
         store = parsed;
         return store;
       }
@@ -674,6 +680,124 @@ export function mergeTags(fromSlugs, intoSlug) {
       logActivity('tag.merge', into.name);
       persist();
       return { data: { ...into, post_count: tagPostCount(state, into.slug) } };
+    }
+  );
+}
+
+function authorPostCount(state, authorId) {
+  return state.posts.filter((p) => p.author_id === authorId).length;
+}
+
+/** Owners who could still sign in, other than `excludeId` — mirrors src/admin-db.js's countActiveOwners so the last-owner guard behaves the same in demo mode as against live D1. */
+function activeOwnerCount(state, excludeId) {
+  return state.authors.filter((a) => a.role === 'owner' && !a.disabled && a.id !== excludeId).length;
+}
+
+function assertNotLastOwner(state, author, action) {
+  if (author.role !== 'owner' || author.disabled) return;
+  if (activeOwnerCount(state, author.id) === 0) {
+    throw new ApiError({ code: 'conflict', message: `Can't ${action} the only remaining owner — promote someone else first.` }, 409);
+  }
+}
+
+export function adminListAuthors() {
+  return withFallback(
+    () => call('/admin/authors'),
+    async () => {
+      await delay(60);
+      const state = getStore();
+      const data = state.authors
+        .map((a) => ({ ...a, post_count: authorPostCount(state, a.id) }))
+        .sort((a, b) => a.name.localeCompare(b.name));
+      return { data };
+    }
+  );
+}
+
+export function createAuthor(input) {
+  return withFallback(
+    () => call('/admin/authors', { method: 'POST', body: input }),
+    async () => {
+      await delay();
+      const state = getStore();
+      const name = input.name?.trim() || '';
+      if (!name) throw new ApiError({ code: 'bad_request', message: 'name must be 1-100 characters.', field: 'name' }, 400);
+      const email = (input.email || '').trim().toLowerCase();
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+        throw new ApiError({ code: 'bad_request', message: 'email must be a valid email address.', field: 'email' }, 400);
+      }
+      if (state.authors.some((a) => a.email === email)) {
+        throw new ApiError({ code: 'conflict', message: `"${email}" already has an author row.`, field: 'email' }, 409);
+      }
+      const author = {
+        id: `a${Date.now().toString(36)}`,
+        name,
+        email,
+        role: input.role || 'author',
+        bio: input.bio || null,
+        avatar: null,
+        disabled: false,
+        created_at: nowIso(),
+      };
+      state.authors.push(author);
+      logActivity('author.create', name);
+      persist();
+      return { data: { ...author, post_count: 0 } };
+    }
+  );
+}
+
+export function updateAuthor(id, patch) {
+  return withFallback(
+    () => call(`/admin/authors/${encodeURIComponent(id)}`, { method: 'PATCH', body: patch }),
+    async () => {
+      await delay();
+      const state = getStore();
+      const author = state.authors.find((a) => a.id === id);
+      if (!author) throw new ApiError({ code: 'not_found', message: 'Not found.' }, 404);
+
+      if (patch.email !== undefined) {
+        const email = patch.email.trim().toLowerCase();
+        if (state.authors.some((a) => a.id !== id && a.email === email)) {
+          throw new ApiError({ code: 'conflict', message: `"${email}" already has an author row.`, field: 'email' }, 409);
+        }
+        patch = { ...patch, email };
+      }
+      if (patch.role !== undefined && patch.role !== 'owner') assertNotLastOwner(state, author, 'change the role of');
+      if (patch.disabled === true) assertNotLastOwner(state, author, 'disable');
+
+      Object.assign(author, patch);
+
+      logActivity('author.update', author.name);
+      persist();
+      return { data: { ...author, post_count: authorPostCount(state, author.id) } };
+    }
+  );
+}
+
+export function deleteAuthor(id) {
+  return withFallback(
+    () => call(`/admin/authors/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+    async () => {
+      await delay();
+      const state = getStore();
+      const index = state.authors.findIndex((a) => a.id === id);
+      if (index === -1) throw new ApiError({ code: 'not_found', message: 'Not found.' }, 404);
+      const [removed] = state.authors[index] ? [state.authors[index]] : [];
+      assertNotLastOwner(state, removed, 'delete');
+
+      const actingOwner = state.authors.find((a) => a.id === demo.CURRENT_USER.id) || demo.CURRENT_USER;
+      for (const post of state.posts) {
+        if (post.author_id === id) {
+          post.author_id = actingOwner.id;
+          post.author = actingOwner;
+        }
+      }
+      state.authors.splice(index, 1);
+
+      logActivity('author.delete', removed.name);
+      persist();
+      return { data: { id } };
     }
   );
 }

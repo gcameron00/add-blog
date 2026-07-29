@@ -73,6 +73,39 @@ export function validateVisibility(visibility) {
   return visibility;
 }
 
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const AUTHOR_ROLES = ['owner', 'editor', 'author'];
+
+export function validateAuthorName(name) {
+  if (typeof name !== 'string' || name.trim().length < 1 || name.length > 100) {
+    throw new ValidationError('name must be 1-100 characters.', 'name');
+  }
+  return name.trim();
+}
+
+/** Case-insensitive per email's own semantics — lower-cased so it matches however Access presents the identity's `email` claim, per docs/architecture.md §3. */
+export function validateAuthorEmail(email) {
+  if (typeof email !== 'string' || email.length > 200 || !EMAIL_RE.test(email)) {
+    throw new ValidationError('email must be a valid email address.', 'email');
+  }
+  return email.trim().toLowerCase();
+}
+
+export function validateAuthorRole(role) {
+  if (!AUTHOR_ROLES.includes(role)) {
+    throw new ValidationError(`role must be one of: ${AUTHOR_ROLES.join(', ')}.`, 'role');
+  }
+  return role;
+}
+
+export function validateAuthorBio(bio) {
+  if (bio === undefined || bio === null || bio === '') return null;
+  if (typeof bio !== 'string' || bio.length > 500) {
+    throw new ValidationError('bio must be at most 500 characters.', 'bio');
+  }
+  return bio;
+}
+
 export function validateScheduledFor(scheduledFor) {
   const date = new Date(scheduledFor);
   if (Number.isNaN(date.getTime()) || date.getTime() <= Date.now()) {

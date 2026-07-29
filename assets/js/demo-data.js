@@ -53,6 +53,8 @@ export const AUTHORS = [
     role: 'owner',
     bio: 'Builds things on the edge. Writes about what broke.',
     avatar: avatar('GC', 220),
+    disabled: false,
+    created_at: '2026-06-01T09:00:00Z',
   },
   {
     id: 'a2',
@@ -61,6 +63,8 @@ export const AUTHORS = [
     role: 'editor',
     bio: 'Design systems, accessibility, and the occasional performance rant.',
     avatar: avatar('AO', 330),
+    disabled: false,
+    created_at: '2026-06-03T10:15:00Z',
   },
 ];
 

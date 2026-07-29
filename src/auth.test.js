@@ -19,6 +19,15 @@ describe('resolveAuthor', () => {
     const author = await resolveAuthor(env.DB, 'nobody@mysite.com');
     expect(author).toBeFalsy();
   });
+
+  it('returns null for a disabled author, same as a missing row', async () => {
+    await env.DB
+      .prepare(`INSERT OR IGNORE INTO authors (id, email, name, role, disabled, created_at) VALUES (?, ?, ?, ?, 1, ?)`)
+      .bind('a-disabled', 'disabled@mysite.com', 'Disabled Author', 'author', '2026-07-01T00:00:00Z')
+      .run();
+    const author = await resolveAuthor(env.DB, 'disabled@mysite.com');
+    expect(author).toBeFalsy();
+  });
 });
 
 describe('can', () => {

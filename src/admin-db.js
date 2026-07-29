@@ -358,6 +358,64 @@ export async function deleteTagRow(db, id) {
   await db.prepare(`DELETE FROM tags WHERE id = ?`).bind(id).run();
 }
 
+/* --- Authors (Phase 5e) ----------------------------------------------------- */
+
+/** `post_count` here is every post the author has written regardless of status, same "management view, not the public one" reasoning as listAdminTags — it's what the delete confirmation needs to warn with. */
+export async function listAdminAuthors(db) {
+  const { results } = await db
+    .prepare(`
+      SELECT a.id, a.email, a.name, a.bio, a.avatar_key, a.role, a.disabled, a.created_at,
+             COUNT(p.id) AS post_count
+      FROM authors a
+      LEFT JOIN posts p ON p.author_id = a.id
+      GROUP BY a.id
+      ORDER BY a.name ASC
+    `)
+    .all();
+  return results;
+}
+
+export async function getAuthorById(db, id) {
+  return db.prepare(`SELECT * FROM authors WHERE id = ?`).bind(id).first();
+}
+
+export async function authorEmailExists(db, email, excludeId = null) {
+  const row = await db.prepare(`SELECT 1 FROM authors WHERE email = ? AND id != ? LIMIT 1`).bind(email, excludeId || '').first();
+  return Boolean(row);
+}
+
+export async function insertAuthor(db, { id, email, name, role, bio = null, created_at }) {
+  await db
+    .prepare(`INSERT INTO authors (id, email, name, bio, role, created_at) VALUES (?, ?, ?, ?, ?, ?)`)
+    .bind(id, email, name, bio, role, created_at)
+    .run();
+}
+
+export async function updateAuthorRow(db, id, fields) {
+  const columns = Object.keys(fields);
+  if (!columns.length) return;
+  const set = columns.map((c) => `${c} = ?`).join(', ');
+  await db.prepare(`UPDATE authors SET ${set} WHERE id = ?`).bind(...columns.map((c) => fields[c]), id).run();
+}
+
+export async function deleteAuthorRow(db, id) {
+  await db.prepare(`DELETE FROM authors WHERE id = ?`).bind(id).run();
+}
+
+/** Active (enabled) owners other than `excludeId` — lets a guard ask "if this one stopped counting, would any owner be left?" in one query. */
+export async function countActiveOwners(db, excludeId = null) {
+  const row = await db
+    .prepare(`SELECT COUNT(*) AS total FROM authors WHERE role = 'owner' AND disabled = 0 AND id != ?`)
+    .bind(excludeId || '')
+    .first();
+  return row?.total || 0;
+}
+
+/** The other half of an author delete (docs/api.md: "their posts are reassigned to the owner") — every post they wrote repointed at `toId` before the row itself goes. */
+export async function reassignPosts(db, fromId, toId) {
+  await db.prepare(`UPDATE posts SET author_id = ? WHERE author_id = ?`).bind(toId, fromId).run();
+}
+
 /**
  * Folds every `fromIds` tag into `intoId`: re-points each of its posts at
  * `intoId` (via `INSERT OR IGNORE`, since a post already carrying both tags

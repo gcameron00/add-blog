@@ -204,6 +204,8 @@ const ICON_PATHS = {
   copy: '<rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1"/>',
   external: '<path d="M14 4h6v6"/><path d="M20 4 10 14"/><path d="M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/>',
   panel: '<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16"/>',
+  users: '<path d="M2 20v-1a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v1"/><circle cx="8" cy="8" r="3.2"/><path d="M15.5 4.3a3.2 3.2 0 0 1 0 6.2"/><path d="M22 20v-1a4 4 0 0 0-3-3.85"/>',
+  ban: '<circle cx="12" cy="12" r="9"/><path d="m5.5 5.5 13 13"/>',
 };
 
 /** Inline SVG icon. The path data is a constant in this file, never user input. */

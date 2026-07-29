@@ -27,7 +27,15 @@ export function permissionsFor(role) {
   return Object.keys(PERMISSIONS).filter((permission) => can(role, permission));
 }
 
-/** The `authors` row for a verified Access email, or null if none exists (Phase 4/5: no row means `403`, never an implicit account). */
+/**
+ * The `authors` row for a verified Access email, or null if none exists
+ * (Phase 4/5: no row means `403`, never an implicit account) or the row is
+ * `disabled` (Phase 5e) — a disabled author 403s exactly like a missing one,
+ * even though Access itself still lets the identity through.
+ */
 export async function resolveAuthor(db, email) {
-  return db.prepare(`SELECT id, email, name, role, avatar_key FROM authors WHERE email = ?`).bind(email).first();
+  return db
+    .prepare(`SELECT id, email, name, role, avatar_key FROM authors WHERE email = ? AND disabled = 0`)
+    .bind(email)
+    .first();
 }

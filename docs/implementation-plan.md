@@ -1,12 +1,12 @@
 # Implementation plan
 
 Phases 1–4 are complete, in this repository, and live in production for the
-`gcameron` site. Phase 5 is being delivered in slices: posts, settings/dashboard, and
-media upload (5a/5b/5c) are live, verified in production; tags-as-a-resource (5d),
-authors-as-a-resource (5e), scheduled-post auto-publish + revision retention (5f), and
-the editor's cover-image/insert-from-library integration are built and tested but not
-yet deployed. Export/import remains proposed build-out — see Phase 5 below for the
-exact breakdown.
+`gcameron` site. Phase 5 is being delivered in slices: posts, settings/dashboard, media
+upload, and scheduled-post auto-publish + revision retention (5a/5b/5c/5f) are live,
+verified in production; tags-as-a-resource (5d), authors-as-a-resource (5e), and the
+editor's cover-image/insert-from-library integration are built and tested but not yet
+deployed. Export/import remains proposed build-out — see Phase 5 below for the exact
+breakdown.
 
 Each phase is independently deployable and leaves the site working. Phases 2–5 are
 sequential — routing before storage, storage before auth, auth before the write path.
@@ -199,7 +199,7 @@ application, returning the real identity and role.
 
 ---
 
-## Phase 5 — Write path 🚧 (posts + settings + dashboard + media live; tags + authors + cron built, pending deploy; export/import queued)
+## Phase 5 — Write path 🚧 (posts + settings + dashboard + media + cron live; tags + authors built, pending deploy; export/import queued)
 
 **Goal.** The admin UI stops being a prototype.
 
@@ -516,8 +516,9 @@ author for real, per [deployment.md](deployment.md) §6's table format) — unti
 run, this stays "built and tested, not yet confirmed live" rather than moving to the
 "verified in production" tier posts/settings/dashboard/media are at.
 
-**5f — Cron: scheduled-post auto-publish + revision retention. Built and tested
-(`src/cron.js`, `migrations/0003_audit_via_cron.sql`), not yet deployed:**
+**5f — Cron: scheduled-post auto-publish + revision retention. Built, tested, and
+verified live for `gcameron` (2026-07-29) — `src/cron.js`,
+`migrations/0003_audit_via_cron.sql`:**
 
 - `scheduled(event, env, ctx)` in `src/index.js`, wired to `[env.gcameron.triggers]
   crons = ["*/5 * * * *"]` in `wrangler.toml` (owner decision, 2026-07-29: every 5
@@ -539,6 +540,25 @@ run, this stays "built and tested, not yet confirmed live" rather than moving to
   not-yet-due post is untouched; `publishDuePosts` no-ops with no `DB` binding; revision
   history caps at 20 after 25 saves.
 
+**Deploy incident, same day (2026-07-29) — self-inflicted, caught within the hour.**
+The first `wrangler.toml` diff put the new `[env.gcameron.triggers]` header *between*
+the two halves of `[env.gcameron.vars]`, rather than after all of them. TOML has no
+notion of "these keys belong to the table above" independent of position — every key
+after a table header belongs to that header until the next one — so `ACCESS_TEAM_DOMAIN`
+and `ACCESS_AUD` silently became keys of `[env.gcameron.triggers]` instead of
+`[env.gcameron.vars]`. In production that made both `env.ACCESS_TEAM_DOMAIN` and
+`env.ACCESS_AUD` undefined, which `src/index.js`'s admin guard treats identically to "this
+site hasn't done its Phase 4 Access setup yet" — so it skipped its own JWT verification,
+`identity` stayed `null` on every admin request, and every admin API call failed, which
+surfaced as the admin UI's demo-data fallback kicking in across the board. Cloudflare
+Access itself at the edge was never affected (it's configured independently of these
+vars) — only the Worker's own redundant identity check was disabled, but that was enough
+to break every real API call. Fixed by moving `[env.gcameron.triggers]` to after every
+`[env.gcameron.vars]` key, confirmed with `wrangler deploy --dry-run` (both vars listed
+again as bindings) before pushing. The comment above `[env.gcameron.triggers]` in
+`wrangler.toml` now calls this out explicitly so the next table added to this file
+doesn't repeat it.
+
 **Queued — not yet built:**
 
 - SVG upload — needs a real sanitiser (a parser, not a regex), see above.
@@ -548,22 +568,18 @@ run, this stays "built and tested, not yet confirmed live" rather than moving to
 - `POST /export` and `/import`.
 - The editor's `If-Match` conflict-prompt UI mentioned above.
 
-**Owner action required (5f).** Same as every Cloudflare-account-reaching change in
-this project (per the project's own convention): the code and `wrangler.toml` diff are
-written, but running `migrations/0003_audit_via_cron.sql` against production D1 and
-letting `deploy.yml` push the new `[triggers]` block are for the owner to trigger, not
-this session — see [deployment.md](deployment.md) §1 and §6.
-
-**Exit criteria — met for posts, settings, dashboard reads and media upload, not yet
-for Phase 5 as a whole.** A post can be created, edited, saved, previewed, scheduled,
+**Exit criteria — met for posts, settings, dashboard reads, media upload and cron, not
+yet for Phase 5 as a whole.** A post can be created, edited, saved, previewed, scheduled,
 published, unpublished and deleted through the admin UI against live D1 for
 `gcameron`; settings can be changed and persist; the dashboard shows real counts and a
 real activity feed; media can be uploaded, browsed and deleted against real R2 — none
-of it through tests alone, all confirmed in production. Tag management (5d), author
-management (5e), the cron sweep (5f) and the editor's media integration meet the same
-bar in tests and in a real browser against demo data, but haven't been confirmed
-against live D1/R2 in production yet. Still open: export/import remain unbuilt — the
-admin UI still can't do everything Phase 1's demo let you *pretend* to do.
+of it through tests alone, all confirmed in production; the cron sweep (5f) now meets
+that same bar too — a scheduled post auto-published within its 5-minute window and
+logged `via: 'cron'` in the live activity feed. Tag management (5d), author management
+(5e) and the editor's media integration meet the tests-and-demo-data bar but haven't
+been confirmed against live D1/R2 in production yet. Still open: export/import remain
+unbuilt — the admin UI still can't do everything Phase 1's demo let you *pretend* to
+do.
 
 ---
 

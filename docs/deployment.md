@@ -301,13 +301,13 @@ live — not yet hands-on verified):**
 | Try to disable/delete the only remaining owner | `409`, blocked | not yet exercised in prod |
 | Delete an author with posts | `200`; their posts now show the deleting owner as author on `/admin/posts/` | not yet exercised in prod |
 
-**Phase 5f, cron (built and tested, migration + `wrangler.toml` diff written, not yet
-applied/deployed for `gcameron`):**
+**Phase 5f, cron (migration applied, `wrangler.toml` `[triggers]` deployed, verified
+live for `gcameron`, 2026-07-29):**
 
 | Check | Expected | Confirmed |
 | --- | --- | --- |
-| Schedule a post a few minutes out, then wait past that time with nobody visiting the admin UI | Auto-publishes; shows up at `/posts/<slug>` and in the feed within one cron tick (up to 5 min) | not yet exercised in prod — needs migration 0003 applied and the `[triggers]` deploy first |
-| `audit_log` row for that publish | `actor = 'system'`, `via = 'cron'` | not yet exercised in prod |
+| Schedule a post a few minutes out, then wait past that time with nobody visiting the admin UI | Auto-publishes; shows up at `/posts/<slug>` and in the feed within one cron tick (up to 5 min) | ✅ |
+| `audit_log` row for that publish | `actor = 'system'`, `via = 'cron'` | ✅ — visible in the dashboard activity feed |
 | Save a post's body more than 20 times | `GET .../revisions` never returns more than 20 rows, newest kept | test-verified; not yet exercised in prod |
 
 **Not built yet (expect 404 or demo data, not real behaviour):**

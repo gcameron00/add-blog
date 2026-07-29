@@ -142,6 +142,14 @@ describe('PATCH /api/admin/authors/:id', () => {
     expect(res.status).toBe(200);
   });
 
+  it('blocks disabling your own account even when another active owner exists', async () => {
+    await makeAuthor('Self Disabler', 'self-disable@mysite.com', 'owner');
+    const secondOwner = { email: 'self-disable@mysite.com', author: await resolveAuthor(env.DB, 'self-disable@mysite.com') };
+    const res = await call(secondOwner, 'PATCH', `/api/admin/authors/${secondOwner.author.id}`, { body: { disabled: true } });
+    expect(res.status).toBe(409);
+    expect(await resolveAuthor(env.DB, 'self-disable@mysite.com')).toBeTruthy();
+  });
+
   it('rejects a duplicate email on update', async () => {
     const a = await makeAuthor('Email Clash', 'clash@mysite.com');
     const res = await call(owner, 'PATCH', `/api/admin/authors/${a.id}`, { body: { email: 'ada@mysite.com' } });
@@ -182,6 +190,14 @@ describe('DELETE /api/admin/authors/:id', () => {
     const res = await call(owner, 'DELETE', `/api/admin/authors/${owner.author.id}`);
     expect(res.status).toBe(409);
     expect(await resolveAuthor(env.DB, 'grant@mysite.com')).toBeTruthy();
+  });
+
+  it('blocks deleting your own account even when another active owner exists', async () => {
+    const created = await (await call(owner, 'POST', '/api/admin/authors', { body: { name: 'Self Deleter', email: 'self-delete@mysite.com', role: 'owner' } })).json();
+    const secondOwner = { email: 'self-delete@mysite.com', author: await resolveAuthor(env.DB, 'self-delete@mysite.com') };
+    const res = await call(secondOwner, 'DELETE', `/api/admin/authors/${created.data.id}`);
+    expect(res.status).toBe(409);
+    expect(await resolveAuthor(env.DB, 'self-delete@mysite.com')).toBeTruthy();
   });
 
   it('404s an unknown id', async () => {

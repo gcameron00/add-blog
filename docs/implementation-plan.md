@@ -462,10 +462,13 @@ pasting it into Markdown. Closed both gaps:
 - The admin UI (`admin/authors/index.html`, `assets/js/admin.js`'s `initAuthors`) is a
   single table plus a create form, gated by `GET /me`'s role the same way the MCP page
   gates its tools table — a non-owner sees the list but not the form or the row
-  actions, backed by the server-side `403` either way. Per-row actions (Rename, Role,
-  Disable/Enable, Delete) reuse the `prompt()`/`confirm()` pattern from tags and media
-  rather than a new dialog component. Email and bio aren't exposed as UI edit actions
-  yet — same "UI surface narrower than the API" gap as tags' slug/description.
+  actions, backed by the server-side `403` either way. Role is an inline `<select>`
+  (owner/editor/author, matching the API's own enum) rather than a text prompt — the
+  API validates either way, but there's no reason to let a typo reach that check.
+  Rename, Disable/Enable and Delete still reuse the `prompt()`/`confirm()` pattern from
+  tags and media rather than a new dialog component. Email and bio aren't exposed as UI
+  edit actions yet — same "UI surface narrower than the API" gap as tags'
+  slug/description.
 - 21 new tests (194 total) — permission checks per role, email-uniqueness 409s, the
   disable/enable round trip verified against `resolveAuthor` directly (not just the
   API response), the last-owner guard for disable/delete/demote, and delete's post
@@ -474,6 +477,35 @@ pasting it into Markdown. Closed both gaps:
   disable, and the last-owner guard's error toast, with `console --errors` clean apart
   from the same demo-mode `/api/admin/me` 404 every other admin page produces before a
   Worker is deployed.
+
+**Follow-up fixes (owner review, 2026-07-29), before this slice ever deployed:**
+
+- **Role as a `<select>`, not a prompt** — the initial cut used `window.prompt()` for
+  role same as the other single-field edits; caught in review as worse than the other
+  prompts, since a role is a closed enum, not free text, and a typo there is a
+  silently-rejected API call instead of a UI mistake.
+- **Self-protection, not just last-owner protection.** The original guard
+  (`assertNotLastOwner`) only stopped the site from ending up with zero owners; it did
+  nothing to stop an owner from disabling or deleting *their own* row while other
+  owners existed — a stray click on your own table row, confirmed without reading the
+  dialog closely, would sign you out with nothing left to undo it but another owner's
+  intervention. `assertNotSelf` in `src/admin-authors.js` (and mirrored in
+  `assets/js/api.js`'s demo fallback) now rejects disabling or deleting your own row
+  outright, `409`, regardless of how many other active owners exist — that's for
+  another owner to do to you, not a click you make on yourself. Demoting your own role
+  away from `owner` is deliberately *not* blocked the same way: it's recoverable (another
+  owner can re-promote you) and doesn't cut off access outright, unlike disable/delete.
+  The admin UI pre-disables the Disable/Delete buttons on your own row with an
+  explanatory `title`, purely to save the round trip — the server rejects the same
+  action either way. 2 new tests (196 total): self-disable and self-delete blocked even
+  with a second active owner present.
+- **Author now visible in the admin UI, not just the API.** `mapAdminPost`
+  (`src/admin-db.js`) had returned `author: { id, name }` since Phase 5a, but nothing
+  rendered it — the posts list (`postsTable` in `assets/js/admin.js`) had no Author
+  column, and the editor (`assets/js/editor.js`) never showed whose post you were
+  editing. Both now do: an Author column on the (non-compact) posts list, and a
+  "by &lt;name&gt;" line next to the status badge in the editor. Read-only — reassigning
+  a post to a different author isn't exposed anywhere in the UI yet, on either page.
 
 **Owner action required (before 5e can go live for `gcameron`).** Migration
 `0002_authors_disabled.sql` is additive and safe to run against the live database at
@@ -579,6 +611,19 @@ Two reasons it isn't used today:
 
 Net: revisit if a third or fourth site makes the one-time `d1 create`/`r2 bucket
 create` step per site annoying enough to be worth the restructure. Not before then.
+
+**Public per-author archive pages (raised in Phase 5e review, 2026-07-29).** Click an
+author's name on a post, land on a page listing their published posts — the same shape
+as tags' `/tags/?tag=<slug>` filter. Unlike tags, the public `GET /api/posts` has no
+`author` filter yet (`src/db.js`/`src/public-api.js`) — only the admin route does; this
+would need that adding first, not just a new page. **Owner constraint: the author's
+identity must not appear in the URL** — rules out the
+obvious approach of mirroring tags exactly (`/author/?slug=<name-derived-slug>` or
+`?id=<uuid>`), and rules out adding an `authors.slug` column for this purpose. Not
+designed further: what un-identifying mechanism would still let a URL be shared/
+bookmarked (a query against something other than the author, an opaque token unrelated
+to name/email, or dropping the "shareable URL" property entirely for a client-side-only
+filter) is an open question for whoever picks this up next, not decided here.
 
 ---
 

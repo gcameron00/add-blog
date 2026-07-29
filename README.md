@@ -22,7 +22,7 @@ access-controlled, not a public prototype. The admin Posts API, Settings, the
 dashboard's stats/activity feed, and media upload (`src/admin-media.js`) are all live
 and verified in production. The Tags admin page (`src/admin-tags.js`), the Authors
 admin page (`src/admin-authors.js`) and the editor's cover-image/insert-from-library
-integration are tested (194 tests total) and browser-verified against demo data, but
+integration are tested (196 tests total) and browser-verified against demo data, but
 not yet confirmed against live D1/R2. Export/import and scheduled-post auto-publishing
 are still queued — see the Phase 5 breakdown in
 [implementation-plan.md](docs/implementation-plan.md). A *new* site still
@@ -159,7 +159,7 @@ with D1 keeping the metadata row that points at each R2 object.
 │   ├── admin-api.js           GET /api/admin/me (Phase 4) + dispatch to the Phase 5 routes
 │   ├── test-jwt.js             Test-only helper: signs fake Access JWTs
 │   ├── test-setup.js          Applies migrations + seeds a local D1 before tests run
-│   └── *.test.js              194 tests (`npm test`) — real local D1/R2, not mocks
+│   └── *.test.js              196 tests (`npm test`) — real local D1/R2, not mocks
 ├── migrations/
 │   ├── 0001_init.sql          Schema — see docs/architecture.md §3
 │   ├── 0002_authors_disabled.sql  Additive: authors.disabled (Phase 5e)

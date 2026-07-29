@@ -290,6 +290,7 @@ function postsTable(posts, { compact = false, onChange } = {}) {
       el('tr', {}, [
         el('th', { text: 'Title' }),
         el('th', { text: 'Status' }),
+        !compact ? el('th', { text: 'Author' }) : null,
         !compact ? el('th', { text: 'Tags' }) : null,
         el('th', { text: 'Updated' }),
         el('th', {}, [el('span', { class: 'visually-hidden', text: 'Actions' })]),
@@ -311,6 +312,7 @@ function postsTable(posts, { compact = false, onChange } = {}) {
             ? el('div', { class: 'table__sub', text: formatDateTime(post.scheduled_for) })
             : null,
         ]),
+        !compact ? el('td', { text: post.author?.name || '—' }) : null,
         !compact
           ? el('td', {}, [
               el('div', { class: 'tag-list' }, (post.tags || []).map((t) => el('span', { class: 'tag', text: t.name }))),
@@ -707,9 +709,16 @@ async function initTags() {
  * gap as tags' slug/description (see initTags above). Disable is the default
  * "remove access" action in the table; delete sits next to it as the
  * separate, harder-to-undo one, same danger-button treatment as tags' delete.
+ * Role is a `<select>`, not a text prompt — the API validates it either way,
+ * but a free-text prompt inviting a typo into a role check is worse UX for
+ * no benefit. Your own row's Disable/Delete buttons are pre-disabled with an
+ * explanatory `title` — the server rejects the same action either way
+ * (src/admin-authors.js's `assertNotSelf`), this just saves the round trip.
  * -------------------------------------------------------------------------- */
 
-function authorsTable(authors, { canManage, onChange }) {
+const ROLES = ['owner', 'editor', 'author'];
+
+function authorsTable(authors, { canManage, meId, onChange }) {
   const table = el('table', { class: 'table' }, [
     el('thead', {}, [
       el('tr', {}, [
@@ -725,6 +734,7 @@ function authorsTable(authors, { canManage, onChange }) {
 
   const body = el('tbody');
   for (const author of authors) {
+    const isSelf = author.id === meId;
     body.append(
       el('tr', {}, [
         el('td', {}, [
@@ -736,7 +746,20 @@ function authorsTable(authors, { canManage, onChange }) {
           ]),
         ]),
         el('td', {}, [el('code', { text: author.email })]),
-        el('td', { text: author.role }),
+        el('td', {}, [
+          canManage
+            ? el('select', {
+                'aria-label': `Role for ${author.name}`,
+                onChange: (event) => {
+                  const role = event.target.value;
+                  if (role === author.role) return;
+                  act(() => api.updateAuthor(author.id, { role }), 'Role updated', onChange);
+                },
+              }, ROLES.map((role) =>
+                el('option', { value: role, selected: role === author.role ? true : null, text: role })
+              ))
+            : el('span', { text: author.role }),
+        ]),
         el('td', {}, [
           el('span', { class: `badge badge--${author.disabled ? 'archived' : 'published'}`, text: author.disabled ? 'Disabled' : 'Active' }),
         ]),
@@ -753,15 +776,9 @@ function authorsTable(authors, { canManage, onChange }) {
                   },
                 }),
                 el('button', {
-                  class: 'btn btn--sm btn--ghost', type: 'button', text: 'Role',
-                  onClick: () => {
-                    const role = window.prompt('Role — owner, editor, or author', author.role);
-                    if (role === null || role.trim() === author.role) return;
-                    act(() => api.updateAuthor(author.id, { role: role.trim() }), 'Role updated', onChange);
-                  },
-                }),
-                el('button', {
                   class: 'btn btn--sm btn--ghost', type: 'button', text: author.disabled ? 'Enable' : 'Disable',
+                  disabled: isSelf && !author.disabled,
+                  title: isSelf && !author.disabled ? "Can't disable your own account — ask another owner to do it." : null,
                   onClick: () => {
                     const warning = author.disabled
                       ? `Re-enable "${author.name}"? They'll be able to sign in again.`
@@ -772,6 +789,8 @@ function authorsTable(authors, { canManage, onChange }) {
                 }),
                 el('button', {
                   class: 'btn btn--sm btn--ghost btn--danger', type: 'button', text: 'Delete',
+                  disabled: isSelf,
+                  title: isSelf ? "Can't delete your own account — ask another owner to do it." : null,
                   onClick: () => {
                     const warning = author.post_count
                       ? `Delete "${author.name}"? Their ${author.post_count} post${author.post_count === 1 ? '' : 's'} will be reassigned to you.`
@@ -796,8 +815,11 @@ async function initAuthors() {
   if (!host) return;
 
   let canManage = true;
+  let meId = null;
   try {
-    canManage = (await api.me()).data.role === 'owner';
+    const me = (await api.me()).data;
+    canManage = me.role === 'owner';
+    meId = me.id;
   } catch { /* fall back to showing everything */ }
   if (form && !canManage) form.hidden = true;
 
@@ -810,7 +832,7 @@ async function initAuthors() {
         renderEmpty(host, { title: 'No authors yet', body: 'Add one above.' });
         return;
       }
-      host.append(authorsTable(data, { canManage, onChange: load }));
+      host.append(authorsTable(data, { canManage, meId, onChange: load }));
     } catch (error) {
       renderError(host, error, load);
     } finally {

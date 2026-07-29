@@ -396,6 +396,7 @@ function paintStatus() {
   const post = state.post;
   append(clear(dom.statusSlot),
     statusBadge(post.status || 'draft'),
+    post.author?.name ? el('span', { class: 'small muted', text: `by ${post.author.name}` }) : null,
     post.published_at
       ? el('span', { class: 'small muted', text: `Published ${formatDateTime(post.published_at)}` })
       : null,

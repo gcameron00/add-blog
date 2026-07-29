@@ -700,6 +700,13 @@ function assertNotLastOwner(state, author, action) {
   }
 }
 
+/** Mirrors src/admin-authors.js's assertNotSelf — cutting off your own access isn't a click you make on your own row, even in demo mode. */
+function assertNotSelf(id, action) {
+  if (id === demo.CURRENT_USER.id) {
+    throw new ApiError({ code: 'conflict', message: `Can't ${action} your own account — ask another owner to do it.` }, 409);
+  }
+}
+
 export function adminListAuthors() {
   return withFallback(
     () => call('/admin/authors'),
@@ -764,7 +771,10 @@ export function updateAuthor(id, patch) {
         patch = { ...patch, email };
       }
       if (patch.role !== undefined && patch.role !== 'owner') assertNotLastOwner(state, author, 'change the role of');
-      if (patch.disabled === true) assertNotLastOwner(state, author, 'disable');
+      if (patch.disabled === true) {
+        assertNotSelf(id, 'disable');
+        assertNotLastOwner(state, author, 'disable');
+      }
 
       Object.assign(author, patch);
 
@@ -784,6 +794,7 @@ export function deleteAuthor(id) {
       const index = state.authors.findIndex((a) => a.id === id);
       if (index === -1) throw new ApiError({ code: 'not_found', message: 'Not found.' }, 404);
       const [removed] = state.authors[index] ? [state.authors[index]] : [];
+      assertNotSelf(id, 'delete');
       assertNotLastOwner(state, removed, 'delete');
 
       const actingOwner = state.authors.find((a) => a.id === demo.CURRENT_USER.id) || demo.CURRENT_USER;

@@ -20,9 +20,16 @@
  * performed the delete, per docs/api.md ("their posts are reassigned to the
  * owner").
  *
- * Both disable and delete, plus a role change away from `owner`, are
- * blocked if the target is the only remaining active owner — a site with
- * zero owners has no one left who can undo the mistake.
+ * Two self-protection guards, both `409`s rather than silently no-ops:
+ * disable and delete, plus a role change away from `owner`, are blocked if
+ * the target is the only remaining active owner (a site with zero owners
+ * has no one left who can undo the mistake); disable and delete are also
+ * blocked against the caller's own row regardless of how many other owners
+ * exist — cutting off your own access is for another owner to do to you,
+ * not an accidental click to do to yourself. A role change away from
+ * `owner` on your own row is *not* blocked the same way: it's recoverable
+ * (another owner can re-promote you) and doesn't cut off access outright,
+ * unlike disable/delete.
  */
 
 import {
@@ -59,6 +66,13 @@ async function assertNotLastOwner(env, author, action) {
   const remaining = await countActiveOwners(env.DB, author.id);
   if (remaining === 0) {
     apiFail(409, 'conflict', `Can't ${action} the only remaining owner — promote someone else first.`);
+  }
+}
+
+/** Cutting off your own access is for another owner to do to you, not a click you make on your own row — checked before the last-owner query since it never needs one. */
+function assertNotSelf(identity, id, action) {
+  if (id === identity.author.id) {
+    apiFail(409, 'conflict', `Can't ${action} your own account — ask another owner to do it.`);
   }
 }
 
@@ -114,7 +128,10 @@ async function patchHandler(request, env, identity, id) {
   }
   if (input.disabled !== undefined) {
     const disabled = Boolean(input.disabled);
-    if (disabled) await assertNotLastOwner(env, author, 'disable');
+    if (disabled) {
+      assertNotSelf(identity, id, 'disable');
+      await assertNotLastOwner(env, author, 'disable');
+    }
     fields.disabled = disabled ? 1 : 0;
   }
   if (!Object.keys(fields).length) return apiError(400, 'bad_request', 'Nothing to update.');
@@ -133,6 +150,7 @@ async function deleteHandler(env, identity, id) {
   const author = await getAuthorById(env.DB, id);
   if (!author) return apiError(404, 'not_found', 'Not found.');
 
+  assertNotSelf(identity, id, 'delete');
   await assertNotLastOwner(env, author, 'delete');
 
   await reassignPosts(env.DB, id, identity.author.id);

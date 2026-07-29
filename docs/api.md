@@ -46,7 +46,8 @@ The public hostname does not acknowledge that an admin surface exists.
 > only creates the row, and the admin UI explains the two out-of-band steps (Cloudflare
 > Access policy, telling the person directly) after a successful create. Disabling,
 > deleting, or demoting the only remaining active owner is rejected with `409 conflict`
-> — see `src/admin-authors.js`'s `assertNotLastOwner`.
+> (`assertNotLastOwner`), and so is disabling or deleting *your own* row regardless of
+> how many other owners exist (`assertNotSelf`) — both in `src/admin-authors.js`.
 > **`/export`, `/import` are still specified, not implemented** — deliberately: nothing
 > in the shipped admin UI calls them yet, unlike everything built so far.
 > `assets/js/api.js` already calls every route in this document; it falls back to
@@ -276,16 +277,18 @@ rather than a guess.
 | `POST` | `/authors` | Create by email (owner only) — the row Access identities map onto; no email is sent |
 | `PATCH` | `/authors/:id` | Update name, email, role, or `disabled` (owner only) |
 | `DELETE` | `/authors/:id` | Remove (owner only); their posts are reassigned to whoever performed the delete |
+| `GET` | `/audit` | Audit log, newest first, filterable by `actor`, `action`, `via` |
+| `GET` | `/stats` | Dashboard counters: posts by status, views, recent activity |
+| `POST` | `/export` | Full content export to R2 as JSON; returns a short-lived link |
+| `POST` | `/import` | Import from an export bundle or a Markdown/front-matter archive |
 
 `disabled` blocks sign-in (`resolveAuthor` stops matching the row — same `403` as no row
 at all) without touching the row, its role, or its post history; it's the reversible
 half of removing someone, `DELETE` the harder-to-undo one. Both `disabled: true` and
 `DELETE`, plus a `role` change away from `owner`, are rejected with `409 conflict` if
-the target is the only remaining active (non-disabled) owner.
-| `GET` | `/audit` | Audit log, newest first, filterable by `actor`, `action`, `via` |
-| `GET` | `/stats` | Dashboard counters: posts by status, views, recent activity |
-| `POST` | `/export` | Full content export to R2 as JSON; returns a short-lived link |
-| `POST` | `/import` | Import from an export bundle or a Markdown/front-matter archive |
+the target is the only remaining active (non-disabled) owner — and disabling or
+deleting your own row is rejected the same way regardless of how many other owners
+exist; only another owner can do either to you.
 
 Settings keys: `site_title`, `site_description`, `site_url`, `admin_url`, `base_path`,
 `timezone`, `posts_per_page`, `allow_raw_html`, `social_image_key`,

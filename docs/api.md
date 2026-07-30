@@ -20,12 +20,14 @@ The public hostname does not acknowledge that an admin surface exists.
 > verified in production 2026-07-28) — every route in the Posts table below, plus
 > `POST /preview`. Role/ownership checks, `ETag`/`If-Match` conflict detection,
 > revisions-with-restore, and a best-effort edge-cache purge on every mutation are all
-> in. **The editor now sends `If-Match` and handles a `409`** (built 2026-07-29, not yet
-> deployed) — not a merge/overwrite prompt, an owner decision: rather than let the
+> in. **The editor now sends `If-Match` and handles a `409`** (Phase 5g, live for
+> `gcameron`) — not a merge/overwrite prompt, an owner decision: rather than let the
 > editor overwrite someone else's edit or discard the local one, a conflicting explicit
 > Save forks the local content into a new draft post instead (`assets/js/editor.js`'s
 > `save()`); autosave never forks on its own, it just surfaces the conflict in the
-> save-state indicator and stops retrying until the user acts. Still not built:
+> save-state indicator and stops retrying until the user acts. The explicit-save fork
+> is verified in production (2026-07-29/30: produced a second draft post as expected);
+> the autosave conflict indicator hasn't been observed yet. Still not built:
 > `Idempotency-Key` (its main consumer, MCP, doesn't exist yet either). **Fixed in
 > production:** editing an already-published post used to be labelled "Save draft"
 > while going live immediately — the button now says "Save changes" for a

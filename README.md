@@ -11,31 +11,33 @@ bundler. The whole front end ships as Cloudflare Workers static assets.
 
 ## Status
 
-**Phases 1–4 are built and live; all of Phase 5 is built and deployed for `gcameron`.**
-`deploy.yml` ships the whole Worker script on every push to `main`, so every merged
-slice — posts, settings, dashboard, media upload, tags, authors, the editor's media
-integration, and the scheduled-post cron — is already running in production the moment
-it lands on `main`; what's still outstanding for a few of them is a hands-on
-**verification** pass (someone actually exercising the feature against real D1/R2
-through the browser), not deployment itself — see [deployment.md](docs/deployment.md)
-§6 for exactly which slices have had that pass and which haven't. The Worker router
+**Phases 1–5 are complete, built and deployed for `gcameron`.** `deploy.yml` ships the
+whole Worker script on every push to `main`, so every merged slice — posts, settings,
+dashboard, media upload, tags, authors, the editor's media integration, the
+scheduled-post cron, and the editor's save-conflict handling — is already running in
+production the moment it lands on `main`. Two things remain purely as hands-on
+**verification** passes, not new work, and neither blocks calling Phase 5 done: tags
+and authors haven't had someone click through them against real D1 yet, and the
+conflict-handling's autosave path hasn't been observed yet (its explicit-save half has
+— confirmed producing a second draft post exactly as designed) — see
+[deployment.md](docs/deployment.md) §6 for the exact state of each. The Worker router
 (`src/index.js`) enforces the hostname split and sends security headers; the public
 read path (JSON API, server-rendered permalinks, R2 media, feeds) is live for
 `gcameron`, backed by real D1/R2. Access JWT verification and identity resolution
 (`src/access.js`, `src/auth.js`) are live too — the admin hostname is genuinely
 access-controlled, not a public prototype. The admin Posts API, Settings, the
-dashboard's stats/activity feed, media upload (`src/admin-media.js`), and the
-scheduled-post auto-publish cron (`src/cron.js`) are all live and verified in
-production. Tags (`src/admin-tags.js`), Authors (`src/admin-authors.js`) and the
-editor's cover-image/insert-from-library integration are deployed and tested (200
-tests total) but haven't had that same hands-on production check yet. Export/import
-moved to Phase 7 (owner decision, 2026-07-29) — see the Phase 7 breakdown in
-[implementation-plan.md](docs/implementation-plan.md). A *new* site still needs its
-own D1 database, R2 bucket and Access application created before it shows real content
-and requires login instead of demo data — see [`docs/deployment.md`](docs/deployment.md)
-and the "Future considerations" section of the
-[implementation plan](docs/implementation-plan.md) on why that's a one-time manual step
-per site.
+dashboard's stats/activity feed, media upload (`src/admin-media.js`), the
+scheduled-post auto-publish cron (`src/cron.js`), and the editor's conflict-fork
+handling are all live and verified in production. Tags (`src/admin-tags.js`), Authors
+(`src/admin-authors.js`) and the editor's cover-image/insert-from-library integration
+are deployed and tested (200 tests total) but haven't had that same hands-on
+production check yet. Export/import moved to Phase 7 (owner decision, 2026-07-29) —
+see the Phase 7 breakdown in [implementation-plan.md](docs/implementation-plan.md). A
+*new* site still needs its own D1 database, R2 bucket and Access application created
+before it shows real content and requires login instead of demo data — see
+[`docs/deployment.md`](docs/deployment.md) and the "Future considerations" section of
+the [implementation plan](docs/implementation-plan.md) on why that's a one-time manual
+step per site.
 
 | Layer | State |
 | --- | --- |
@@ -50,6 +52,7 @@ per site.
 | Admin Settings + dashboard (`stats`, `audit`) | Built, tested, live for `gcameron` |
 | Media upload (validation, checksum dedupe, dimensions) | Built, tested, live for `gcameron`. No SVG (parked as a future feature, needs a real sanitiser); AVIF has no dimensions |
 | Scheduled-post auto-publish + revision retention (cron) | Built, tested, live for `gcameron` — verified 2026-07-29: a scheduled post auto-published within its 5-min window, logged `via: 'cron'` |
+| Editor save-conflict handling (fork to new draft on a stale `If-Match`) | Built, tested, live for `gcameron` — explicit-save fork verified 2026-07-29/30 (produced a second draft as expected); autosave's conflict pill not yet observed |
 | Media ↔ editor integration (cover picker, insert-into-body) | Deployed for `gcameron`; not yet hands-on verified in production |
 | Tags admin (CRUD, merge, `admin/tags/`) | Deployed for `gcameron`; not yet hands-on verified in production |
 | Authors admin (CRUD, disable, `admin/authors/`) | Deployed for `gcameron`; not yet hands-on verified in production |

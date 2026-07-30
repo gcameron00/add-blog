@@ -5,16 +5,18 @@ Everything needed to run add-blog as a fleet of blogs — one shared Worker scri
 `blog-admin.gcameron.com`, live since Phase 3 (2026-07-27) — hostname routing, public
 read API, R2 media and feeds all real. Phase 4 (Access JWT verification, `GET
 /api/admin/me`) is live too (verified 2026-07-27) — the admin host genuinely requires a
-verified, provisioned identity now. Phase 5's posts write path (create/edit/publish/
-delete/revisions), its settings/dashboard slice (`GET`/`PUT /settings`, `stats`,
-`audit`), media upload, tags (5d), authors (5e), the editor's cover-image/
-insert-from-library integration, and the scheduled-post auto-publish cron (5f) are all
-deployed and running for `gcameron` — `deploy.yml` ships the whole Worker script on
-every push to `main`, so "merged" and "live" are the same moment here, not two separate
-steps. What's still open per slice is hands-on production *verification* (someone
-actually exercising it against real D1/R2 through the browser), not deployment — see
-§6's table for which slices have had that pass and which haven't yet. Export/import
-moved to Phase 7 (owner decision, 2026-07-29) — Phase 5 has no unbuilt slice left. See
+verified, provisioned identity now. **Phase 5 is complete** — posts write path
+(create/edit/publish/delete/revisions), settings/dashboard (`GET`/`PUT /settings`,
+`stats`, `audit`), media upload, tags (5d), authors (5e), the editor's cover-image/
+insert-from-library integration, the scheduled-post auto-publish cron (5f), and the
+editor's save-conflict handling (5g) are all deployed and running for `gcameron` —
+`deploy.yml` ships the whole Worker script on every push to `main`, so "merged" and
+"live" are the same moment here, not two separate steps. Two things remain purely as
+hands-on production *verification* passes (someone actually exercising it against real
+D1/R2 through the browser), not deployment, and neither blocks calling Phase 5 done:
+tags/authors haven't had that pass yet, and 5g's autosave conflict indicator hasn't been
+observed (its explicit-save half has, confirmed live) — see §6's table for the exact
+state of each. Export/import moved to Phase 7 (owner decision, 2026-07-29). See
 [implementation-plan.md](implementation-plan.md)'s Phase 5 and Phase 7 sections.
 Sections below
 double as the runbook for the *next* site: everything in §1-4 is real, owner-run work
@@ -331,6 +333,14 @@ live for `gcameron`, 2026-07-29):**
 | Schedule a post a few minutes out, then wait past that time with nobody visiting the admin UI | Auto-publishes; shows up at `/posts/<slug>` and in the feed within one cron tick (up to 5 min) | ✅ |
 | `audit_log` row for that publish | `actor = 'system'`, `via = 'cron'` | ✅ — visible in the dashboard activity feed |
 | Save a post's body more than 20 times | `GET .../revisions` never returns more than 20 rows, newest kept | test-verified; not yet exercised in prod |
+
+**Phase 5g, editor save-conflict handling (deployed for `gcameron`, partially verified
+2026-07-29/30):**
+
+| Check | Expected | Confirmed |
+| --- | --- | --- |
+| Load the same post in two sessions, edit and explicit-Save the stale one after the other saved first | The stale save's `409` forks into a new draft with the stale session's content, instead of overwriting or discarding it; toast explains what happened | ✅ — produced a second draft post as expected |
+| Same setup, but let the stale session autosave (idle 2.5s) instead of clicking Save | Save-state pill switches to the conflict message; no duplicate draft is created; autosave stops retrying until Save is clicked | not yet exercised in prod |
 
 **Not built yet (expect 404, not real behaviour):**
 

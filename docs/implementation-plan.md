@@ -1,13 +1,14 @@
 # Implementation plan
 
-Phases 1–4 are complete, in this repository, and live in production for the
-`gcameron` site. Phase 5 is being delivered in slices: posts, settings/dashboard, media
-upload, and scheduled-post auto-publish + revision retention (5a/5b/5c/5f) are live and
-verified in production; tags-as-a-resource (5d), authors-as-a-resource (5e), and the
-editor's cover-image/insert-from-library integration are deployed for `gcameron` too,
-awaiting only a hands-on verification pass (not a deploy) — see Phase 5 below for the
-exact breakdown. Export/import moved to Phase 7 (2026-07-29, owner decision) — Phase 5
-turned out not to need it to be a complete write path.
+Phases 1–5 are complete, in this repository, and live in production for the
+`gcameron` site. Phase 5 shipped as slices (5a–5g): posts, settings/dashboard, media
+upload, scheduled-post auto-publish + revision retention, and the editor's save-conflict
+handling are live and verified in production; tags-as-a-resource (5d),
+authors-as-a-resource (5e), and the editor's cover-image/insert-from-library
+integration are deployed for `gcameron` too, awaiting only a hands-on verification pass
+(not a deploy, and not a blocker) — see Phase 5 below for the exact breakdown.
+Export/import moved to Phase 7 (2026-07-29, owner decision) — Phase 5 turned out not to
+need it to be a complete write path.
 
 Each phase is independently deployable and leaves the site working. Phases 2–5 are
 sequential — routing before storage, storage before auth, auth before the write path.
@@ -200,7 +201,7 @@ application, returning the real identity and role.
 
 ---
 
-## Phase 5 — Write path 🚧 (everything deployed and live for `gcameron`; tags, authors, and the editor's media integration await a hands-on verification pass)
+## Phase 5 — Write path ✅ (5a–5g all deployed and live for `gcameron`; tags, authors, media integration, and conflict-handling autosave await a hands-on verification pass — non-blocking, see each slice below)
 
 **Goal.** The admin UI stops being a prototype.
 
@@ -227,24 +228,8 @@ that uses them would just be untested surface no one exercises.
   a new revision first, per the spec). No dedicated diff *endpoint* — none is in the
   API contract; diffing two revisions' `body_md` is a front-end concern for later.
 - `ETag` / `If-Match`: `GET` returns one, `PATCH` honours `If-Match` and 409s with both
-  versions in `detail` on a mismatch. **The editor's conflict handling, built
-  2026-07-29 (owner decision) — not a merge/overwrite prompt.** `save()`
-  (`assets/js/editor.js`) now sends `If-Match: "${state.post.updated_at}"` on every
-  `PATCH`, using the `updated_at` already in the loaded post — no extra fetch needed,
-  since that's literally what the ETag is. On a `409`: an explicit Save (not autosave)
-  forks the local edits into a brand-new draft via `POST /posts` instead of overwriting
-  or discarding either side's changes — the server's own `uniqueSlug` auto-suffixes the
-  colliding slug, so no special-casing was needed there. The user is told directly
-  ("...saved as a new draft instead of overwriting theirs") and the editor switches to
-  the new draft (URL `id`, `state.post`) so further saves target it, not the original.
-  Autosave never forks silently on its own conflict — it sets a distinct `conflict`
-  save-state pill ("Someone else edited this post — click Save...") and stops
-  re-attempting until the user takes that explicit action, so two open tabs on the same
-  post don't spawn a duplicate draft every 2.5 seconds. `assets/js/api.js`'s `ApiError`
-  didn't previously expose `detail` at all — a prerequisite gap fixed alongside this.
-  Built, not yet deployed; verifying it for real needs two concurrent editor sessions
-  (two tabs/browsers signed in as different or the same author), so it hasn't had a
-  hands-on production check yet either.
+  versions in `detail` on a mismatch. The editor's own handling of that `409` is 5g,
+  below.
 - Cache purge on every mutation that touches a published post, via
   `caches.default` (`src/cache-purge.js`) — no new Cloudflare API token needed. Purges
   the post's own permalink/API URL (old and new slug on a rename), home, feeds,
@@ -577,6 +562,33 @@ again as bindings) before pushing. The comment above `[env.gcameron.triggers]` i
 `wrangler.toml` now calls this out explicitly so the next table added to this file
 doesn't repeat it.
 
+**5g — Editor conflict handling. Built, deployed, and partially verified live for
+`gcameron` (2026-07-29/30) — `assets/js/editor.js`, `assets/js/api.js`:**
+
+- Not a merge/overwrite prompt — an owner decision. `save()` now sends
+  `If-Match: "${state.post.updated_at}"` on every `PATCH`, using the `updated_at`
+  already in the loaded post (no extra fetch needed — that's literally what the ETag
+  is). On a `409`: an explicit Save forks the local edits into a brand-new draft via
+  `POST /posts` instead of overwriting or discarding either side's changes — the
+  server's own `uniqueSlug` auto-suffixes the colliding slug, so no special-casing was
+  needed there. The user is told directly ("...saved as a new draft instead of
+  overwriting theirs") and the editor switches to the new draft (URL `id`,
+  `state.post`) so further saves target it, not the original.
+- Autosave never forks silently on its own conflict — it sets a distinct `conflict`
+  save-state pill ("Someone else edited this post — click Save...") and stops
+  re-attempting until the user takes that explicit action, so two open tabs on the same
+  post don't spawn a duplicate draft every 2.5 seconds.
+- `assets/js/api.js`'s `ApiError` didn't previously expose `detail` at all — a
+  prerequisite gap fixed alongside this; without it, the client had no way to read a
+  409's `current_etag`/`submitted_if_match` no matter what else was built.
+- **Verified live 2026-07-29/30 (owner test): the explicit-save fork.** Editing the same
+  post in two sessions and saving the stale one produced a second draft post as
+  expected — the root behaviour (no overwritten or lost edits) is confirmed working in
+  production. **Not yet observed: the autosave conflict pill** — the owner hasn't hit
+  that specific timing case yet (dirty + idle 2.5s + an existing conflict). Not
+  considered a Phase 5 blocker; flagged here for whoever next has two tabs open on a
+  stale post to glance at the save-state pill instead of just clicking Save.
+
 **Parked — not Phase 5 blockers:**
 
 - SVG upload — needs a real sanitiser (a parser, not a regex), see above. The media
@@ -589,22 +601,21 @@ doesn't repeat it.
 Phase 5's write path doesn't need a backup/restore route to be complete; every other
 Phase 5 slice ships without it.
 
-**Exit criteria — met for posts, settings, dashboard reads, media upload and cron, not
-yet for Phase 5 as a whole.** A post can be created, edited, saved, previewed, scheduled,
+**Exit criteria — met.** A post can be created, edited, saved, previewed, scheduled,
 published, unpublished and deleted through the admin UI against live D1 for
 `gcameron`; settings can be changed and persist; the dashboard shows real counts and a
-real activity feed; media can be uploaded, browsed and deleted against real R2 — none
-of it through tests alone, all confirmed in production; the cron sweep (5f) now meets
-that same bar too — a scheduled post auto-published within its 5-minute window and
-logged `via: 'cron'` in the live activity feed. Tag management (5d), author management
-(5e) and the editor's media integration are deployed for `gcameron` and meet the tests
-bar, but haven't had their hands-on production verification pass yet — author
-verification specifically is waiting on setting up a real second author to
-disable/re-enable through the interface (not Cloudflare Access), per the owner
-(2026-07-29). The editor's conflict handling is built but not yet deployed, and its own
-verification bar is unusual — it needs two concurrent editor sessions on the same post,
-not just one person clicking through. With that landed, Phase 5 has no unbuilt code
-left at all; what remains is entirely verification passes, not new work.
+real activity feed; media can be uploaded, browsed and deleted against real R2; a
+scheduled post auto-publishes within its 5-minute window and logs `via: 'cron'` in the
+live activity feed; a save conflict forks into a new draft instead of clobbering or
+discarding anyone's edit — confirmed 2026-07-29/30 producing a second draft post as
+expected, exactly as designed. None of it through tests alone; all confirmed in
+production. Two things remain purely as verification passes, not new work, and neither
+blocks calling Phase 5 done: **tags (5d) and authors (5e)** are deployed and tested but
+haven't had their hands-on production check yet — author verification specifically is
+waiting on the owner setting up a real second author to disable/re-enable through the
+interface, not Cloudflare Access directly; and **the autosave half of 5g's conflict
+handling** hasn't been observed yet (needs two tabs left open on the same stale post
+long enough to go idle), though the explicit-save half it shares its code with has been.
 
 ---
 

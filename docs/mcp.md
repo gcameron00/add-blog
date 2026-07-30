@@ -23,6 +23,33 @@ isolates.
 
 ---
 
+## Server identity
+
+Deployments are single-tenant — one Worker per site, no `site_id` anywhere (see
+[architecture.md](architecture.md)) — so an operator who runs more than one of these
+blogs connects more than one instance of this same server to their client, each on its
+own hostname. Nothing distinguishes them by name alone: every instance ships identical
+generic tools (`list_posts`, `get_post`, …), and a client that surfaces tools from all
+connected servers in one combined list gives a model no way to tell "list posts on the
+ski blog" from "list posts on the recipe blog" without first spending a call to find
+out which is which.
+
+Since the Worker reconstructs everything per request anyway, this costs nothing to fix
+at the source: `initialize`'s `serverInfo.name` and every tool's `description` string
+interpolate the site's actual title, pulled from settings — `"add-blog — Graham's Ski
+Blog"` rather than a static `"add-blog"`, `"List posts on Graham's Ski Blog"` rather
+than a static `"Browse posts with filters."` The disambiguating information lands in
+the same place a model already looks when choosing a tool, instead of requiring a
+`get_site_settings` round trip per server before it can act with confidence.
+
+This narrows, but does not solve, the ambiguity: a client still has to decide whether
+an unqualified request like "list my recent posts" means one connected blog, all of
+them, or a clarifying question back to the user. That routing decision belongs to the
+client, not this server — the most this server can do is make the answer available
+immediately rather than gated behind an extra call.
+
+---
+
 ## Authentication — Cloudflare Access Managed OAuth
 
 The `/mcp` endpoint sits behind the same Access application as the rest of
@@ -127,23 +154,54 @@ and the offending field — `slug_taken` with a suggested alternative, `forbidde
 the role required. A model can usually correct and retry from that without a round trip
 to its operator.
 
+**Every tool carries MCP's standard annotations**, so a client that reasons about
+safety or auto-approval from hints — rather than from names alone — has something to
+read:
+
+| Tool | readOnly | destructive | idempotent | openWorld |
+| --- | --- | --- | --- | --- |
+| `list_posts` | ✓ | | | |
+| `get_post` | ✓ | | | |
+| `search_posts` | ✓ | | | |
+| `list_tags` | ✓ | | | |
+| `list_media` | ✓ | | | |
+| `get_site_settings` | ✓ | | | |
+| `create_post` | | | | |
+| `update_post` | | | ✓ | |
+| `publish_post` | | | ✓ | |
+| `unpublish_post` | | | ✓ | |
+| `delete_post` | | ✓ | ✓ | |
+| `upload_media_from_url` | | | | ✓ |
+| `update_site_settings` | | | ✓ | |
+
+`delete_post` is marked destructive despite being a soft delete (§ Writing, above) —
+the tool reduces the archive to "not visible" the same as a hard delete would from a
+reader's perspective, and a client should ask before calling it, not weigh the D1 row
+surviving underneath as a reason to skip confirmation. `upload_media_from_url` is the
+only tool marked `openWorld`, since it is the only one that reaches outside the
+Worker's own D1/R2 to fetch an arbitrary URL.
+
 ---
 
 ## Resources
 
 | URI | Content |
 | --- | --- |
-| `blog://posts` | Index of all posts the caller may see, as JSON |
-| `blog://posts/{slug}` | One post as Markdown with YAML front matter |
-| `blog://tags` | Tag list with counts |
-| `blog://media` | Media library index |
-| `blog://settings` | Site settings |
 | `blog://style-guide` | The blog's writing style guide, from settings |
 
-Resources are the read path for clients that prefer attaching context over calling
-tools. `blog://style-guide` is the useful one: a site can describe its voice, preferred
-headline style and formatting conventions once, and every agent drafting a post picks
-it up automatically.
+This was originally six resources — one per tool that reads something, plus this one.
+Cut down to just the one: `blog://posts`, `blog://posts/{slug}`, `blog://tags`,
+`blog://media` and `blog://settings` each duplicated a tool (`list_posts`, `get_post`,
+`list_tags`, `list_media`, `get_site_settings`) that returns the identical data. Two
+equally valid paths to the same information is not redundancy a model benefits from —
+it's a coin flip on which one gets picked, and client support for resources is
+inconsistent enough that the coin flip sometimes lands on the path that doesn't work.
+Tools are the one supported path for everything they cover; a resource earns a place
+here only by covering something no tool does.
+
+`blog://style-guide` clears that bar: nothing else exposes it. A site describes its
+voice, preferred headline style and formatting conventions once, and every agent
+drafting a post picks it up automatically without a tool call spent asking for it.
 
 ---
 

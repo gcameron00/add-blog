@@ -57,8 +57,8 @@ step per site.
 | Tags admin (CRUD, merge, `admin/tags/`) | Deployed for `gcameron`; not yet hands-on verified in production |
 | Authors admin (CRUD, disable, `admin/authors/`) | Deployed for `gcameron`; not yet hands-on verified in production |
 | Export/import admin routes | Not built — moved to Phase 7 (owner decision, 2026-07-29) |
-| Managed OAuth (for `/mcp`) | Enabled on the Access app; unused until Phase 6 |
-| MCP server | Specified, not built |
+| Managed OAuth (for `/mcp`) | Enabled on the Access app; consumed by the MCP server below |
+| MCP server (`/mcp`, tools/resources/prompts) | Built, tested (`src/mcp.test.js`) — not yet deployed or hands-on verified against a real client |
 
 See [`docs/implementation-plan.md`](docs/implementation-plan.md) for the phased build-out.
 

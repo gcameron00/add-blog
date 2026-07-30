@@ -20,6 +20,19 @@ export function sanitizeFilename(name) {
   return cleaned.slice(0, 120) || 'upload';
 }
 
+/**
+ * The R2 key a new upload gets: year/month-bucketed so the library doesn't
+ * become one flat directory, content-addressed (the checksum prefix) so two
+ * uploads of the same bytes never collide, filename kept for readability.
+ * Shared by src/admin-media.js's direct upload and src/mcp-tools.js's
+ * `upload_media_from_url` — one scheme, not two that could drift apart.
+ */
+export function buildMediaKey(now, checksum, filename) {
+  const yyyy = now.getUTCFullYear();
+  const mm = String(now.getUTCMonth() + 1).padStart(2, '0');
+  return `${yyyy}/${mm}/${checksum.slice(0, 16)}-${sanitizeFilename(filename)}`;
+}
+
 function readUint16BE(view, offset) {
   return view.getUint16(offset, false);
 }

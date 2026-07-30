@@ -85,6 +85,26 @@ export async function getAdminPostById(db, id) {
   return { ...mapAdminPost(row), revision_count: row.revision_count };
 }
 
+/**
+ * Same shape as `getAdminPostById`, keyed by slug instead — Phase 6's MCP
+ * tools accept `slug` as an alternative to `id` for every post lookup
+ * (docs/mcp.md: "a model working from a URL has the slug"), which the REST
+ * API never needed since `assets/js/admin.js` always navigates by id.
+ */
+export async function getAdminPostBySlug(db, slug) {
+  const row = await db
+    .prepare(`
+      SELECT p.*, a.name AS author_name, ${TAGS_SUBQUERY} AS tags_json,
+             ${REVISION_COUNT_SUBQUERY} AS revision_count
+      FROM posts p JOIN authors a ON a.id = p.author_id
+      WHERE p.slug = ?
+    `)
+    .bind(slug)
+    .first();
+  if (!row) return null;
+  return { ...mapAdminPost(row), revision_count: row.revision_count };
+}
+
 /** Posts still `scheduled` whose time has arrived — the cron sweep's input (Phase 5f). */
 export async function getDueScheduledPosts(db, nowIso) {
   const { results } = await db
@@ -147,6 +167,55 @@ export async function listAdminPosts(db, { status, tag, author, q, limit = 20, o
     }),
     page: { limit: boundedLimit, offset: boundedOffset, total, has_more: boundedOffset + results.length < total },
   };
+}
+
+/**
+ * Full-text search across every status (drafts included) — the admin/MCP
+ * equivalent of src/db.js's public `listPublishedPosts({ q })`, which is
+ * deliberately restricted to `status = 'published'` and can't be reused
+ * here. `bm25()` ranks best-match first; `snippet()` wraps the matched
+ * fragment in `**…**` (Markdown, since that's what an MCP client renders)
+ * rather than `<b>` — this has no HTML-rendering reader the way the public
+ * site's search result list would.
+ */
+export async function searchAdminPosts(db, { query, status, limit = 20 } = {}) {
+  const where = [`posts_fts MATCH ?`];
+  const params = [query];
+
+  if (status && status !== 'all') {
+    where.push('p.status = ?');
+    params.push(status);
+  }
+
+  const boundedLimit = Math.min(50, Math.max(1, Number(limit) || 20));
+
+  const { results } = await db
+    .prepare(`
+      SELECT p.id, p.slug, p.title, p.status, p.updated_at, p.published_at,
+             a.name AS author_name,
+             snippet(posts_fts, 2, '**', '**', '…', 12) AS snippet,
+             bm25(posts_fts) AS rank
+      FROM posts_fts
+      JOIN posts p ON p.rowid = posts_fts.rowid
+      JOIN authors a ON a.id = p.author_id
+      WHERE ${where.join(' AND ')}
+      ORDER BY rank
+      LIMIT ?
+    `)
+    .bind(...params, boundedLimit)
+    .all();
+
+  return results.map((row) => ({
+    id: row.id,
+    slug: row.slug,
+    title: row.title,
+    status: row.status,
+    author: row.author_name,
+    updated_at: row.updated_at,
+    published_at: row.published_at,
+    snippet: row.snippet,
+    score: -row.rank, // bm25() is "lower is better" — flipped so a model reading this sees "higher is more relevant", same sense as everywhere else a score appears
+  }));
 }
 
 /** Replaces a post's tag set — creates any tag whose slug doesn't exist yet, keyed by name (mirrors assets/js/api.js's demo `normaliseTags`). */

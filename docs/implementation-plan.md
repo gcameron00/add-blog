@@ -623,19 +623,53 @@ long enough to go idle), though the explicit-save half it shares its code with h
 
 **Goal.** An agent can do what an editor can do, and no more.
 
-- `POST /mcp`, Streamable HTTP, JSON-RPC.
-- `/.well-known/oauth-protected-resource` and the `401` challenge that starts the
-  Managed OAuth flow.
-- Bearer token verification sharing Phase 4's verifier.
-- Tools, resources and prompts per [mcp.md](mcp.md), with the tool list filtered by
-  the caller's role.
-- `via = 'mcp'` on every audit entry.
-- Per-identity rate limiting on write tools.
-- The admin MCP page shows live connection details and the caller's tool catalog.
+**Shipped in code (2026-07-30):**
+
+- `POST /mcp` (src/mcp.js), Streamable HTTP, JSON-RPC — single-JSON responses only,
+  no SSE; nothing this server does is slow enough to need it. `GET /mcp` 405s for the
+  same reason (no server-initiated messages to stream). `DELETE /mcp` ends a session.
+- No hand-rolled OAuth endpoints — Cloudflare Access's Managed OAuth handles discovery,
+  dynamic client registration, PKCE and token issuance in front of the Worker, exactly
+  as [mcp.md](mcp.md)'s Authentication section describes. The Worker verifies the
+  resulting bearer token with the *same* `verifyAccessIdentity`/`resolveAuthor` guard
+  already in src/index.js for `/api/admin/*` — `/mcp` was already in
+  `ADMIN_ONLY_PREFIXES`, so this needed no new auth code, only a handler to dispatch to.
+- All 13 tools, the one resource (`blog://style-guide` — see mcp.md's "Resources"
+  section on why the other five were cut), and all 5 prompts (src/mcp-tools.js,
+  src/mcp-prompts.js), with `tools/list` filtered by role and every permission
+  re-checked at `tools/call` time rather than trusted from the list.
+- `via = 'mcp'` on every audit entry, for every tool call (not just writes), per
+  mcp.md's "every tool call writes an audit_log entry."
+- Per-identity rate limiting on write tools — 30 calls per tool name per 5 minutes,
+  counted from `audit_log` itself rather than a new store (the Worker has no other
+  per-identity state to count from; see src/mcp.js).
+- `Mcp-Session-Id` issued on `initialize` and reconstructed from a new `mcp_sessions`
+  table (migrations/0004_mcp.sql) on every later request — the Worker holds nothing in
+  memory between requests, per Transport's stateless-isolate note.
+- `initialize`'s `serverInfo.name` and every tool's `description` interpolate the
+  site's real title (e.g. "add-blog — The add-blog Journal") rather than a static
+  string — see mcp.md's "Server identity" section: an operator with more than one of
+  these blogs connected needs to tell them apart in one combined tool list.
+- The admin MCP page's copy now says the server itself is live and names the one
+  remaining step (enabling Managed OAuth on the Access application) rather than "not
+  live yet" — that step is a Zero Trust dashboard setting, owner-only, not something a
+  deploy touches.
+
+**Not yet done:** this hasn't been deployed, and there's been no hands-on verification
+against a real Claude Code / Claude Desktop connection yet. Managed OAuth is already
+enabled on `blog-admin.gcameron.com`'s Access application (README's status table), so
+neither of those remaining steps is blocked on new Access configuration — just on a
+deploy and a first real client connection. Until then this is tested the way Phase 5's
+write path was tested before its own production pass: full integration coverage
+against a real D1 in `src/mcp.test.js`, calling `handleMcp` directly with a
+manufactured identity — the Access-JWT-to-identity step itself is `src/access.js`'s job
+and already covered by `src/admin-guard.test.js`.
 
 **Exit criteria.** Claude Code and Claude Desktop both connect, complete OAuth, list
 tools, and successfully run a draft → edit → publish sequence. An `author`-role
-identity does not see `publish_post`. Every action appears in the audit log.
+identity does not see `publish_post`. Every action appears in the audit log. Code-level
+behaviour for all of this is tested; the live-connection pass is the one thing left,
+gated on a deploy rather than any new setup.
 
 ---
 

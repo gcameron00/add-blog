@@ -35,6 +35,10 @@
  * mutate D1, which is why it needs `identity` (who) and `ctx` (to purge the
  * edge cache in the background via `ctx.waitUntil` without delaying the
  * response) alongside `env`.
+ *
+ * Phase 6 adds `/mcp` (src/mcp.js) — already in ADMIN_ONLY_PREFIXES below,
+ * so it inherits the same Access-identity guard `/api/admin/*` gets with no
+ * changes here; it just needed a handler to dispatch to.
  */
 
 import { handlePublicApi } from './public-api.js';
@@ -44,6 +48,7 @@ import { handleFeeds } from './feeds.js';
 import { verifyAccessIdentity } from './access.js';
 import { resolveAuthor } from './auth.js';
 import { handleAdminApi } from './admin-api.js';
+import { handleMcp } from './mcp.js';
 import { publishDuePosts } from './cron.js';
 
 const DEFAULT_ADMIN_HOST = 'blog-admin.mysite.com';
@@ -176,6 +181,7 @@ export default {
           handleLegacyPostRedirect(url) ||
           (await handlePostPage(request, url, env)) ||
           (await handleAdminApi(request, url, { env, ctx, identity })) ||
+          (await handleMcp(request, url, { env, ctx, identity })) ||
           (await handlePublicApi(request, url, env)) ||
           (await handleMedia(request, url, env)) ||
           (await handleFeeds(request, url, env)) ||

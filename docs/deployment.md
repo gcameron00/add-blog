@@ -64,6 +64,7 @@ npx wrangler r2 bucket create gcameron-blog-media
 npx wrangler d1 execute gcameron-blog --file=./migrations/0001_init.sql --remote
 npx wrangler d1 execute gcameron-blog --file=./migrations/0002_authors_disabled.sql --remote
 npx wrangler d1 execute gcameron-blog --file=./migrations/0003_audit_via_cron.sql --remote
+npx wrangler d1 execute gcameron-blog --file=./migrations/0004_mcp.sql --remote
 ```
 
 **0003 is a rebuild, not a plain `ALTER TABLE ADD COLUMN` like 0002** — SQLite can't
@@ -72,6 +73,18 @@ existing row into it, drops the old table, and renames. No data is lost (every c
 is copied as-is before the drop), but it's a different risk shape than an additive
 column add — worth running it on its own, confirming the row count matches after
 (`SELECT COUNT(*) FROM audit_log`), rather than batching it with unrelated changes.
+
+**0004 (Phase 6, MCP) is additive only** — a new `mcp_sessions` table plus one new
+`settings` row (`style_guide`, empty by default). Nothing existing is touched, so
+there's no row-count check to make afterwards the way 0003 needed one.
+
+This list is the full bootstrap sequence for a brand-new site; for a site that's
+already live (`gcameron`), only run the migration file(s) that haven't been applied
+yet — re-running an already-applied one fails on `CREATE TABLE` already existing.
+Deploy the migration before (or together with, never after) the Worker version that
+expects it, same as 0002/0003/5e/5f were sequenced — a live Worker querying a table
+that doesn't exist yet is a 500, not a graceful fallback, for anything past the
+`env.DB` existence check every handler already does.
 
 Seed the first owner so there is an identity that can log in — the email must match
 exactly the identity Access will present:

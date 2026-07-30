@@ -13,10 +13,13 @@
  */
 
 import { getSettings } from './db.js';
-import { apiError, readJsonBody, requirePermission, requireSameOrigin, withErrors } from './admin-http.js';
+import { readJsonBody, requirePermission, requireSameOrigin, withErrors } from './admin-http.js';
 import { writeAuditLog } from './audit.js';
+import { ValidationError } from './validate.js';
 
-const KNOWN_KEYS = new Set([
+// Exported so src/mcp-tools.js's `update_site_settings` validates against
+// the exact same allow-list — one list, not two that can drift apart.
+export const KNOWN_KEYS = new Set([
   'site_title',
   'site_description',
   'site_url',
@@ -28,23 +31,29 @@ const KNOWN_KEYS = new Set([
   'feed_full_content',
   'analytics_enabled',
   'social_image_key',
+  // Phase 6 — the source `blog://style-guide` reads from (docs/mcp.md). A
+  // settings key, not new schema: it's owner-managed the same way every
+  // other value here is, just consumed by an MCP resource instead of a
+  // public page.
+  'style_guide',
 ]);
 
-async function putSettings(request, env, identity) {
-  requirePermission(identity, 'settings.manage');
-  const input = await readJsonBody(request);
-
+/**
+ * Validates and writes a partial settings update, shared by the REST route
+ * below and src/mcp-tools.js's `update_site_settings` — the permission check
+ * and the audit-log `via` differ per caller, so those stay with the caller
+ * rather than living in here.
+ */
+export async function writeSettings(db, input) {
   const unknown = Object.keys(input).find((key) => !KNOWN_KEYS.has(key));
-  if (unknown) {
-    return apiError(400, 'bad_request', `Unknown setting key: "${unknown}".`, { field: unknown });
-  }
+  if (unknown) throw new ValidationError(`Unknown setting key: "${unknown}".`, unknown);
 
   const entries = Object.entries(input);
   if (entries.length) {
     const now = new Date().toISOString();
-    await env.DB.batch(
+    await db.batch(
       entries.map(([key, value]) =>
-        env.DB
+        db
           .prepare(
             `INSERT INTO settings (key, value, updated_at) VALUES (?, ?, ?)
              ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`
@@ -52,12 +61,21 @@ async function putSettings(request, env, identity) {
           .bind(key, JSON.stringify(value), now)
       )
     );
+  }
+
+  return getSettings(db);
+}
+
+async function putSettings(request, env, identity) {
+  requirePermission(identity, 'settings.manage');
+  const input = await readJsonBody(request);
+  const updated = await writeSettings(env.DB, input);
+  if (Object.keys(input).length) {
     await writeAuditLog(env.DB, {
       actor: identity.email, via: 'ui', action: 'settings.update', entity: 'settings', detail: { keys: Object.keys(input) },
     });
   }
-
-  return Response.json({ data: await getSettings(env.DB) });
+  return Response.json({ data: updated });
 }
 
 export async function handleSettingsApi(request, url, ctxBundle) {

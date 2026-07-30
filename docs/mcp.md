@@ -4,8 +4,11 @@
 so an AI assistant can draft, edit, search and publish posts through the same rules a
 human editor is bound by.
 
-> Status: specified, not yet implemented. Phase 6 of the
-> [implementation plan](implementation-plan.md).
+> Status: implemented (src/mcp.js, src/mcp-tools.js, src/mcp-prompts.js), Phase 6 of
+> the [implementation plan](implementation-plan.md). Not yet deployed or verified
+> against a real client — Managed OAuth is already enabled on the Access application
+> (README's status table), so what's left is a deploy and a first real connection, not
+> further Access setup.
 
 ---
 
@@ -74,8 +77,15 @@ The flow:
 An identity that passes Access but has no `authors` row is rejected. **Tools are
 filtered by role**: an `author` sees the drafting tools but not `publish_post` or
 `delete_post`, so a client's tool list reflects what that operator can actually do
-rather than advertising calls that will fail. Every tool call writes an `audit_log`
-entry with `via = 'mcp'`.
+rather than advertising calls that will fail — and the same permission is re-checked
+at call time, not just trusted from whatever list a client happened to fetch earlier.
+Every tool call writes an `audit_log` entry with `via = 'mcp'`.
+
+**Write tools are rate-limited per identity**: at most 30 calls to any one write tool
+per 5 minutes, counted from `audit_log` itself rather than a separate store — the
+Worker has no other place holding per-identity state between requests, and every call
+already writes the row this counts. A caller past the limit gets `rate_limited` back
+as an ordinary tool error, the same shape as any other failure in this section.
 
 Access policies remain the outer boundary. If the site owner restricts the Access
 application to one email domain, MCP clients outside that domain never reach the

@@ -30,10 +30,13 @@ import {
 } from './admin-db.js';
 import { apiError, readJsonBody, requirePermission, requireSameOrigin, withErrors } from './admin-http.js';
 import { writeAuditLog } from './audit.js';
-import { detectDimensions, sanitizeFilename, sha256Hex } from './media-parse.js';
+import { buildMediaKey, detectDimensions, sanitizeFilename, sha256Hex } from './media-parse.js';
 
-const MAX_UPLOAD_BYTES = 25 * 1024 * 1024;
-const ALLOWED_TYPES = new Set([
+// Exported so src/mcp-tools.js's `upload_media_from_url` validates a fetched
+// URL's response against the exact same allow-list and size cap a direct
+// multipart upload gets here — one list, not two that can drift apart.
+export const MAX_UPLOAD_BYTES = 25 * 1024 * 1024;
+export const ALLOWED_TYPES = new Set([
   'image/jpeg',
   'image/png',
   'image/webp',
@@ -42,7 +45,10 @@ const ALLOWED_TYPES = new Set([
   'application/pdf',
 ]);
 
-async function mapMedia(db, row) {
+// Exported for src/mcp-tools.js's `list_media` and `upload_media_from_url` —
+// same shape a human sees in the admin media library, so an agent and an
+// editor are never looking at two different ideas of what a media row is.
+export async function mapMedia(db, row) {
   const usedBy = (await listPostsReferencingMedia(db, row.key)).length;
   return {
     key: row.key,
@@ -101,9 +107,7 @@ async function uploadHandler(request, env, identity) {
   }
 
   const now = new Date();
-  const yyyy = now.getUTCFullYear();
-  const mm = String(now.getUTCMonth() + 1).padStart(2, '0');
-  const key = `${yyyy}/${mm}/${checksum.slice(0, 16)}-${sanitizeFilename(file.name)}`;
+  const key = buildMediaKey(now, checksum, file.name);
 
   const dimensions = detectDimensions(bytes, fileType) || {};
 

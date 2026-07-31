@@ -7,7 +7,7 @@ read and write posts the same way a human editor would.
 Everything is plain HTML, CSS and JavaScript — no framework, no build step, no
 bundler. The whole front end ships as Cloudflare Workers static assets.
 
----
+--- 
 
 ## Status
 

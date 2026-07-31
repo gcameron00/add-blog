@@ -85,8 +85,8 @@ crons = ["*/5 * * * *"]
 [env.caitlin-ski]
 name = "caitlin-ski-blog"
 routes = [
-  { pattern = "blog.caitlincameron.ski>",       custom_domain = true },
-  { pattern = "blog-admin.caitlincameron.ski>", custom_domain = true },
+  { pattern = "blog.caitlincameron.ski",       custom_domain = true },
+  { pattern = "blog-admin.caitlincameron.ski", custom_domain = true },
 ]
 
 [[env.caitlin-ski.d1_databases]]

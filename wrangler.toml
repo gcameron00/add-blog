@@ -79,3 +79,35 @@ ACCESS_AUD = "1d519becd47d98d3f450013b2124ab97d5ce468452735bd8bfb71f87b5941ca6"
 # of vars and disabled the Worker's own Access check in production).
 [env.gcameron.triggers]
 crons = ["*/5 * * * *"]
+
+# --- caitlincameron.ski -------------------------------------------------------
+
+[env.caitlin-ski]
+name = "caitlin-ski-blog"
+routes = [
+  { pattern = "blog.caitlincameron.ski>",       custom_domain = true },
+  { pattern = "blog-admin.caitlincameron.ski>", custom_domain = true },
+]
+
+[[env.caitlin-ski.d1_databases]]
+binding = "DB"
+database_name = "caitlin-ski-blog"
+database_id = "7c3c491a-3849-4f7d-bb48-0b3338be5083"
+
+[[env.caitlin-ski.r2_buckets]]
+binding = "MEDIA"
+bucket_name = "caitlin-ski-blog-media"
+
+[env.caitlin-ski.assets]
+directory = "."
+binding = "ASSETS"
+run_worker_first = true
+
+[env.caitlin-ski.vars]
+ADMIN_HOST = "blog-admin.caitlincameron.ski"
+PUBLIC_HOST = "blog.caitlincameron.ski"
+# ACCESS_TEAM_DOMAIN / ACCESS_AUD go here after step 6
+
+# Optional — only if you want scheduled posts to auto-publish on this site:
+[env.caitlin-ski.triggers]
+crons = ["*/5 * * * *"]

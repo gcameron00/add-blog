@@ -674,12 +674,43 @@ gated on a deploy rather than any new setup.
 
 ## Phase 7 — Polish and operations
 
-- Search UI on the public site backed by FTS.
-- Related posts, reading progress, copy-link-to-heading.
-- OG image generation for posts without a cover.
-- Privacy-preserving view counts (no cookies, no third-party analytics).
-- Dashboard stats from real data.
-- Lighthouse budget in CI; accessibility audit; RSS validation.
+**Found already shipped, undocumented, during the Phase 7 kickoff review
+(2026-07-31)** — built along the way in earlier phases and never checked off here:
+
+- **Search UI on the public site backed by FTS.** ✅ Done. `GET /api/posts?q=`
+  (`src/public-api.js`) matches against the `posts_fts` FTS5 table and its sync
+  triggers from Phase 3 (`src/db.js`, `migrations/0001_init.sql`); the public UI's
+  debounced search box (`assets/js/blog.js`'s `initHome`, `index.html`) updates the
+  URL and re-renders results client-side. Tested (`src/public-api.test.js`). Nothing
+  left to build.
+- **Related posts.** ✅ Done. `relatedPosts()` (`src/db.js`) ranks by shared-tag
+  count then recency, top 3, included in the post API response and rendered by
+  `assets/js/post.js` under a "Related posts" heading; documented in
+  [api.md](api.md). **Gap:** client-rendered only — the server-rendered permalink
+  (`src/pages.js`'s `renderArticle`) doesn't include it, so it's invisible with
+  JavaScript disabled and absent from the HTML search engines see.
+- **Copy-link-to-heading.** ✅ Done. `assets/js/post.js`'s `addHeadingLinks()`
+  appends a `#` anchor to every `h2`/`h3` with an id. Same SSR gap as related posts
+  above — client-rendered only.
+- **Dashboard stats from real data.** ✅ Already satisfied by Phase 5b's
+  `GET /api/admin/stats` (post counts by status, total word count, media count, next
+  scheduled post) — see Phase 5 above. What's left under this heading is specifically
+  *view* stats, which depends on the view-counts item below being built first.
+
+**Still to build:**
+
+- Reading progress bar on the public post page — no code anywhere yet; the only
+  other item from the original "related posts, reading progress, copy-link-to-heading"
+  grouping that isn't already done.
+- OG image generation for posts without a cover — not started; no `og:image` tag
+  exists anywhere yet, including in `src/pages.js`'s SSR meta tags.
+- Privacy-preserving view counts (no cookies, no third-party analytics) — not
+  started; `src/admin-dashboard.js` already notes in its own comment that the
+  `views` figure is intentionally absent pending this.
+- Lighthouse budget in CI; accessibility audit; RSS validation — not started; no
+  Lighthouse/accessibility tooling in `package.json` or `.github/workflows/`, and the
+  existing feed tests (`src/feeds.test.js`) check string content, not spec
+  conformance.
 - **On-demand export/import (moved from Phase 5, owner decision, 2026-07-29;
   owner-only — same tier as `/settings`).** `POST /export` — full content (every post
   regardless of status, tags, authors, settings) as one JSON document, written to R2 at

@@ -29,22 +29,6 @@
           </div>
         </div>
 
-        <div class="callout callout--warn">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" aria-hidden="true">
-            <path d="M12 9v4m0 3.5v.01M10.3 3.9 2.5 17.4A1.5 1.5 0 0 0 3.8 19.7h16.4a1.5 1.5 0 0 0 1.3-2.3L13.7 3.9a1.5 1.5 0 0 0-2.6 0Z" />
-          </svg>
-          <div>
-            <strong>Built, not yet deployed.</strong>
-            <p style="margin: 0">
-              The MCP server code is in place — <code>/mcp</code> answers as soon as a
-              request carries a verified Access identity, and Managed OAuth is already
-              enabled on this site's Access application (see README's status table). What
-              hasn't happened yet is a deploy of this code, and a first real connection
-              from Claude Code or Claude Desktop to prove the whole path end to end.
-            </p>
-          </div>
-        </div>
-
         <div class="grid-2">
           <div class="card">
             <div class="card__header"><h2>Endpoint</h2></div>
@@ -61,7 +45,7 @@
             <div class="card__header"><h2>How the login works</h2></div>
             <ol class="small" style="padding-left: 1.25rem; line-height: 1.8">
               <li>The client calls <code>/mcp</code> and gets <code>401</code> with a <code>WWW-Authenticate</code> header.</li>
-              <li>It reads <code>/.well-known/oauth-protected-resource</code> to find the authorization server.</li>
+              <li>It follows that header's <code>resource_metadata</code> URL to find the authorization server.</li>
               <li>Cloudflare Access handles registration, the authorization code exchange and token issuance.</li>
               <li>The client retries with a bearer token; the Worker verifies its signature and audience.</li>
             </ol>
@@ -80,6 +64,12 @@
             Claude Desktop — <code>claude_desktop_config.json</code>:
           </p>
           <div data-mcp-json></div>
+          <p class="small muted" style="margin-top: 1.25rem">
+            claude.ai (web, iOS, desktop app) — Settings → Connectors → Add custom
+            connector, same URL, no client id/secret. First connection needs claude.ai's
+            redirect URI allow-listed in Managed OAuth's settings once per site — see
+            <a href="/docs/mcp.md#client-configuration">docs/mcp.md</a>.
+          </p>
         </div>
 
         <div class="card card--flush">

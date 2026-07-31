@@ -650,20 +650,19 @@ long enough to go idle), though the explicit-save half it shares its code with h
   site's real title (e.g. "add-blog — The add-blog Journal") rather than a static
   string — see mcp.md's "Server identity" section: an operator with more than one of
   these blogs connected needs to tell them apart in one combined tool list.
-- The admin MCP page's copy now says the server itself is live and names the one
-  remaining step (enabling Managed OAuth on the Access application) rather than "not
-  live yet" — that step is a Zero Trust dashboard setting, owner-only, not something a
-  deploy touches.
+- The admin MCP page's copy reflects the live state rather than "not live yet."
 
-**Not yet done:** this hasn't been deployed, and there's been no hands-on verification
-against a real Claude Code / Claude Desktop connection yet. Managed OAuth is already
-enabled on `blog-admin.gcameron.com`'s Access application (README's status table), so
-neither of those remaining steps is blocked on new Access configuration — just on a
-deploy and a first real client connection. Until then this is tested the way Phase 5's
-write path was tested before its own production pass: full integration coverage
-against a real D1 in `src/mcp.test.js`, calling `handleMcp` directly with a
-manufactured identity — the Access-JWT-to-identity step itself is `src/access.js`'s job
-and already covered by `src/admin-guard.test.js`.
+**Verified live for `gcameron`, 2026-07-31 (owner test):** deployed, connected from
+claude.ai (web) and the Claude iOS app, tool catalog loaded, role filtering and the
+audit trail behaved as designed. One real-world gap surfaced and was closed in the
+process: claude.ai's Dynamic Client Registration attempt was refused by Managed OAuth
+until claude.ai's redirect URI was added to the application's allow-list — a one-time
+Cloudflare-side setting, not a code change; documented in
+[mcp.md](mcp.md#client-configuration) and [deployment.md](deployment.md) §4 so the next
+site doesn't have to rediscover it. **Not yet exercised:** a Claude Code / Claude
+Desktop connection specifically — expected to work without the redirect-URI step
+(their OAuth flow uses a local loopback redirect instead, per mcp.md), but not yet
+observed against this deploy.
 
 **Exit criteria.** Claude Code and Claude Desktop both connect, complete OAuth, list
 tools, and successfully run a draft → edit → publish sequence. An `author`-role

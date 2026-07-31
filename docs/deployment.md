@@ -190,8 +190,9 @@ and SQL files are never uploaded into the public asset bundle.
 ## 4. Cloudflare Zero Trust Access
 
 **Done for `gcameron`** (2026-07-27) — Access application created, `ACCESS_TEAM_DOMAIN`
-and `ACCESS_AUD` are in `wrangler.toml`. Repeat this per new site; steps below are the
-reference either way.
+and `ACCESS_AUD` are in `wrangler.toml`. Managed OAuth's redirect-URI allow-list got
+claude.ai's callback added 2026-07-31, once Phase 6 was live enough to test against
+(step 6 below). Repeat this per new site; steps below are the reference either way.
 
 Protect the admin hostname:
 
@@ -206,6 +207,12 @@ Protect the admin hostname:
    workable start for a small site.
 6. **Enable Managed OAuth** on the application. This is what lets MCP clients complete
    an OAuth flow against Access without add-blog implementing an OAuth provider.
+   **Allow each MCP client's redirect URI** in Managed OAuth's dynamic-client-
+   registration settings — an unlisted redirect URI is refused at registration, before
+   a login screen ever appears, which is a Cloudflare-side rejection, not anything
+   `/mcp` returns (see [mcp.md](mcp.md)'s Client configuration section for exactly
+   which URI a given client needs and why Claude Code/Desktop don't need this step but
+   claude.ai does).
 7. Copy the **Application Audience (AUD) tag** into `ACCESS_AUD`.
 
 Verify before trusting it:
@@ -355,11 +362,19 @@ live for `gcameron`, 2026-07-29):**
 | Load the same post in two sessions, edit and explicit-Save the stale one after the other saved first | The stale save's `409` forks into a new draft with the stale session's content, instead of overwriting or discarding it; toast explains what happened | ✅ — produced a second draft post as expected |
 | Same setup, but let the stale session autosave (idle 2.5s) instead of clicking Save | Save-state pill switches to the conflict message; no duplicate draft is created; autosave stops retrying until Save is clicked | not yet exercised in prod |
 
+**Phase 6, MCP server (deployed and verified live for `gcameron`, 2026-07-31):**
+
+| Check | Expected | Confirmed |
+| --- | --- | --- |
+| `POST https://blog-admin.gcameron.com/mcp` (no token) | `401` from Access itself, with a `WWW-Authenticate` header naming `resource_metadata` | ✅ |
+| `GET` the `resource_metadata` URL (Cloudflare's own `/.well-known/cloudflare-access-protected-resource/mcp`, not the generic RFC 9728 path) | `200` JSON naming `authorization_servers` | ✅ |
+| Connect from claude.ai (web) and the Claude iOS app | Managed OAuth flow completes after allow-listing claude.ai's redirect URI (see §4); tool catalog loads | ✅ |
+| Connect from Claude Code (`claude mcp add`) | Completes without the redirect-URI allow-list step above | not yet exercised — claude.ai's connection is the one verified so far |
+
 **Not built yet (expect 404, not real behaviour):**
 
 | Check | Expected, once built |
 | --- | --- |
-| `POST https://blog-admin.<site>/mcp` (no token) | 401 with `WWW-Authenticate` (Phase 6) |
 | `POST /api/admin/export` / `/import` | No route exists yet — moved to Phase 7 (owner decision, 2026-07-29) |
 
 ## 7. Rollback

@@ -4,11 +4,9 @@
 so an AI assistant can draft, edit, search and publish posts through the same rules a
 human editor is bound by.
 
-> Status: implemented (src/mcp.js, src/mcp-tools.js, src/mcp-prompts.js), Phase 6 of
-> the [implementation plan](implementation-plan.md). Not yet deployed or verified
-> against a real client — Managed OAuth is already enabled on the Access application
-> (README's status table), so what's left is a deploy and a first real connection, not
-> further Access setup.
+> Status: implemented and verified live for `gcameron` (2026-07-31) — connected from
+> claude.ai (web) and the Claude iOS app. Phase 6 of the
+> [implementation plan](implementation-plan.md).
 
 ---
 
@@ -63,9 +61,16 @@ inherits an already-configured identity boundary instead of introducing a second
 The flow:
 
 1. The MCP client requests `/mcp` unauthenticated and gets `401` with a
-   `WWW-Authenticate: Bearer resource_metadata="…"` header.
-2. It fetches `/.well-known/oauth-protected-resource`, which points at the Access
-   authorization server for the team.
+   `WWW-Authenticate: Bearer realm="OAuth", error="invalid_token", …,
+   resource_metadata="…"` header — from Access itself, at the edge, before the
+   request ever reaches this Worker (same as every other admin-only path).
+2. It fetches the URL in `resource_metadata`, which points at the Access
+   authorization server for the team. That URL is
+   `/.well-known/cloudflare-access-protected-resource/mcp` — Cloudflare Access's own
+   metadata path, confirmed against a live deploy 2026-07-30, not the generic RFC 9728
+   `/.well-known/oauth-protected-resource` this section originally assumed. Either
+   way, a client follows whatever `resource_metadata` says rather than hardcoding a
+   path, so this detail is Access's to change without breaking anything here.
 3. Access handles discovery, dynamic client registration, the authorization code
    exchange with PKCE, and token issuance. add-blog implements none of that — this is
    what "Managed" buys, and the reason not to hand-roll an OAuth provider in a Worker.
@@ -251,6 +256,24 @@ Claude Desktop (`claude_desktop_config.json`):
 Both trigger the Access Managed OAuth flow in a browser on first use. No API key is
 stored in the client config — the token is issued by Access and refreshed by the
 client, and it can be revoked from the Zero Trust dashboard.
+
+claude.ai (web, and the iOS/desktop apps signed into the same account — they share one
+connector config) is added from **Settings → Connectors → Add custom connector**, same
+URL, no client id/secret. It needs one extra one-time step Claude Code and Claude
+Desktop don't: **Managed OAuth's dynamic-client-registration settings must allow
+claude.ai's redirect URI**, or registration fails with "Couldn't register with
+`<site>`'s sign-in service" before a login screen ever appears. Add, under Zero Trust →
+Access → Applications → this application → Managed OAuth:
+
+```
+https://claude.ai/api/mcp/auth_callback
+```
+
+Claude Code and Claude Desktop don't need this because their OAuth flow redirects to a
+local loopback address, which Managed OAuth handles through a separate "allow
+localhost/loopback clients" setting rather than a fixed URI to allow-list — see
+[deployment.md](deployment.md) §4. This is a one-time Access configuration change per
+client, not a per-user or per-connection step.
 
 The admin UI's [MCP page](../admin/mcp/index.html) shows this configuration with the
 live hostname filled in, along with the tool catalog and the caller's current role.

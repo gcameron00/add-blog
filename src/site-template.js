@@ -16,13 +16,16 @@ export function applySiteBranding(html, settings) {
   return html.split(DEFAULT_TITLE).join(escapeHtml(title));
 }
 
-// Homepage only — the one page whose meta description/og:description is
-// meant to mirror settings.site_description (src/feeds.js's channel
-// <description> reads the same key). archive/tags/about keep their own
-// fixed copy and must not be touched by this.
+// Homepage only — the one page whose meta description/og:description and
+// visible hero tagline are meant to mirror settings.site_description
+// (src/feeds.js's channel <description> reads the same key). archive/
+// tags/about keep their own fixed copy and must not be touched by this.
 export function applyHomeMeta(html, settings) {
   const description = escapeHtml(settings.site_description || '');
   return html
     .replace(/<meta name="description" content="[^"]*"\s*\/>/, `<meta name="description" content="${description}" />`)
-    .replace(/<meta property="og:description" content="[^"]*"\s*\/>/, `<meta property="og:description" content="${description}" />`);
+    .replace(/<meta property="og:description" content="[^"]*"\s*\/>/, `<meta property="og:description" content="${description}" />`)
+    // The hero <p> under the homepage's <h1> — the one piece of visible page
+    // *body* copy that's this same site description, not just its meta tags.
+    .replace(/(<div class="hero">[\s\S]*?<p>)[\s\S]*?(<\/p>)/, `$1${description}$2`);
 }

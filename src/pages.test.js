@@ -81,7 +81,9 @@ describe('site branding — settings.site_title/site_description reach the publi
     expect(html).toContain('<meta property="og:title" content="Caitlin&#39;s Ski Blog" />');
     expect(html).toContain('<meta property="og:description" content="Adventures on snow." />');
     expect(html).toContain('<span>Caitlin&#39;s Ski Blog</span>');
+    expect(html).toMatch(/<div class="hero">[\s\S]*<h1>Caitlin&#39;s Ski Blog<\/h1>[\s\S]*<p>Adventures on snow\.<\/p>/);
     expect(html).not.toContain('The add-blog Journal');
+    expect(html).not.toContain('Notes on building a blog engine for Cloudflare Workers');
   });
 
   it('falls back to the default title when site_title is empty', async () => {
@@ -102,13 +104,16 @@ describe('site branding — settings.site_title/site_description reach the publi
     expect(html).toContain('<span>Caitlin Ski</span>');
   });
 
-  it('brands the archive/tags/about pages without altering their own meta description', async () => {
+  it('brands the archive/tags/about pages without altering their own hero copy or meta description', async () => {
     await setSetting('site_title', 'Caitlin Ski');
+    await setSetting('site_description', 'Adventures on snow.');
     for (const path of ['/archive/', '/tags/', '/about/']) {
       const html = await (await get(path)).text();
       expect(html).toContain('<span>Caitlin Ski</span>');
       expect(html).not.toContain('The add-blog Journal');
+      expect(html).not.toContain('Adventures on snow.');
     }
+    expect(await (await get('/archive/')).text()).toContain('<h1>Archive</h1>');
     const archiveHtml = await (await get('/archive/')).text();
     expect(archiveHtml).toContain('content="Every post, grouped by year."');
   });

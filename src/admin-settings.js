@@ -16,6 +16,11 @@ import { getSettings } from './db.js';
 import { readJsonBody, requirePermission, requireSameOrigin, withErrors } from './admin-http.js';
 import { writeAuditLog } from './audit.js';
 import { ValidationError } from './validate.js';
+import { purgeBrandedPages } from './cache-purge.js';
+
+// Keys src/site-template.js's applySiteBranding/applyHomeMeta actually
+// render — the only ones where a stale edge-cached page is visibly wrong.
+const BRANDING_KEYS = new Set(['site_title', 'site_description']);
 
 // Exported so src/mcp-tools.js's `update_site_settings` validates against
 // the exact same allow-list — one list, not two that can drift apart.
@@ -66,7 +71,7 @@ export async function writeSettings(db, input) {
   return getSettings(db);
 }
 
-async function putSettings(request, env, identity) {
+async function putSettings(request, env, ctx, identity) {
   requirePermission(identity, 'settings.manage');
   const input = await readJsonBody(request);
   const updated = await writeSettings(env.DB, input);
@@ -74,20 +79,23 @@ async function putSettings(request, env, identity) {
     await writeAuditLog(env.DB, {
       actor: identity.email, via: 'ui', action: 'settings.update', entity: 'settings', detail: { keys: Object.keys(input) },
     });
+    if (Object.keys(input).some((key) => BRANDING_KEYS.has(key))) {
+      ctx.waitUntil(purgeBrandedPages(`https://${env.PUBLIC_HOST}`));
+    }
   }
   return Response.json({ data: updated });
 }
 
 export async function handleSettingsApi(request, url, ctxBundle) {
   if (url.pathname !== '/api/admin/settings') return null;
-  const { env, identity } = ctxBundle;
+  const { env, ctx, identity } = ctxBundle;
   if (!identity) return null;
 
   return withErrors(async () => {
     if (request.method === 'GET') return Response.json({ data: await getSettings(env.DB) });
     if (request.method === 'PUT') {
       requireSameOrigin(request, url);
-      return putSettings(request, env, identity);
+      return putSettings(request, env, ctx, identity);
     }
     return null;
   });

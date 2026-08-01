@@ -79,6 +79,18 @@ existing link breaks. Every internal link generator (`blog.js`, `post.js`, `admi
 `editor.js`) points at the canonical form directly rather than round-tripping the
 redirect.
 
+> **Built (2026-08-01):** the home page, post permalinks, and the remaining static
+> pages (archive, tags, about, 404) are no longer pure static assets on the public
+> host — `src/site-template.js`'s `applySiteBranding`/`applyHomeMeta`, dispatched from
+> `handleHomePage` and `brandStaticAsset` (both in `src/index.js`/`src/pages.js`), swap
+> the site's literal wordmark for `settings.site_title` wherever it shows up (`<title>`,
+> header, footer, the homepage's OG tags and RSS `<link>`), and the homepage's meta
+> description/`og:description` for `settings.site_description`. Every other static page
+> keeps its own fixed meta description — only the brand name is settings-driven there.
+> This is why a second site on this same codebase (different `[env.NAME]` block, same
+> static HTML) now shows its own name instead of the first site's, once its settings
+> row is saved through the admin UI.
+
 ---
 
 ## 3. Data model (D1)
@@ -321,6 +333,14 @@ minutes, never permanent staleness.
 > enumerate every filtered `/api/posts?tag=…&q=…` combination a client might have
 > cached, which is why those variants' short `max-age`/`s-maxage` still matters as the
 > real backstop, not just a fallback for purge failures.
+
+> **Built (2026-08-01):** saving `site_title` or `site_description` through
+> `PUT /settings` (`src/admin-settings.js`) now purges `/`, `/archive/`, `/tags/`, and
+> `/about/` too, via `purgeBrandedPages` — those are the shared static pages
+> `applySiteBranding`/`applyHomeMeta` template on every request. Individual post
+> permalinks aren't enumerable the same way a single post's own purge is, so a
+> `site_title` change reaches them within the hour via the same `s-maxage`/
+> `stale-while-revalidate` backstop rather than an active purge.
 
 ---
 

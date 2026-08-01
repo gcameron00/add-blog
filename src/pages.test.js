@@ -1,4 +1,4 @@
-import { SELF } from 'cloudflare:test';
+import { SELF, env } from 'cloudflare:test';
 import { describe, expect, it } from 'vitest';
 
 const HOST = 'blog.mysite.com';
@@ -6,6 +6,10 @@ const SLUG = 'shipping-a-blog-on-cloudflare-workers';
 
 async function get(path, init) {
   return SELF.fetch(`https://${HOST}${path}`, { redirect: 'manual', ...init });
+}
+
+async function setSetting(key, value) {
+  await env.DB.prepare(`UPDATE settings SET value = ? WHERE key = ?`).bind(JSON.stringify(value), key).run();
 }
 
 describe('GET /posts/:slug', () => {
@@ -63,5 +67,55 @@ describe('GET /post/?slug=… (legacy)', () => {
   it('does not redirect when there is no ?slug= — falls through to the static page', async () => {
     const res = await get('/post/');
     expect(res.status).not.toBe(301);
+  });
+});
+
+describe('site branding — settings.site_title/site_description reach the public pages', () => {
+  it('templates the homepage <title>, meta description, og tags, header, and footer from settings', async () => {
+    await setSetting('site_title', "Caitlin's Ski Blog");
+    await setSetting('site_description', 'Adventures on snow.');
+
+    const html = await (await get('/')).text();
+    expect(html).toContain('<title>Caitlin&#39;s Ski Blog</title>');
+    expect(html).toContain('<meta name="description" content="Adventures on snow." />');
+    expect(html).toContain('<meta property="og:title" content="Caitlin&#39;s Ski Blog" />');
+    expect(html).toContain('<meta property="og:description" content="Adventures on snow." />');
+    expect(html).toContain('<span>Caitlin&#39;s Ski Blog</span>');
+    expect(html).not.toContain('The add-blog Journal');
+  });
+
+  it('falls back to the default title when site_title is empty', async () => {
+    await setSetting('site_title', '');
+    const html = await (await get('/')).text();
+    expect(html).toContain('<title>The add-blog Journal</title>');
+  });
+
+  it('sets the public caching policy on the templated homepage', async () => {
+    const res = await get('/');
+    expect(res.headers.get('Cache-Control')).toBe('public, max-age=60, s-maxage=3600, stale-while-revalidate=86400');
+  });
+
+  it('carries a custom site_title onto a post permalink\'s title and header', async () => {
+    await setSetting('site_title', 'Caitlin Ski');
+    const html = await (await get(`/posts/${SLUG}`)).text();
+    expect(html).toContain('Shipping a blog on Cloudflare Workers — Caitlin Ski</title>');
+    expect(html).toContain('<span>Caitlin Ski</span>');
+  });
+
+  it('brands the archive/tags/about pages without altering their own meta description', async () => {
+    await setSetting('site_title', 'Caitlin Ski');
+    for (const path of ['/archive/', '/tags/', '/about/']) {
+      const html = await (await get(path)).text();
+      expect(html).toContain('<span>Caitlin Ski</span>');
+      expect(html).not.toContain('The add-blog Journal');
+    }
+    const archiveHtml = await (await get('/archive/')).text();
+    expect(archiveHtml).toContain('content="Every post, grouped by year."');
+  });
+
+  it('does not query settings for a non-HTML static asset', async () => {
+    const res = await get('/assets/css/styles.css');
+    expect(res.status).toBe(200);
+    expect(res.headers.get('Content-Type') || '').not.toContain('text/html');
   });
 });

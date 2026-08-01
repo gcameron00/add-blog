@@ -318,3 +318,9 @@ Settings keys: `site_title`, `site_description`, `site_url`, `admin_url`, `base_
 request body — not a literal full-replace — since the settings form only submits the
 keys it has inputs for; a stricter reading would silently drop `social_image_key`
 (the one seeded key with no form field) on every save.
+
+`site_title` and `site_description` aren't admin-only values — `src/site-template.js`
+templates them onto every public page (see [architecture.md](architecture.md) §2's
+2026-08-01 note) and `src/feeds.js` reads them into the RSS/Atom channel. Saving either
+purges the edge cache for the shared static pages so the change is visible immediately
+rather than waiting out `max-age` (architecture.md §5).

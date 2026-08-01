@@ -10,8 +10,9 @@
  * docs/architecture.md §2.
  */
 
-import { getPublishedPostBySlug } from './db.js';
+import { getPublishedPostBySlug, getSettings } from './db.js';
 import { escapeHtml } from '../assets/js/markdown.js';
+import { applySiteBranding, applyHomeMeta } from './site-template.js';
 
 function formatDate(iso) {
   if (!iso) return '';
@@ -69,11 +70,12 @@ export async function handlePostPage(request, url, env) {
   if (!env.DB) return null;
 
   const slug = decodeURIComponent(match[1]);
-  const post = await getPublishedPostBySlug(env.DB, slug);
+  const [post, settings] = await Promise.all([getPublishedPostBySlug(env.DB, slug), getSettings(env.DB)]);
+  const siteTitle = settings.site_title || 'The add-blog Journal';
 
   const shellRequest = new Request(new URL('/post/', url), request);
   const shellResponse = await env.ASSETS.fetch(shellRequest);
-  let html = await shellResponse.text();
+  let html = applySiteBranding(await shellResponse.text(), settings);
 
   if (!post) {
     // Let the existing client-side "not found" state render — same as a
@@ -82,17 +84,41 @@ export async function handlePostPage(request, url, env) {
     return new Response(html, { status: 404, headers: { 'Content-Type': 'text/html;charset=UTF-8' } });
   }
 
-  const title = `${escapeHtml(post.title)} — The add-blog Journal`;
+  const title = `${escapeHtml(post.title)} — ${escapeHtml(siteTitle)}`;
   const description = escapeHtml(post.excerpt || '');
   const canonical = `${url.origin}/posts/${encodeURIComponent(post.slug)}`;
 
   html = html
-    .replace('<title>Post — The add-blog Journal</title>', `<title>${title}</title>`)
+    .replace(`<title>Post — ${escapeHtml(siteTitle)}</title>`, `<title>${title}</title>`)
     .replace('<meta name="description" content="" />', `<meta name="description" content="${description}" />`)
     .replace('<meta property="og:title" content="" />', `<meta property="og:title" content="${escapeHtml(post.title)}" />`)
     .replace('<meta property="og:description" content="" />', `<meta property="og:description" content="${description}" />`)
     .replace('<link rel="canonical" href="/" />', `<link rel="canonical" href="${canonical}" />`)
     .replace(/<article data-article>[\s\S]*?<\/article>/, `<article data-article>${renderArticle(post, url.origin)}</article>`);
+
+  return new Response(html, {
+    headers: {
+      'Content-Type': 'text/html;charset=UTF-8',
+      // docs/architecture.md §5: "Public HTML pages" caching policy.
+      'Cache-Control': 'public, max-age=60, s-maxage=3600, stale-while-revalidate=86400',
+    },
+  });
+}
+
+/**
+ * GET / — same static shell as every other public page, templated with live
+ * settings the same way the post permalink above is. The one page whose meta
+ * description/og:description is settings-driven (applyHomeMeta) rather than
+ * per-post or page-specific fixed copy.
+ */
+export async function handleHomePage(request, url, env, admin) {
+  if (admin || url.pathname !== '/' || (request.method !== 'GET' && request.method !== 'HEAD')) return null;
+  if (!env.DB) return null;
+
+  const settings = await getSettings(env.DB);
+  const shellResponse = await env.ASSETS.fetch(request);
+  let html = applySiteBranding(await shellResponse.text(), settings);
+  html = applyHomeMeta(html, settings);
 
   return new Response(html, {
     headers: {

@@ -31,3 +31,16 @@ export async function purgePostUrls(publicOrigin, { slug, previousSlug, tags = [
 
   await Promise.all([...urls].map((url) => caches.default.delete(url).catch(() => false)));
 }
+
+/**
+ * Purges the shared static pages a site_title/site_description change shows
+ * up on (src/site-template.js's branding pass). Post permalinks aren't
+ * enumerable here the way a single post's own purge is — they rely on the
+ * existing short s-maxage/stale-while-revalidate window to pick up a rename
+ * within the hour, same tradeoff docs/architecture.md §5 already accepts for
+ * filtered API variants.
+ */
+export async function purgeBrandedPages(publicOrigin) {
+  const urls = [`${publicOrigin}/`, `${publicOrigin}/archive/`, `${publicOrigin}/tags/`, `${publicOrigin}/about/`];
+  await Promise.all(urls.map((url) => caches.default.delete(url).catch(() => false)));
+}

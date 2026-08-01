@@ -967,12 +967,17 @@ async function initSettings() {
   form.addEventListener('submit', async (event) => {
     event.preventDefault();
     const values = {};
-    for (const key of Object.keys(current)) {
-      const field = form.elements[key];
-      if (!field) continue;
-      if (field.type === 'checkbox') values[key] = field.checked;
-      else if (field.type === 'number') values[key] = Number(field.value);
-      else values[key] = field.value;
+    // Sourced from the form's own fields, not Object.keys(current) — a
+    // settings row that doesn't exist yet (new site, restored DB) must not
+    // make its field silently unsavable. See docs/api.md's note on why PUT
+    // is deliberately partial: this loop is what "the keys it has inputs
+    // for" is supposed to mean, and it should hold regardless of what the
+    // last GET happened to return.
+    for (const field of form.elements) {
+      if (!field.name || field.type === 'submit' || field.type === 'button') continue;
+      if (field.type === 'checkbox') values[field.name] = field.checked;
+      else if (field.type === 'number') values[field.name] = Number(field.value);
+      else values[field.name] = field.value;
     }
     const submit = form.querySelector('[type="submit"]');
     submit.disabled = true;

@@ -103,6 +103,16 @@ function withSharedHeaders(response, { requestId, admin }) {
   return new Response(response.body, { status: response.status, statusText: response.statusText, headers });
 }
 
+// blog-admin.*'s bare "/" isn't a real page — the dashboard lives at
+// /admin/. Without this, the shared static bundle serves the public blog's
+// own shell there instead (see docs/architecture.md's 2026-08-01 note): it's
+// admin-gated by Access at the edge but never branded, since brandStaticAsset
+// and handleHomePage both deliberately skip the admin host.
+function redirectAdminRoot(url, admin) {
+  if (!admin || url.pathname !== '/') return null;
+  return Response.redirect(`${url.origin}/admin/`, 301);
+}
+
 function notFound(requestId, admin) {
   const response = withSharedHeaders(new Response('Not found', { status: 404 }), { requestId, admin });
   // Belt and suspenders on top of the admin-guard itself: this specific
@@ -204,6 +214,7 @@ export default {
         response = health(requestId, admin);
       } else {
         response =
+          redirectAdminRoot(url, admin) ||
           handleLegacyPostRedirect(url) ||
           (await handlePostPage(request, url, env)) ||
           (await handleHomePage(request, url, env, admin)) ||

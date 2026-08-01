@@ -91,6 +91,18 @@ redirect.
 > static HTML) now shows its own name instead of the first site's, once its settings
 > row is saved through the admin UI.
 
+> **Built (2026-08-01):** `handleHomePage` and `brandStaticAsset` both deliberately skip
+> templating when `admin` is true — the branding pass has no business running against
+> `blog-admin.*`. The gap that leaves: a bare `/` on the admin host isn't `/admin/`, so
+> it fell through to the same shared static bundle and served the public blog's raw,
+> unbranded `index.html` — reachable by anyone Cloudflare Access let onto that hostname,
+> showing neither the site's real name nor the generic `"add-blog admin"` the actual
+> dashboard uses. `redirectAdminRoot` (`src/index.js`) 301s `blog-admin.*/` straight to
+> `/admin/` so there's no static shell left unbranded there to notice. Caught because
+> `assets/js/admin.js`'s sidebar "View blog" link was a bare `href: '/'` — relative, so
+> from the admin host it pointed at this same unbranded page instead of the actual
+> public site; fixed alongside the redirect by resolving it from `settings.site_url`.
+
 ---
 
 ## 3. Data model (D1)

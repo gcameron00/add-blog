@@ -53,6 +53,12 @@ describe('admin host — admin paths are reachable', () => {
     const res = await get(ADMIN_HOST, '/admin/editor/');
     expect(res.status).toBe(200);
   });
+
+  it('redirects the bare root to /admin/ rather than serving the public blog shell', async () => {
+    const res = await get(ADMIN_HOST, '/');
+    expect(res.status).toBe(301);
+    expect(res.headers.get('Location')).toBe(`https://${ADMIN_HOST}/admin/`);
+  });
 });
 
 describe('headers', () => {

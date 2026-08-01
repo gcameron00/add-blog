@@ -32,6 +32,16 @@ async function renderSidebar() {
   const host = document.querySelector('[data-sidebar]');
   if (!host) return;
 
+  // This shell renders on blog-admin.* — a bare "/" href here would stay on
+  // that host (and, since blog-admin.*'s root now redirects into /admin/,
+  // would bounce straight back). "View blog" needs the actual public site.
+  let publicUrl = '/';
+  try {
+    publicUrl = (await api.getSettings()).data.site_url || '/';
+  } catch {
+    // Sidebar still has to render even if settings can't be reached.
+  }
+
   const brand = el('a', { class: 'admin-brand', href: '/admin/', 'aria-label': 'add-blog admin' }, [
     icon('check'),
     el('div', {}, [el('span', { text: 'add-blog' }), el('small', { text: 'Admin' })]),
@@ -53,7 +63,7 @@ async function renderSidebar() {
       el('a', { href: item.href, title: item.label }, [icon(item.icon), el('span', { text: item.label })])
     ),
     el('div', { class: 'admin-nav__label', text: 'Public site' }),
-    el('a', { href: '/', target: '_blank', rel: 'noopener', title: 'View blog' }, [
+    el('a', { href: publicUrl, target: '_blank', rel: 'noopener', title: 'View blog' }, [
       icon('external'), el('span', { text: 'View blog' }),
     ]),
   ]);

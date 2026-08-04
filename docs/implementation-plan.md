@@ -725,7 +725,96 @@ gated on a deploy rather than any new setup.
 - **Import from Ghost, WordPress and Markdown archives** — distinct from `/import`
   above: parsers for other platforms' own proprietary export formats (Ghost's JSON
   export, WordPress's WXR/XML), a bigger scope than the two generic shapes `/import`
-  handles.
+  handles. WordPress/WXR moved from an idea to a scoped feature on 2026-08-04 — see
+  below.
+
+### WordPress import (WXR) — draft decisions (2026-08-04)
+
+Scoped against two real exports the owner intends to import personally:
+`gcameron.com` (104 items — 26 posts / 4 pages / 67 attachments, 0 shortcodes, 0
+iframes, all media same-host) and `laax.ski` (41 items — 6 posts / 4 pages / 21
+attachments, same profile, one classic-HTML post, one comment). Both are clean,
+low-shortcode, mostly-core-Gutenberg-block exports — that shaped the calls below more
+than WXR's full generality did. Independent of this project's own `/export`/`/import`
+round-trip format above — WXR comes from WordPress, not from another instance of this
+app.
+
+**Scope — posts and media only.**
+- No `pages`/CPT table exists (only `posts` + `tags`, see Phase 3's schema) — WP
+  `<item wp:post_type="page">` entries are **not imported**. Both target exports keep
+  their few pages (Homepage/About/Contact-style) thin enough to hand-recreate.
+- `<wp:comment>` dropped entirely — consistent with this project's own "no comments"
+  call (**Decisions** item 3 below), not a WordPress-import-specific decision.
+- WP `category` and `post_tag` taxonomies **merge into the single `tags` table** — no
+  category/tag distinction survives import. Both exports have small, non-overlapping
+  vocabularies (≤8 terms), so collisions are unlikely but not handled specially if
+  they happen (a same-slug category and tag just become one tag).
+- WP `post_format` (seen on `laax.ski`, 1 term used) is **ignored** — it's a
+  theme-display hint, not a real taxonomy, and out of scope here.
+
+**Content conversion — hand-rolled HTML→Markdown, accepted as lossy.**
+`body_md` is this project's source of truth, rendered by a dependency-free ~250-line
+parser (`assets/js/markdown.js`) with no raw-HTML passthrough — so `<content:encoded>`
+must become clean Markdown, not just get stored as-is. Both sample exports are
+favorable: 0 shortcodes, 0 iframes, and block usage concentrated in ~13 standard core
+Gutenberg blocks (paragraph/image/heading/list/table/quote/gallery/preformatted) that
+map onto plain HTML tags close to one-to-one. The only non-core blocks seen
+(`themeisle-blocks` Otter columns/headings, low single-digit counts) still render as
+ordinary wrapped HTML in `content:encoded` and can be unwrapped rather than specially
+parsed. Elementor usage (3 items on gcameron.com, 2 on laax.ski) is real but — per the
+pages decision above — concentrated in `page`-type items that aren't imported at all;
+if a future import target has Elementor on a `post`, that item's content arrives as
+whatever `content:encoded` rendered to (often thin, since Elementor content mostly
+lives in `_elementor_data` postmeta this importer won't parse) — **reported, not
+blocked**. No new runtime dependency added for this — matches the project's
+zero-runtime-deps stance (`package.json`).
+
+**Media — fetch-and-reupload, report failures rather than fail the import.**
+Follows the existing `upload_media_from_url` MCP pattern (`src/mcp-tools.js`) and the
+same content-addressed R2 key scheme (`buildMediaKey()`, `src/media-parse.js`). Dead
+links, SVG uploads (still disallowed, `src/admin-media.js`), and oversized files are
+**collected into a per-item report, not treated as fatal** — the rest of the import
+proceeds. Both sample exports are the easy case (100% same-host image URLs, 0
+off-site, 0 `http://`, no SVGs), so in practice this path is expected to report
+empty more often than the general WXR case in the wild. `_thumbnail_id` postmeta
+resolves to an attachment URL and sets `posts.cover_key`; inline `<img>` URLs inside
+converted content get rewritten to the new `/media/:key` URLs after re-upload.
+
+**Mapping.**
+- Status: WP `publish` → `published`; `draft`/`pending`/`future` → `draft`;
+  **`trash` → `draft`** (not skipped — a trashed WP post may just be one the owner
+  never got around to deleting). No `visibility` handling — everything imports as
+  `public` (this project's default); the importer never sets `unlisted`.
+- Authors: **WXR author records are ignored** — every imported post is authored by
+  whichever admin identity runs the import, not mapped to WP logins/emails. Simplest
+  option, and correct for both target sites (personal single/near-single-author
+  blogs where the "real" author is the person doing the import anyway).
+
+**Mechanics.**
+- Entry point: admin UI file upload (no API-only route) — pairs with the owner-only
+  `/export`/`/import` tier above.
+- Runs through the **normal post-save pipeline** (not raw inserts), so
+  `body_html`/`word_count`/`reading_minutes`/`posts_fts`/revision triggers all fire
+  correctly — same reasoning as every other write path in this codebase.
+- **Dry-run mode** required before a real run.
+- Idempotent re-run: **skip on slug collision**, not upsert or error — makes a
+  partial/failed import safe to just run again.
+- One-shot (single request, synchronous) is expected to be sufficient for both named
+  target sites — 26 posts/67 media and 6 posts/21 media are well inside Workers'
+  paid-plan subrequest ceiling, and fetch/upload I/O doesn't count against CPU time.
+  Still worth writing the loop so a mid-run failure leaves partial progress that the
+  skip-on-collision re-run above can finish, rather than assuming one-shot always
+  completes — the owner may point this at a larger export later.
+- Audit trail: **prefers a new `via: 'import'` value** on `audit_log`
+  (`migrations/0003_audit_via_cron.sql`'s widened enum is the precedent), falling
+  back to reusing `via: 'api'` if adding the enum value turns out disproportionate to
+  the rest of the work. Not fully settled — call it at implementation time.
+
+**Still open:** whether to attempt any old-domain link rewriting inside imported
+content. Neither sample export needed it — every "content links to other domains"
+hit on both files (gcameron.com's 19, laax.ski's 1) was a legitimate external
+citation, not a self-reference to the old site — but a general importer will
+eventually meet an export where that isn't true.
 
 ---
 

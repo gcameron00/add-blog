@@ -22,13 +22,10 @@ compatibility_date = "2026-07-01"
 # Without this, a Worker's own fetch() to a hostname that shares a zone with
 # ANY Worker on this account gets silently redirected to that other Worker
 # instead of reaching the real internet (Cloudflare error 1042's cause). Real
-# and worth keeping regardless — but confirmed 2026-08-05 NOT to be the whole
-# story behind the WordPress importer's media-fetch failures: the same
-# "text/html" failure reproduced against laax.ski, a completely different
-# zone this Worker has no relationship to, which this flag cannot explain.
-# See docs/implementation-plan.md's Phase 7 section for the live diagnosis —
-# current leading theory is Bot Fight Mode challenging the Worker's own
-# outbound requests, not same-zone routing.
+# and worth keeping regardless — but confirmed 2026-08-05 NOT to be the cause
+# of the WordPress importer's media-fetch failures (those turned out to be
+# SiteGround's own AI Anti-Bot Protection challenging the fetches, unrelated
+# to Cloudflare entirely — see docs/implementation-plan.md's Phase 7 section).
 # https://developers.cloudflare.com/workers/configuration/compatibility-flags/#global-fetch-strictly-public.
 compatibility_flags = ["global_fetch_strictly_public"]
 workers_dev = true

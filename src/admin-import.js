@@ -217,6 +217,13 @@ export function previewReport(plan) {
 // exports either way.
 const MEDIA_FETCH_BATCH_LIMIT = 25;
 
+// See the stagger comment where this is used, in executeImportPlan's media loop.
+const MEDIA_FETCH_STAGGER_MS = 200;
+
+function delay(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 async function fetchAndUploadAttachment(att, { db, mediaBucket, identity }) {
   const { bytes, contentType } = await fetchMediaFromUrl(att.url, { allowedTypes: ALLOWED_TYPES, maxBytes: MAX_UPLOAD_BYTES });
   const checksum = await sha256Hex(bytes);
@@ -299,6 +306,12 @@ export async function executeImportPlan(plan, { db, mediaBucket, identity }) {
       report.media_pending += 1; // queued behind this call's batch cap — try again next call
       continue;
     }
+    // A burst of 25 fetches to the same host in as many milliseconds looks
+    // exactly like the traffic pattern hosting-level bot protection is built
+    // to catch (confirmed 2026-08-05: SiteGround's AI Anti-Bot Protection —
+    // see the fetch call in src/mcp-media-fetch.js). Not guaranteed to help
+    // against a determined WAF, but a real browser never fetches this fast.
+    if (attemptedThisCall > 0) await delay(MEDIA_FETCH_STAGGER_MS);
     attemptedThisCall += 1;
 
     try {

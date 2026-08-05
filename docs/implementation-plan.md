@@ -800,36 +800,50 @@ has never touched, so that theory is now believed incomplete or wrong, not confi
 the flag stays (it's still correct, real behavior for the `gcameron.com` case
 specifically), but it isn't what's blocking imports.
 
-**Current leading theory: Bot Fight Mode (or equivalent bot-challenge protection).**
-Both target sites are WordPress-on-SiteGround behind Cloudflare, and Cloudflare's own
-docs describe exactly this shape of failure for WordPress — automated/loopback-style
-requests served a challenge page instead of real content — and explicitly note **Bot
-Fight Mode cannot be bypassed by WAF custom rules or exceptions**, only disabled
-outright or replaced with Super Bot Fight Mode's skip rules. A Worker's `fetch()` is
-exactly the kind of traffic that class of protection is built to catch, and it would
-explain the failure being consistent across two unrelated zones (both zones' — or
-both sites' hosting-level — bot detection reacting to the same request
-characteristics, not anything zone-specific). Not yet confirmed: that requires reading
-each zone's Security Events log, which needs dashboard access this session doesn't
-have.
+**Confirmed root cause (2026-08-05): SiteGround's AI Anti-Bot Protection, not
+Cloudflare at all.** The response-body preview captured by the fix below showed it
+directly on the very next real attempt:
 
-**Shipped alongside this finding, 2026-08-05:** `cf: { cacheTtl: 0, cacheEverything:
-false }` added to `src/mcp-media-fetch.js`'s `fetchMediaFromUrl` fetch call — a
-one-shot per-file fetch is never worth caching, and rules out a stale wrongly-cached
-response as a confusing second variable while diagnosing this. More importantly, a
-short response-body preview (`err.preview`, first 300 characters) is now captured
-whenever the content-type check fails and surfaced in `media_failed` entries — both
-in the API response and the admin UI's failure list. The next real import attempt
-will show the actual challenge/error page content instead of just its content-type,
-which should make this diagnosis certain rather than inferred.
+```
+<html><head><link rel="icon" href="data:;">
+<meta http-equiv="refresh" content="0;/.well-known/sgcaptcha/?r=%2Fwp-content%2F...">
+</head></html>
+```
 
-**Next steps (owner):** check **Security → Events** in the Cloudflare dashboard for
-both the `gcameron.com` and `laax.ski` zones around the time of a failed import run,
-filtering for a `Bot Fight Mode` (or similar) service entry — this confirms or rules
-out the theory directly. If confirmed, the fix is a Security Settings change (disable
-Bot Fight Mode on the affected zone, at least for the duration of the import; Super
-Bot Fight Mode's skip rules are the least-blunt option, if available on that zone's
-plan) — not something fixable from this repository's code.
+`sgcaptcha` is SiteGround's own hosting-level bot-challenge system (both sites are
+WordPress-on-SiteGround — confirmed via `siteground_optimizer_*` postmeta in both
+real WXR exports). It targets "bruteforce login and denial-of-service"-shaped
+traffic, and this importer's up-to-25-rapid-fetches-per-batch against the same host
+is exactly that shape. `laax.ski` isn't even in the owner's Cloudflare account (per
+the owner directly, 2026-08-05) — which is what ruled out every Cloudflare-side
+theory (same-zone routing, Bot Fight Mode) and pointed at the hosting layer instead;
+the `global_fetch_strictly_public` flag was real and worth keeping, but was never the
+actual fix for this failure on either site.
+
+Per SiteGround's own KB article on this CAPTCHA, whitelisting is **passive and
+visitor-triggered only** — an IP/UA pair gets whitelisted after solving the CAPTCHA
+once, which a script can't do, and there's no documented self-service allowlist for
+external callers. Two mitigations shipped 2026-08-05, neither guaranteed against a
+determined WAF but both cheap and directly responsive to what's now confirmed:
+
+- `src/mcp-media-fetch.js`'s `fetchMediaFromUrl` now sends a real browser-shaped
+  `User-Agent`/`Accept` pair (previously sent neither) and `cf: { cacheTtl: 0 }` (a
+  one-shot per-file fetch is never worth caching, and rules out a stale wrongly-cached
+  response as a variable regardless of the rest of this).
+- `src/admin-import.js`'s media loop now staggers fetches by
+  `MEDIA_FETCH_STAGGER_MS = 200`ms instead of firing them back-to-back — directly
+  targeting the "burst against one host" shape SiteGround's own docs say triggers
+  this. Covered by `src/admin-import.test.js` (real wall-clock delay, hence that
+  test's extended 15s timeout).
+- The response-body preview capture itself (`err.preview`, `media_failed[].preview`)
+  stays — it's what made this diagnosis certain instead of inferred, and is generally
+  useful for any future "wrong content-type" failure.
+
+**If these aren't enough:** the reliable fix lives in SiteGround's Site Tools →
+Security section (an "AI Anti-Bot Protection" toggle is understood to exist there,
+separate from the KB article's visitor-facing whitelisting) — disabling it for the
+duration of an import, then re-enabling, is not something fixable from this
+repository's code and needs the owner's SiteGround access.
 
 Scoped against two real exports the owner intends to import personally:
 `gcameron.com` (104 items — 26 posts / 4 pages / 67 attachments, 0 shortcodes, 0

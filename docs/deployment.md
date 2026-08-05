@@ -186,13 +186,12 @@ content) from inside this Worker needs this flag to behave like an ordinary outb
 HTTP request would from anywhere else.
 
 **This flag alone did not fix the importer.** The identical failure reproduced against
-`laax.ski` — a zone with no relationship whatsoever to `gcameron.com` or this Worker's
-own routes — which same-zone routing cannot explain. See
-[implementation-plan.md](implementation-plan.md)'s Phase 7 section for the live
-diagnosis; current leading theory is Bot Fight Mode (or an equivalent bot challenge)
-treating this Worker's own outbound `fetch()` calls as bot traffic, which is a
-zone-level *Security Settings* toggle this file can't fix — `compatibility_flags`
-changes what a Worker is permitted to do, not how a target zone's WAF treats it.
+`laax.ski` — not even in this Cloudflare account — which ruled out every Cloudflare
+routing theory. Confirmed root cause (see
+[implementation-plan.md](implementation-plan.md)'s Phase 7 section): SiteGround's own
+AI Anti-Bot Protection, challenging the importer's fetches as bruteforce/DoS-shaped
+traffic. Nothing in `wrangler.toml` fixes that — it's a hosting-level setting on each
+site's own SiteGround account.
 
 **Adding a new site** is: add its zone in Cloudflare (§2), copy an `[env.NAME]` block
 and change the name/routes/vars, add the same `NAME` to `deploy.yml`'s `site` matrix,

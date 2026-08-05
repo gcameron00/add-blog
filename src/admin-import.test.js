@@ -277,6 +277,9 @@ describe('POST /api/admin/import/run', () => {
   });
 
   it('caps media fetches per call and holds off on creating posts until every attachment has been resolved', async () => {
+    // Longer timeout: the real MEDIA_FETCH_STAGGER_MS between fetches
+    // (src/admin-import.js) means 25 real attempts genuinely takes a few
+    // seconds here, same as it would in production against a real host.
     let fetchCount = 0;
     vi.stubGlobal('fetch', async (input) => {
       fetchCount += 1;
@@ -313,7 +316,7 @@ describe('POST /api/admin/import/run', () => {
 
     const mediaCount = await env.DB.prepare(`SELECT COUNT(*) AS n FROM media WHERE source_url LIKE 'https://old.example.com/batch/%'`).first();
     expect(mediaCount.n).toBe(26); // no duplicates from re-attempting the first batch
-  });
+  }, 15000);
 
   it('resolves an inline image against a "-scaled" attachment original, not just an exact URL match', async () => {
     // WordPress ≥5.3 auto-scales any upload over its "big image" threshold —

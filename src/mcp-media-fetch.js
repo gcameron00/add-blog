@@ -87,7 +87,23 @@ export async function fetchMediaFromUrl(urlString, { allowedTypes, maxBytes }) {
     // caching, and a wrongly-cached response (e.g. from a same-zone routing
     // hiccup) served for as long as the origin's own Cache-Control says is
     // worse than one extra trip to origin every time.
-    response = await fetch(url, { redirect: 'manual', cf: { cacheTtl: 0, cacheEverything: false } });
+    //
+    // A browser-shaped User-Agent/Accept pair is a cheap, honest thing to
+    // send — this really is fetching a specific image a human asked for,
+    // just via a script rather than a browser tab — and it's the one lever
+    // available here against hosting-level bot protection (confirmed
+    // 2026-08-05: SiteGround's AI Anti-Bot Protection challenges this
+    // importer's fetches with a CAPTCHA page, `/.well-known/sgcaptcha/…`;
+    // see docs/implementation-plan.md's Phase 7 section). Not guaranteed to
+    // help against a behavioral/rate-based trigger, but costs nothing to try.
+    response = await fetch(url, {
+      redirect: 'manual',
+      cf: { cacheTtl: 0, cacheEverything: false },
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (compatible; add-blog-importer/1.0; +https://github.com/gcameron00/add-blog)',
+        Accept: 'image/avif,image/webp,image/apng,image/*,*/*;q=0.8',
+      },
+    });
     if (!REDIRECT_STATUSES.has(response.status)) break;
     if (redirects >= MAX_REDIRECTS) throw fetchError('too_many_redirects', 'Too many redirects.');
     const location = response.headers.get('Location');

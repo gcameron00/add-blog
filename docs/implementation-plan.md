@@ -787,6 +787,50 @@ clean re-run skips them as duplicates without touching their content. Deleted an
 re-imported once both fixes were confirmed live, rather than trying to patch them in
 place.
 
+**The `global_fetch_strictly_public` fix turned out to be necessary but not
+sufficient — media fetches kept failing identically (2026-08-05, still ongoing).**
+Confirmed the flag genuinely deployed (`wrangler versions view` showed it live), then
+re-ran the import: same `"text/html" is not an allowed type"` failures, unchanged. The
+decisive test: importing `laax.ski`'s WXR — a completely different Cloudflare zone,
+with no routes, no Custom Domain, no relationship of any kind to this Worker or to
+`gcameron.com` — produced the *identical* failure
+(`https://laax.ski/wp-content/uploads/.../....jpeg: "text/html" is not an allowed
+type.`). Same-zone Worker interception cannot explain a failure on a zone this Worker
+has never touched, so that theory is now believed incomplete or wrong, not confirmed —
+the flag stays (it's still correct, real behavior for the `gcameron.com` case
+specifically), but it isn't what's blocking imports.
+
+**Current leading theory: Bot Fight Mode (or equivalent bot-challenge protection).**
+Both target sites are WordPress-on-SiteGround behind Cloudflare, and Cloudflare's own
+docs describe exactly this shape of failure for WordPress — automated/loopback-style
+requests served a challenge page instead of real content — and explicitly note **Bot
+Fight Mode cannot be bypassed by WAF custom rules or exceptions**, only disabled
+outright or replaced with Super Bot Fight Mode's skip rules. A Worker's `fetch()` is
+exactly the kind of traffic that class of protection is built to catch, and it would
+explain the failure being consistent across two unrelated zones (both zones' — or
+both sites' hosting-level — bot detection reacting to the same request
+characteristics, not anything zone-specific). Not yet confirmed: that requires reading
+each zone's Security Events log, which needs dashboard access this session doesn't
+have.
+
+**Shipped alongside this finding, 2026-08-05:** `cf: { cacheTtl: 0, cacheEverything:
+false }` added to `src/mcp-media-fetch.js`'s `fetchMediaFromUrl` fetch call — a
+one-shot per-file fetch is never worth caching, and rules out a stale wrongly-cached
+response as a confusing second variable while diagnosing this. More importantly, a
+short response-body preview (`err.preview`, first 300 characters) is now captured
+whenever the content-type check fails and surfaced in `media_failed` entries — both
+in the API response and the admin UI's failure list. The next real import attempt
+will show the actual challenge/error page content instead of just its content-type,
+which should make this diagnosis certain rather than inferred.
+
+**Next steps (owner):** check **Security → Events** in the Cloudflare dashboard for
+both the `gcameron.com` and `laax.ski` zones around the time of a failed import run,
+filtering for a `Bot Fight Mode` (or similar) service entry — this confirms or rules
+out the theory directly. If confirmed, the fix is a Security Settings change (disable
+Bot Fight Mode on the affected zone, at least for the duration of the import; Super
+Bot Fight Mode's skip rules are the least-blunt option, if available on that zone's
+plan) — not something fixable from this repository's code.
+
 Scoped against two real exports the owner intends to import personally:
 `gcameron.com` (104 items — 26 posts / 4 pages / 67 attachments, 0 shortcodes, 0
 iframes, all media same-host) and `laax.ski` (41 items — 6 posts / 4 pages / 21

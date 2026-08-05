@@ -308,7 +308,7 @@ export async function executeImportPlan(plan, { db, mediaBucket, identity }) {
       attachmentByPostId.set(att.postId, { newKey: key });
       report.media_uploaded += 1;
     } catch (err) {
-      report.media_failed.push({ url: att.url, reason: err.message || 'fetch failed' });
+      report.media_failed.push({ url: att.url, reason: err.message || 'fetch failed', preview: err.preview || undefined });
     }
   }
 

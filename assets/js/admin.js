@@ -1058,7 +1058,8 @@ function renderRunReport(host, data) {
     statRow('Media uploaded', data.media_uploaded),
     statRow('Links rewritten to the new site', data.links_rewritten),
     listCard('Posts that failed to import', data.posts_failed, (p) => `${p.slug}: ${p.reason}`),
-    listCard('Media that failed to fetch', data.media_failed, (m) => `${m.url}: ${m.reason}`),
+    listCard('Media that failed to fetch', data.media_failed, (m) =>
+      m.preview ? `${m.url}: ${m.reason} — got back: ${m.preview}` : `${m.url}: ${m.reason}`),
     listCard('Links pointing at a dropped page', data.links_to_dropped_pages, (l) => `${l.post_slug}: ${l.target_url}`),
     listCard('Links this importer could not resolve', data.links_unresolved, (l) => `${l.post_slug}: ${l.target_url}`)
   );

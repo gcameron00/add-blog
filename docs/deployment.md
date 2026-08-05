@@ -178,12 +178,21 @@ necessarily this one — gets rerouted internally to whatever Worker owns that h
 instead of reaching the real public internet (Cloudflare error 1042's cause; see
 [Custom Domains: Worker to Worker communication](https://developers.cloudflare.com/workers/configuration/routing/custom-domains/#worker-to-worker-communication)).
 Found 2026-08-05 running the WordPress importer (Phase 7, `src/admin-import.js`)
-against `gcameron.com`: its media-fetch step got HTML back from an unrelated Worker on
-the same account instead of the WordPress media it asked for, with no error — the
-response was a normal `200`, just from the wrong place. `blog.gcameron.com` and
-`blog-admin.gcameron.com` are on the `gcameron.com` zone; fetching anything else on
-that zone (like the apex domain's own content) from inside this Worker needs this flag
-to behave like an ordinary outbound HTTP request would from anywhere else.
+against `gcameron.com`: its media-fetch step got HTML back instead of the WordPress
+media it asked for, with no error — the response was a normal `200`, just from the
+wrong place. `blog.gcameron.com` and `blog-admin.gcameron.com` are on the
+`gcameron.com` zone; fetching anything else on that zone (like the apex domain's own
+content) from inside this Worker needs this flag to behave like an ordinary outbound
+HTTP request would from anywhere else.
+
+**This flag alone did not fix the importer.** The identical failure reproduced against
+`laax.ski` — a zone with no relationship whatsoever to `gcameron.com` or this Worker's
+own routes — which same-zone routing cannot explain. See
+[implementation-plan.md](implementation-plan.md)'s Phase 7 section for the live
+diagnosis; current leading theory is Bot Fight Mode (or an equivalent bot challenge)
+treating this Worker's own outbound `fetch()` calls as bot traffic, which is a
+zone-level *Security Settings* toggle this file can't fix — `compatibility_flags`
+changes what a Worker is permitted to do, not how a target zone's WAF treats it.
 
 **Adding a new site** is: add its zone in Cloudflare (§2), copy an `[env.NAME]` block
 and change the name/routes/vars, add the same `NAME` to `deploy.yml`'s `site` matrix,

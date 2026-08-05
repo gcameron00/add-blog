@@ -17,8 +17,8 @@
 const MAX_REDIRECTS = 5;
 const REDIRECT_STATUSES = new Set([301, 302, 303, 307, 308]);
 
-function fetchError(code, message) {
-  return Object.assign(new Error(message), { code });
+function fetchError(code, message, preview) {
+  return Object.assign(new Error(message), { code, preview: preview || undefined });
 }
 
 function isIpv4Literal(hostname) {
@@ -83,7 +83,11 @@ export async function fetchMediaFromUrl(urlString, { allowedTypes, maxBytes }) {
 
   let response;
   for (let redirects = 0; ; redirects += 1) {
-    response = await fetch(url, { redirect: 'manual' });
+    // cacheTtl: 0 — this is a one-shot fetch of a specific file, never worth
+    // caching, and a wrongly-cached response (e.g. from a same-zone routing
+    // hiccup) served for as long as the origin's own Cache-Control says is
+    // worse than one extra trip to origin every time.
+    response = await fetch(url, { redirect: 'manual', cf: { cacheTtl: 0, cacheEverything: false } });
     if (!REDIRECT_STATUSES.has(response.status)) break;
     if (redirects >= MAX_REDIRECTS) throw fetchError('too_many_redirects', 'Too many redirects.');
     const location = response.headers.get('Location');
@@ -96,7 +100,12 @@ export async function fetchMediaFromUrl(urlString, { allowedTypes, maxBytes }) {
 
   const contentType = (response.headers.get('Content-Type') || '').split(';')[0].trim();
   if (!allowedTypes.has(contentType)) {
-    throw fetchError('unsupported_media_type', `"${contentType || 'unknown'}" is not an allowed type.`);
+    // A short body preview turns "wrong content-type" from a dead end into a
+    // diagnosable failure — e.g. distinguishing a same-zone Worker's own
+    // page, a Cloudflare error page, or a security challenge from each
+    // other, none of which look alike once you can actually see one.
+    const preview = await response.text().then((t) => t.slice(0, 300)).catch(() => '');
+    throw fetchError('unsupported_media_type', `"${contentType || 'unknown'}" is not an allowed type.`, preview);
   }
 
   const declaredLength = Number(response.headers.get('Content-Length') || 0);

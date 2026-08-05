@@ -1035,7 +1035,7 @@ function listCard(title, items, describe) {
 }
 
 function renderPreviewReport(host, data) {
-  clear(host).append(
+  append(clear(host),
     statRow('Old site', `${data.site.title || 'Untitled'} — ${data.site.url || 'unknown URL'}`),
     statRow('Posts to create', data.posts_to_create),
     statRow('Posts already imported (will be skipped)', data.posts_skipped_duplicate),
@@ -1049,7 +1049,7 @@ function renderPreviewReport(host, data) {
 }
 
 function renderRunReport(host, data) {
-  clear(host).append(
+  append(clear(host),
     statRow('Posts created', data.posts_created),
     statRow('Posts skipped (already imported)', data.posts_skipped),
     statRow('Media uploaded', data.media_uploaded),

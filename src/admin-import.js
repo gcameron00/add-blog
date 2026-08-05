@@ -108,6 +108,18 @@ function normalizeLink(url) {
 }
 
 /**
+ * Strips a WordPress-generated size-variant suffix (`-300x200.jpg`) or the
+ * "big image" auto-scale suffix WordPress has added to the original file
+ * since 5.3 (`-scaled.jpg`, for anything over the 2560px threshold — common
+ * for camera-upload originals) so a content `<img src>` and the attachment's
+ * own `wp:attachment_url` — which point at different files on disk for the
+ * same underlying photo — normalize to the same key.
+ */
+function stripSizeSuffix(url) {
+  return url.replace(/-(?:scaled|\d+x\d+)(?=\.[a-zA-Z0-9]+$)/, '');
+}
+
+/**
  * Builds the `rewriteUrl` callback `htmlToMarkdown` calls per `href`/`src`,
  * plus the shared `report` object it records rewrite outcomes into. Used by
  * both the preview (with a placeholder media map, since nothing's been
@@ -124,6 +136,10 @@ function buildRewriter(plan, attachmentByUrl, report) {
 
   const postLinkMap = new Map(plan.postLinksForRewrite.map((p) => [normalizeLink(p.link), `/posts/${p.slug}`]));
   const pageLinkSet = new Set(plan.pageLinksForRewrite.map(normalizeLink));
+  // Indexed under the same normalization as the lookup below — an
+  // attachment's own URL can itself be a "-scaled" file, so both sides need
+  // stripping, not just the content side.
+  const attachmentByBase = new Map([...attachmentByUrl].map(([url, value]) => [stripSizeSuffix(url), value]));
   const state = { currentSlug: null };
 
   const rewriteUrl = (rawUrl) => {
@@ -136,9 +152,7 @@ function buildRewriter(plan, attachmentByUrl, report) {
     }
     if (!siteHost || parsed.host !== siteHost) return rawUrl; // not the old site's own host — an external citation, left untouched
 
-    // WordPress-generated size variants (…-300x200.jpg) point at the same original upload.
-    const bareUrl = parsed.href.replace(/-\d+x\d+(?=\.[a-zA-Z0-9]+$)/, '');
-    const media = attachmentByUrl.get(parsed.href) || attachmentByUrl.get(bareUrl);
+    const media = attachmentByUrl.get(parsed.href) || attachmentByBase.get(stripSizeSuffix(parsed.href));
     if (media) {
       report.links_rewritten += 1;
       return media.newUrl;

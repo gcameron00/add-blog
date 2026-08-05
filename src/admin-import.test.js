@@ -225,6 +225,52 @@ describe('POST /api/admin/import/run', () => {
     expect(post.cover_key).toBeNull(); // the cover that failed to fetch is simply absent, not a crash
   });
 
+  it('resolves an inline image against a "-scaled" attachment original, not just an exact URL match', async () => {
+    // WordPress ≥5.3 auto-scales any upload over its "big image" threshold —
+    // the attachment's own URL becomes "…-scaled.jpg", while post content
+    // displays a registered size like "…-1024x768.jpg". Neither string is
+    // the other, so this only resolves via the shared stripSizeSuffix()
+    // normalization in src/admin-import.js's buildRewriter.
+    stubFetchOk();
+    const xml = `<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0" xmlns:wp="http://wordpress.org/export/1.2/">
+<channel>
+<title>Old Blog</title>
+<link>https://old.example.com</link>
+<wp:base_site_url>https://old.example.com</wp:base_site_url>
+<item>
+  <title>Big Photo Post</title>
+  <link>https://old.example.com/big-photo-post</link>
+  <content:encoded><![CDATA[<p>Look: <img src="https://old.example.com/wp-content/uploads/2024/05/img-1234-1024x768.jpg" alt="Big"></p>]]></content:encoded>
+  <wp:post_id>10</wp:post_id>
+  <wp:post_date_gmt>2024-05-01 10:00:00</wp:post_date_gmt>
+  <wp:post_name><![CDATA[big-photo-post]]></wp:post_name>
+  <wp:status>publish</wp:status>
+  <wp:post_type>post</wp:post_type>
+</item>
+<item>
+  <title>img-1234.jpg</title>
+  <link>https://old.example.com/img-1234</link>
+  <wp:post_id>11</wp:post_id>
+  <wp:post_name><![CDATA[img-1234]]></wp:post_name>
+  <wp:status>inherit</wp:status>
+  <wp:post_type>attachment</wp:post_type>
+  <wp:attachment_url><![CDATA[https://old.example.com/wp-content/uploads/2024/05/img-1234-scaled.jpg]]></wp:attachment_url>
+</item>
+</channel>
+</rss>`;
+
+    const res = await callImport(owner, importReq('/api/admin/import/run', xml));
+    expect(res.status).toBe(200);
+    const { data } = await res.json();
+
+    expect(data.links_unresolved).toEqual([]);
+    expect(data.links_rewritten).toBe(1);
+
+    const post = await env.DB.prepare(`SELECT body_md FROM posts WHERE slug = 'big-photo-post'`).first();
+    expect(post.body_md).toMatch(/\]\(\/media\//);
+  });
+
   it('403s a non-owner identity — import is owner-only', async () => {
     const res = await callImport(author, importReq('/api/admin/import/run', wxrFixture()));
     expect(res.status).toBe(403);

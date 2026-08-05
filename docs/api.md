@@ -333,7 +333,23 @@ for migrating an existing WordPress site in, from its WP Admin → Tools → Exp
 | Method | Path | Purpose |
 | --- | --- | --- |
 | `POST` | `/import/preview` | Dry run — `multipart/form-data`: `file` (a WXR `.xml`). No writes, no network fetches. Returns counts plus the same link-classification report a real run would produce. |
-| `POST` | `/import/run` | Same upload shape. Fetches every attachment, creates posts, and returns a report of what happened. |
+| `POST` | `/import/run` | Same upload shape. Fetches attachments, creates posts, and returns a report of what happened — may need calling more than once, see below. |
+
+**`/run` can require more than one call for a large export.** Workers caps external
+`fetch()` calls at 50 per invocation on the Free plan (10,000 on Paid) — a big media
+library can't be fetched in one request regardless of plan, so `executeImportPlan`
+(`src/admin-import.js`) processes attachments in batches of 25 per call. If any remain
+after a batch, the response's `media_pending` is non-zero and **no posts are created
+yet** — call `/run` again with the identical file to continue. Already-fetched
+attachments (tracked by `media.source_url`, `migrations/0006_media_source_url.sql`)
+cost nothing on a repeat call; a real per-item failure (dead link, disallowed type) is
+recorded in `media_failed` once and not retried, so a genuinely broken link can never
+block progress forever. Posts are deliberately held back until `media_pending` reaches
+zero — a post created against still-unresolved media would have broken image links
+baked into its `body_md` permanently, since the skip-on-duplicate-slug behavior below
+means a later call can never revisit its content. `/import/preview`'s response
+includes `media_batches_expected` so the admin UI can warn upfront that a large import
+will take multiple confirms.
 
 Owner only (`import.wxr`, architecture.md §6). Only posts and their media are
 imported — WordPress pages, comments, and non-`category`/`post_tag` taxonomies

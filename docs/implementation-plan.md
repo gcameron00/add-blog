@@ -727,7 +727,7 @@ gated on a deploy rather than any new setup.
   handles. WordPress/WXR was the same idea, scoped on 2026-08-04 and **shipped** —
   see below; Ghost and plain Markdown archives remain unbuilt.
 
-### WordPress import (WXR) — shipped (2026-08-04)
+### WordPress import (WXR) — shipped (2026-08-04), fixed against a real production run (2026-08-05)
 
 **Shipped in code:** `src/import-wxr.js` (hand-rolled WXR parser — no `DOMParser` in
 Workers, same reasoning as `assets/js/markdown.js`), `src/import-html-to-md.js`
@@ -736,12 +736,56 @@ paragraphs/headings/lists/links/images/tables/code/blockquotes plus Gutenberg-co
 stripping and unknown-wrapper unwrapping), `src/admin-import.js`
 (`POST /api/admin/import/preview` and `/run`, `buildImportPlan`/`executeImportPlan`,
 old-domain link rewriting — see below), `migrations/0005_audit_via_import.sql`
-(widens `audit_log.via` to add `'import'`), the `import.wxr` owner-only permission
-(`src/auth.js`), and the admin UI page (`admin/import/`, `assets/js/admin.js`'s
-`initImport`, `assets/js/api.js`'s `previewImport`/`runImport`). Tests:
-`src/import-wxr.test.js`, `src/import-html-to-md.test.js`, `src/admin-import.test.js`.
-Not yet exercised against either real export — that's the owner's manual pass to run,
-per the Phase 7 kickoff plan's verification section.
+(widens `audit_log.via` to add `'import'`), `migrations/0006_media_source_url.sql`
+(see "batching" below), the `import.wxr` owner-only permission (`src/auth.js`), and
+the admin UI page (`admin/import/`, `assets/js/admin.js`'s `initImport`,
+`assets/js/api.js`'s `previewImport`/`runImport`). Tests: `src/import-wxr.test.js`,
+`src/import-html-to-md.test.js`, `src/admin-import.test.js`.
+
+**First real run (2026-08-05, `gcameron.com`, 26 posts / 67 attachments) surfaced two
+production-only bugs no test caught**, since both are specific to the real Cloudflare
+account this Worker actually runs on:
+
+1. **66 of 67 media fetches failed with `"text/html" is not an allowed type`,** even
+   though every URL was confirmed live and correctly serving the real image externally
+   (`curl` got a clean `image/jpeg` 200 for one of the failing URLs). Root cause:
+   Cloudflare error 1042 territory — a Worker's own `fetch()` to a hostname sharing a
+   Cloudflare zone with *any* other Worker on the account gets silently rerouted to
+   that other Worker instead of reaching the real internet, unless the
+   `global_fetch_strictly_public` compatibility flag is set. `gcameron.com`'s zone
+   also hosts an unrelated Worker (`gcameron-minisites`); that's almost certainly what
+   answered instead of WordPress. **Fixed** by adding
+   `compatibility_flags = ["global_fetch_strictly_public"]` to `wrangler.toml`
+   (applies to every site, not just `gcameron.com`) — see
+   [deployment.md §3](deployment.md#3-wranglertoml--one-shared-worker-one-envname-block-per-site)
+   for the full writeup. Confirmed via Cloudflare's own docs, not guessed.
+2. **The run then hit `"Too many subrequests by single Worker invocation"` partway
+   through the remaining media.** Workers Free caps external `fetch()` at 50 per
+   invocation (confirmed via `search_cloudflare_documentation`, not assumed) — a
+   67-attachment import can't fetch everything in one request on that plan
+   regardless of the fix above, and the one-shot design this shipped with had no way
+   to resume: it re-fetched every URL from scratch on every call, so a second attempt
+   would just fail at the same point again. **Fixed** by making `executeImportPlan`
+   batch media fetches (`MEDIA_FETCH_BATCH_LIMIT = 25` per call) and genuinely
+   resumable: `migrations/0006_media_source_url.sql` adds `media.source_url`, so a
+   later call can tell which attachments already succeeded without re-fetching them
+   to find out. Critically, **posts are not created until every attachment has had a
+   real chance** (`media_pending === 0`) — creating a post against still-unresolved
+   media would freeze broken image links into its `body_md` permanently, since
+   skip-on-duplicate-slug means no later call ever revisits an already-created post's
+   content. The admin UI (`assets/js/admin.js`'s `runBtn` handler) now loops, calling
+   `/run` again with the same file while `media_pending > 0`, showing round-by-round
+   progress, capped at 30 rounds as a safety stop. `/import/preview`'s response
+   gained `media_batches_expected` so the UI can warn upfront.
+
+Both fixes are covered by tests (`src/admin-import.test.js`'s batching test forces a
+26-attachment run over the 25-item cap and asserts the second call doesn't re-fetch
+the first 25). **Consequence of the first broken run:** it created 26 real posts
+against `gcameron.com`'s live D1 with old-domain image links baked into their
+`body_md` (media never resolved, so nothing to rewrite). Those don't self-heal — a
+clean re-run skips them as duplicates without touching their content. Deleted and
+re-imported once both fixes were confirmed live, rather than trying to patch them in
+place.
 
 Scoped against two real exports the owner intends to import personally:
 `gcameron.com` (104 items — 26 posts / 4 pages / 67 attachments, 0 shortcodes, 0
@@ -812,12 +856,11 @@ converted content get rewritten to the new `/media/:key` URLs after re-upload.
 - **Dry-run mode** required before a real run.
 - Idempotent re-run: **skip on slug collision**, not upsert or error — makes a
   partial/failed import safe to just run again.
-- One-shot (single request, synchronous) is expected to be sufficient for both named
-  target sites — 26 posts/67 media and 6 posts/21 media are well inside Workers'
-  paid-plan subrequest ceiling, and fetch/upload I/O doesn't count against CPU time.
-  Still worth writing the loop so a mid-run failure leaves partial progress that the
-  skip-on-collision re-run above can finish, rather than assuming one-shot always
-  completes — the owner may point this at a larger export later.
+- **Not one-shot** — the original draft assumed a single request would be enough;
+  a real run against `gcameron.com` (26 posts/67 media) proved that wrong on
+  2026-08-05 (Workers Free's 50-external-fetch-per-invocation ceiling). Media
+  fetching is batched and genuinely resumable across multiple `/run` calls — see
+  the "fixed against a real production run" note above.
 - Audit trail: **`via: 'import'`**, a new `audit_log` value added by
   `migrations/0005_audit_via_import.sql` in the same rebuild style as 0003's
   `'cron'` addition.

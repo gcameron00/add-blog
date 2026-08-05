@@ -1035,11 +1035,14 @@ function listCard(title, items, describe) {
 }
 
 function renderPreviewReport(host, data) {
+  const mediaLabel = data.media_batches_expected > 1
+    ? `${data.media_to_fetch} — large enough that "Confirm import" will need ${data.media_batches_expected} rounds (Workers fetches a limited number of files per request; each round picks up where the last left off)`
+    : String(data.media_to_fetch);
   append(clear(host),
     statRow('Old site', `${data.site.title || 'Untitled'} — ${data.site.url || 'unknown URL'}`),
     statRow('Posts to create', data.posts_to_create),
     statRow('Posts already imported (will be skipped)', data.posts_skipped_duplicate),
-    statRow('Media files to fetch', data.media_to_fetch),
+    statRow('Media files to fetch', mediaLabel),
     statRow('Tags to create', data.tags_to_create.length),
     statRow('Tags to reuse', data.tags_to_reuse.length),
     listCard('Pages in this export (not imported)', data.pages_dropped, (p) => `${p.title} — ${p.link}`),
@@ -1091,6 +1094,7 @@ async function initImport() {
   const previewCard = document.querySelector('[data-preview-card]');
   const previewHost = document.querySelector('[data-preview-report]');
   const runBtn = document.querySelector('[data-run-btn]');
+  const runStatus = document.querySelector('[data-run-status]');
   const resultCard = document.querySelector('[data-result-card]');
   const resultHost = document.querySelector('[data-result-report]');
 
@@ -1118,19 +1122,43 @@ async function initImport() {
     }
   });
 
+  // A large export can't fetch all its media in one request (Workers caps
+  // subrequests per invocation — see src/admin-import.js's
+  // MEDIA_FETCH_BATCH_LIMIT); the server signals this via `media_pending`
+  // rather than finishing early. Keep re-submitting the same file until it
+  // reports none left, accumulating each round's media counts into one
+  // final report — the last round is the only one with real post/link
+  // data, since posts are deliberately not created until every attachment
+  // has had its chance (see that file's executeImportPlan comment).
+  const MAX_RUN_ROUNDS = 30;
+
   runBtn.addEventListener('click', async () => {
     const file = fileInput.files[0];
     if (!file) return;
     if (!confirm('Import this file now? Posts and media will be created on the live site.')) return;
+
     runBtn.disabled = true;
+    const mediaUploaded = [];
+    const mediaFailed = [];
+    let data;
     try {
-      const { data } = await api.runImport(file);
-      renderRunReport(resultHost, data);
+      for (let round = 1; round <= MAX_RUN_ROUNDS; round++) {
+        runStatus.textContent = round === 1 ? 'Importing…' : `Fetching more media (round ${round})…`;
+        ({ data } = await api.runImport(file));
+        if (data.media_uploaded) mediaUploaded.push(data.media_uploaded);
+        mediaFailed.push(...data.media_failed);
+        if (!data.media_pending) break;
+        if (round === MAX_RUN_ROUNDS) throw new Error('Import is taking more rounds than expected — stopped as a safety measure.');
+      }
+
+      const merged = { ...data, media_uploaded: mediaUploaded.reduce((a, b) => a + b, 0), media_failed: mediaFailed };
+      renderRunReport(resultHost, merged);
       resultCard.hidden = false;
       toast(`${data.posts_created} post${data.posts_created === 1 ? '' : 's'} imported`);
     } catch (error) {
       toast(error.message || 'Import failed', 'error');
     } finally {
+      runStatus.textContent = '';
       runBtn.disabled = false;
     }
   });

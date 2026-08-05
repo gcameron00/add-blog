@@ -11,10 +11,18 @@ const ADMIN_HOST = 'blog-admin.mysite.com';
 const PNG_BASE64 =
   'iVBORw0KGgoAAAANSUhEUgAAAAwAAAAHAQMAAAAGfD5nAAAAIGNIUk0AAHomAACAhAAA+gAAAIDoAAB1MAAA6mAAADqYAAAXcJy6UTwAAAAGUExURf8AAP///0EdNBEAAAABYktHRAH/Ai3eAAAAB3RJTUUH6gccESQgBIauWgAAACV0RVh0ZGF0ZTpjcmVhdGUAMjAyNi0wNy0yOFQxNzozNjozMiswMDowMP7sXxMAAAAldEVYdGRhdGU6bW9kaWZ5ADIwMjYtMDctMjhUMTc6MzY6MzIrMDA6MDCPseevAAAAKHRFWHRkYXRlOnRpbWVzdGFtcAAyMDI2LTA3LTI4VDE3OjM2OjMyKzAwOjAw2KTGcAAAAAtJREFUCNdjYMACAAAVAAEyHTlgAAAAAElFTkSuQmCC';
 
-function pngBytes() {
+// Optional seed appended after a real PNG's IEND chunk — detectDimensions()
+// only ever reads the fixed-offset IHDR near the front, so this doesn't
+// affect parsing, but it gives two "different" fetched files distinct
+// checksums where a test needs that (batching tests, below) without it
+// affecting every other test that deliberately wants identical bytes for
+// dedupe purposes.
+function pngBytes(seed) {
   const binary = atob(PNG_BASE64);
-  const bytes = new Uint8Array(binary.length);
+  const tag = seed ? `#${seed}` : '';
+  const bytes = new Uint8Array(binary.length + tag.length);
   for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+  for (let i = 0; i < tag.length; i++) bytes[binary.length + i] = tag.charCodeAt(i);
   return bytes;
 }
 
@@ -67,6 +75,42 @@ function wxrFixture() {
   <wp:post_type>attachment</wp:post_type>
   <wp:attachment_url><![CDATA[https://old.example.com/wp-content/uploads/2024/03/photo.jpg]]></wp:attachment_url>
 </item>
+</channel>
+</rss>`;
+}
+
+// A post plus `n` attachment items, none referenced from content — enough
+// to exercise the media-fetch batch cap (src/admin-import.js's
+// MEDIA_FETCH_BATCH_LIMIT = 25) without needing a real image per item.
+function manyAttachmentsWxr(n, urlPrefix) {
+  const attachments = Array.from({ length: n }, (_, i) => `
+<item>
+  <title>img-${i}.jpg</title>
+  <link>https://old.example.com/img-${i}</link>
+  <wp:post_id>${1000 + i}</wp:post_id>
+  <wp:post_name><![CDATA[img-${i}]]></wp:post_name>
+  <wp:status>inherit</wp:status>
+  <wp:post_type>attachment</wp:post_type>
+  <wp:attachment_url><![CDATA[${urlPrefix}/img-${i}.jpg]]></wp:attachment_url>
+</item>`).join('\n');
+
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0" xmlns:wp="http://wordpress.org/export/1.2/">
+<channel>
+<title>Old Blog</title>
+<link>https://old.example.com</link>
+<wp:base_site_url>https://old.example.com</wp:base_site_url>
+<item>
+  <title>Batch Test Post</title>
+  <link>https://old.example.com/batch-test-post</link>
+  <content:encoded><![CDATA[<p>No images referenced here.</p>]]></content:encoded>
+  <wp:post_id>1</wp:post_id>
+  <wp:post_date_gmt>2024-06-01 10:00:00</wp:post_date_gmt>
+  <wp:post_name><![CDATA[batch-test-post]]></wp:post_name>
+  <wp:status>publish</wp:status>
+  <wp:post_type>post</wp:post_type>
+</item>
+${attachments}
 </channel>
 </rss>`;
 }
@@ -212,17 +256,63 @@ describe('POST /api/admin/import/run', () => {
 
   it('reports a dead media link without failing the rest of the import', async () => {
     vi.stubGlobal('fetch', async () => new Response('not found', { status: 404 }));
-    const xml = wxrFixture().replaceAll('hello-world', 'hello-world-2').replaceAll('second-post', 'second-post-2');
+    // photo-dead.jpg, not photo.jpg — a URL this test file hasn't already
+    // fetched successfully elsewhere, since source_url dedupe (see below)
+    // would otherwise skip re-fetching it and this test would never see a
+    // failure at all.
+    const xml = wxrFixture()
+      .replaceAll('hello-world', 'hello-world-2')
+      .replaceAll('second-post', 'second-post-2')
+      .replaceAll('photo.jpg', 'photo-dead.jpg');
     const res = await callImport(owner, importReq('/api/admin/import/run', xml));
     expect(res.status).toBe(200);
     const { data } = await res.json();
 
     expect(data.media_failed).toHaveLength(1);
-    expect(data.media_failed[0].url).toContain('photo.jpg');
+    expect(data.media_failed[0].url).toContain('photo-dead.jpg');
     expect(data.posts_created).toBe(2); // the rest of the import still completes
 
     const post = await env.DB.prepare(`SELECT cover_key FROM posts WHERE slug = 'hello-world-2'`).first();
     expect(post.cover_key).toBeNull(); // the cover that failed to fetch is simply absent, not a crash
+  });
+
+  it('caps media fetches per call and holds off on creating posts until every attachment has been resolved', async () => {
+    let fetchCount = 0;
+    vi.stubGlobal('fetch', async (input) => {
+      fetchCount += 1;
+      // Distinct bytes per URL — real distinct photos never collide on
+      // checksum the way this file's other tests' shared fixture bytes
+      // deliberately do to exercise dedupe; this test needs 26 *different*
+      // media rows, one per source_url, to prove the batch/resume logic.
+      const bytes = pngBytes(String(input));
+      return new Response(bytes, { status: 200, headers: { 'Content-Type': 'image/png', 'Content-Length': String(bytes.byteLength) } });
+    });
+    // One more than the batch cap (25) — forces exactly two /run calls.
+    const xml = manyAttachmentsWxr(26, 'https://old.example.com/batch');
+
+    const first = await callImport(owner, importReq('/api/admin/import/run', xml));
+    expect(first.status).toBe(200);
+    const firstData = (await first.json()).data;
+
+    expect(firstData.media_pending).toBe(1); // 26 attachments, 25 fit in one call
+    expect(firstData.media_uploaded).toBe(25);
+    expect(firstData.posts_created).toBe(0); // not touched yet — media isn't fully resolved
+    expect(fetchCount).toBe(25);
+
+    const midRunPost = await env.DB.prepare(`SELECT 1 FROM posts WHERE slug = 'batch-test-post'`).first();
+    expect(midRunPost).toBeFalsy(); // confirmed not created, not just absent from the report
+
+    const second = await callImport(owner, importReq('/api/admin/import/run', xml));
+    expect(second.status).toBe(200);
+    const secondData = (await second.json()).data;
+
+    expect(secondData.media_pending).toBe(0);
+    expect(secondData.media_uploaded).toBe(1); // only the one item left — the first 25 aren't re-fetched
+    expect(secondData.posts_created).toBe(1); // media is fully resolved now, so the post goes ahead
+    expect(fetchCount).toBe(26); // proof the already-uploaded 25 cost nothing on the second call
+
+    const mediaCount = await env.DB.prepare(`SELECT COUNT(*) AS n FROM media WHERE source_url LIKE 'https://old.example.com/batch/%'`).first();
+    expect(mediaCount.n).toBe(26); // no duplicates from re-attempting the first batch
   });
 
   it('resolves an inline image against a "-scaled" attachment original, not just an exact URL match', async () => {

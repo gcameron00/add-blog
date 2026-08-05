@@ -318,14 +318,33 @@ export async function getMediaByKey(db, key) {
 export async function insertMedia(db, media) {
   await db
     .prepare(
-      `INSERT INTO media (key, filename, content_type, size_bytes, width, height, alt, checksum, uploaded_by, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      `INSERT INTO media (key, filename, content_type, size_bytes, width, height, alt, checksum, uploaded_by, created_at, source_url)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     )
     .bind(
       media.key, media.filename, media.content_type, media.size_bytes,
-      media.width, media.height, media.alt || null, media.checksum, media.uploaded_by, media.created_at
+      media.width, media.height, media.alt || null, media.checksum, media.uploaded_by, media.created_at,
+      media.source_url || null
     )
     .run();
+}
+
+/** Which of these WXR attachment URLs (Phase 7 import) already have a media row from a previous /run — keyed by source_url so a resumed run can skip re-fetching them entirely. */
+export async function getMediaKeysBySourceUrls(db, urls) {
+  const found = new Map();
+  for (let i = 0; i < urls.length; i += 100) {
+    // D1 bounds the number of bound parameters per statement — chunked
+    // defensively even though no real WXR export gets remotely close.
+    const chunk = urls.slice(i, i + 100);
+    if (!chunk.length) continue;
+    const placeholders = chunk.map(() => '?').join(',');
+    const { results } = await db
+      .prepare(`SELECT key, source_url FROM media WHERE source_url IN (${placeholders})`)
+      .bind(...chunk)
+      .all();
+    for (const row of results) found.set(row.source_url, row.key);
+  }
+  return found;
 }
 
 export async function updateMediaRow(db, key, fields) {

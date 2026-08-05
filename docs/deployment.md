@@ -66,6 +66,7 @@ npx wrangler d1 execute gcameron-blog --file=./migrations/0002_authors_disabled.
 npx wrangler d1 execute gcameron-blog --file=./migrations/0003_audit_via_cron.sql --remote
 npx wrangler d1 execute gcameron-blog --file=./migrations/0004_mcp.sql --remote
 npx wrangler d1 execute gcameron-blog --file=./migrations/0005_audit_via_import.sql --remote
+npx wrangler d1 execute gcameron-blog --file=./migrations/0006_media_source_url.sql --remote
 ```
 
 **0003 is a rebuild, not a plain `ALTER TABLE ADD COLUMN` like 0002** — SQLite can't
@@ -122,6 +123,7 @@ every push).
 ```toml
 main = "src/index.js"                 # Phase 2 — shared by every site
 compatibility_date = "2026-07-01"
+compatibility_flags = ["global_fetch_strictly_public"]  # Phase 7 — see below
 
 [assets]
 directory = "."
@@ -168,6 +170,20 @@ execute for a request to `/admin/index.html`, because that file exists in the bu
 This is the one setting that makes the whole Phase 2 security model actually take
 effect rather than being dead code; it was found by running the router locally against
 real static assets, not by reading the config format.
+
+**`compatibility_flags = ["global_fetch_strictly_public"]` is also not optional**, for a
+similar "silently wrong, not broken" reason. Without it, a Worker's own `fetch()` call
+to a hostname that shares a Cloudflare zone with *any* Worker on the account — not
+necessarily this one — gets rerouted internally to whatever Worker owns that hostname,
+instead of reaching the real public internet (Cloudflare error 1042's cause; see
+[Custom Domains: Worker to Worker communication](https://developers.cloudflare.com/workers/configuration/routing/custom-domains/#worker-to-worker-communication)).
+Found 2026-08-05 running the WordPress importer (Phase 7, `src/admin-import.js`)
+against `gcameron.com`: its media-fetch step got HTML back from an unrelated Worker on
+the same account instead of the WordPress media it asked for, with no error — the
+response was a normal `200`, just from the wrong place. `blog.gcameron.com` and
+`blog-admin.gcameron.com` are on the `gcameron.com` zone; fetching anything else on
+that zone (like the apex domain's own content) from inside this Worker needs this flag
+to behave like an ordinary outbound HTTP request would from anywhere else.
 
 **Adding a new site** is: add its zone in Cloudflare (§2), copy an `[env.NAME]` block
 and change the name/routes/vars, add the same `NAME` to `deploy.yml`'s `site` matrix,

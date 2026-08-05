@@ -16,6 +16,7 @@
 import { excerptFrom, readingMinutes, renderMarkdown, slugify, wordCount } from '../assets/js/markdown.js';
 import {
   getMediaByChecksum,
+  getMediaKeysBySourceUrls,
   getTagBySlug,
   insertMedia,
   insertPost,
@@ -198,12 +199,23 @@ export function previewReport(plan) {
     posts_skipped_duplicate: plan.postsSkippedDuplicate,
     pages_dropped: plan.pagesDropped,
     media_to_fetch: plan.mediaToFetch.length,
+    media_batches_expected: Math.max(1, Math.ceil(plan.mediaToFetch.length / MEDIA_FETCH_BATCH_LIMIT)),
     tags_to_create: plan.tagsPreview.toCreate,
     tags_to_reuse: plan.tagsPreview.toReuse,
     links_to_dropped_pages: report.links_to_dropped_pages,
     links_unresolved: report.links_unresolved,
   };
 }
+
+// Workers Free caps a single invocation at 50 *external* fetch() subrequests
+// (D1/R2 draw from a much larger, separate budget — confirmed empirically:
+// a 67-attachment gcameron.com run kept writing to D1 fine for all 26 posts
+// well after its fetch()-based media loop started failing with "Too many
+// subrequests"). This stays well under that ceiling even allowing for a
+// redirect hop or two per item, and costs nothing extra on Paid accounts —
+// it just means a couple of extra "Confirm import" clicks for the largest
+// exports either way.
+const MEDIA_FETCH_BATCH_LIMIT = 25;
 
 async function fetchAndUploadAttachment(att, { db, mediaBucket, identity }) {
   const { bytes, contentType } = await fetchMediaFromUrl(att.url, { allowedTypes: ALLOWED_TYPES, maxBytes: MAX_UPLOAD_BYTES });
@@ -231,6 +243,7 @@ async function fetchAndUploadAttachment(att, { db, mediaBucket, identity }) {
     checksum,
     uploaded_by: identity.author.id,
     created_at: now.toISOString(),
+    source_url: att.url,
   });
   return key;
 }
@@ -244,9 +257,17 @@ function toIso(wpDate) {
 
 /**
  * Does the real work: attachments first (so post content can be rewritten
- * to point at them), then posts. A failure on one item — a dead media
- * link, content that fails validation — is caught and reported per item;
- * it never aborts the rest of the run.
+ * to point at them), then posts — but ONLY once every attachment has been
+ * given a real chance, not just whatever fit in this invocation's
+ * subrequest budget. A post created against still-pending media would
+ * freeze broken image links in place forever: once created, its slug makes
+ * every later run skip it outright (see the posts loop below), so there's
+ * no second chance to fix its content once media catches up. If
+ * `media_pending > 0` on return, nothing else in this report is
+ * meaningful yet — call this again with the same file to continue; already
+ *-fetched attachments (tracked by `source_url`) cost nothing on the next
+ * call, and a real per-item failure (dead link, wrong type) is recorded in
+ * `media_failed` and not retried, so it can never block progress forever.
  */
 export async function executeImportPlan(plan, { db, mediaBucket, identity }) {
   const report = {
@@ -255,14 +276,31 @@ export async function executeImportPlan(plan, { db, mediaBucket, identity }) {
     posts_failed: [],
     media_uploaded: 0,
     media_failed: [],
+    media_pending: 0,
     links_rewritten: 0,
     links_to_dropped_pages: [],
     links_unresolved: [],
   };
 
+  const alreadyFetched = await getMediaKeysBySourceUrls(db, plan.mediaToFetch.map((att) => att.url));
   const attachmentByUrl = new Map();
   const attachmentByPostId = new Map();
+  let attemptedThisCall = 0;
+
   for (const att of plan.mediaToFetch) {
+    const existingKey = alreadyFetched.get(att.url);
+    if (existingKey) {
+      attachmentByUrl.set(att.url, { newUrl: `/media/${existingKey}` });
+      attachmentByPostId.set(att.postId, { newKey: existingKey });
+      continue;
+    }
+
+    if (attemptedThisCall >= MEDIA_FETCH_BATCH_LIMIT) {
+      report.media_pending += 1; // queued behind this call's batch cap — try again next call
+      continue;
+    }
+    attemptedThisCall += 1;
+
     try {
       const key = await fetchAndUploadAttachment(att, { db, mediaBucket, identity });
       const newUrl = `/media/${key}`;
@@ -273,6 +311,8 @@ export async function executeImportPlan(plan, { db, mediaBucket, identity }) {
       report.media_failed.push({ url: att.url, reason: err.message || 'fetch failed' });
     }
   }
+
+  if (report.media_pending > 0) return report;
 
   const { rewriteUrl, state } = buildRewriter(plan, attachmentByUrl, report);
 

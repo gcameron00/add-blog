@@ -19,6 +19,15 @@
 name = "add-blog"
 main = "src/index.js"
 compatibility_date = "2026-07-01"
+# Without this, a Worker's own fetch() to a hostname that shares a zone with
+# ANY Worker on this account — even one this Worker knows nothing about —
+# gets silently redirected to that other Worker instead of reaching the real
+# internet (Cloudflare error 1042's cause). Found 2026-08-05: the WordPress
+# importer's media fetch (src/admin-import.js) tried to fetch gcameron.com's
+# old WP uploads and got HTML back from an unrelated Worker on the same
+# account/zone instead of the real image. See
+# https://developers.cloudflare.com/workers/configuration/compatibility-flags/#global-fetch-strictly-public.
+compatibility_flags = ["global_fetch_strictly_public"]
 workers_dev = true
 
 [assets]

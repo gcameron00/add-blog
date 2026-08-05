@@ -524,6 +524,24 @@ export function uploadMedia(file, alt) {
   );
 }
 
+// No demo fallback for either call below — unlike everything else in this
+// file, a WordPress import has nothing meaningful to fake against
+// localStorage: there's no real source file and nothing durable to write it
+// into. assets/js/admin.js checks isDemoMode() (via a me() call) before
+// ever offering the import page's upload button, so these only run once a
+// live backend is already confirmed.
+export function previewImport(file) {
+  const formData = new FormData();
+  formData.append('file', file);
+  return callMultipart('/admin/import/preview', formData);
+}
+
+export function runImport(file) {
+  const formData = new FormData();
+  formData.append('file', file);
+  return callMultipart('/admin/import/run', formData);
+}
+
 export function updateMedia(key, patch) {
   return withFallback(
     () => call(`/admin/media/${encodeURIComponent(key)}`, { method: 'PATCH', body: patch }),

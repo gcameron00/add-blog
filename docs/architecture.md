@@ -200,8 +200,8 @@ CREATE TABLE settings (
 CREATE TABLE audit_log (
   id         TEXT PRIMARY KEY,
   actor      TEXT NOT NULL,              -- email from the Access identity, or 'system' for via='cron'
-  via        TEXT NOT NULL               -- 'ui' | 'mcp' | 'api' | 'cron'
-             CHECK (via IN ('ui','mcp','api','cron')),
+  via        TEXT NOT NULL               -- 'ui' | 'mcp' | 'api' | 'cron' | 'import'
+             CHECK (via IN ('ui','mcp','api','cron','import')),
   action     TEXT NOT NULL,              -- 'post.publish', 'media.delete', …
   entity     TEXT,
   entity_id  TEXT,
@@ -211,6 +211,8 @@ CREATE TABLE audit_log (
 CREATE INDEX idx_audit_created ON audit_log(created_at DESC);
 -- 'cron' added by migrations/0003_audit_via_cron.sql (Phase 5f) — the
 -- scheduled-post auto-publish sweep has no human actor to log as ui/mcp/api.
+-- 'import' added by migrations/0005_audit_via_import.sql (Phase 7) — same
+-- reasoning, for posts created by the WordPress WXR importer.
 
 -- Full-text search over published content. External-content FTS5 indexes
 -- posts without duplicating body_md, but is then only ever as fresh as these
@@ -393,6 +395,7 @@ email:
 | Upload media | ✓ | ✓ | ✓ |
 | Delete media | ✓ | ✓ | — |
 | Change settings, manage authors | ✓ | — | — |
+| Import from WordPress (WXR) | ✓ | — | — |
 
 An identity that passes Access but has no `authors` row gets `403`, not an implicit
 account. Provisioning is explicit.

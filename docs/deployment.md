@@ -65,6 +65,7 @@ npx wrangler d1 execute gcameron-blog --file=./migrations/0001_init.sql --remote
 npx wrangler d1 execute gcameron-blog --file=./migrations/0002_authors_disabled.sql --remote
 npx wrangler d1 execute gcameron-blog --file=./migrations/0003_audit_via_cron.sql --remote
 npx wrangler d1 execute gcameron-blog --file=./migrations/0004_mcp.sql --remote
+npx wrangler d1 execute gcameron-blog --file=./migrations/0005_audit_via_import.sql --remote
 ```
 
 **0003 is a rebuild, not a plain `ALTER TABLE ADD COLUMN` like 0002** — SQLite can't

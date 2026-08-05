@@ -324,3 +324,33 @@ templates them onto every public page (see [architecture.md](architecture.md) §
 2026-08-01 note) and `src/feeds.js` reads them into the RSS/Atom channel. Saving either
 purges the edge cache for the shared static pages so the change is visible immediately
 rather than waiting out `max-age` (architecture.md §5).
+
+### WordPress import (WXR)
+
+Separate from `/import` above — that's this project's own round-trip format. This is
+for migrating an existing WordPress site in, from its WP Admin → Tools → Export.
+
+| Method | Path | Purpose |
+| --- | --- | --- |
+| `POST` | `/import/preview` | Dry run — `multipart/form-data`: `file` (a WXR `.xml`). No writes, no network fetches. Returns counts plus the same link-classification report a real run would produce. |
+| `POST` | `/import/run` | Same upload shape. Fetches every attachment, creates posts, and returns a report of what happened. |
+
+Owner only (`import.wxr`, architecture.md §6). Only posts and their media are
+imported — WordPress pages, comments, and non-`category`/`post_tag` taxonomies
+(`post_format`, `nav_menu`, …) are not; `category` and `post_tag` both fold into this
+project's single `tags` table. A WP `publish` status becomes `published`; every other
+status (`draft`, `pending`, `future`, `private`, `trash`) becomes `draft`, so nothing
+lands publicly visible by accident. WXR author records are ignored — every imported
+post is authored by whoever runs the import. Re-running the same file is safe: a post
+whose slug already exists is skipped, and already-uploaded media is deduplicated by
+its content checksum exactly like a direct upload.
+
+Links inside imported content that point at the old site's own domain are rewritten:
+to another imported post's new `/posts/:slug` URL, or to the new `/media/:key` URL
+once that attachment is re-uploaded. A link to a WordPress page (never imported) is
+left as-is and reported under `links_to_dropped_pages` rather than silently broken
+further or silently dropped; anything else on the old domain that doesn't resolve is
+reported under `links_unresolved`. Links to other domains are left untouched entirely.
+
+Every write from this path uses `via: 'import'` in the audit log
+(`migrations/0005_audit_via_import.sql`).

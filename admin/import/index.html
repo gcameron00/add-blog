@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light dark" />
+    <script src="/assets/js/theme-init.js"></script>
+    <meta name="robots" content="noindex, nofollow" />
+    <title>Import — add-blog admin</title>
+    <link rel="icon" href="/assets/favicon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="/assets/css/styles.css" />
+    <link rel="stylesheet" href="/assets/css/admin.css" />
+    <script type="module" src="/assets/js/admin.js"></script>
+  </head>
+  <body class="admin" data-page="import">
+    <a class="skip-link" href="#main">Skip to content</a>
+
+    <div class="admin-layout">
+      <aside class="admin-sidebar" data-sidebar></aside>
+
+      <main class="admin-main" id="main" data-demo-slot>
+        <div class="admin-header">
+          <div>
+            <h1>Import</h1>
+            <p>Bring posts and media in from a WordPress export file (WXR).</p>
+          </div>
+          <div class="admin-header__actions">
+            <button class="btn" type="button" data-theme-toggle aria-label="Toggle theme"></button>
+          </div>
+        </div>
+
+        <div data-import-root>
+          <div class="card">
+            <div class="card__header"><h2>1. Choose a WordPress export</h2></div>
+            <p class="small muted" style="margin-top: 0">
+              From the old site: WP Admin → Tools → Export → All content. Posts and their
+              media are imported; pages and comments are not. Categories and tags both
+              become tags here. Nothing is written until you confirm the preview below.
+            </p>
+            <div class="field">
+              <label for="wxr-file" class="visually-hidden">WXR export file</label>
+              <input type="file" id="wxr-file" data-wxr-file accept=".xml,text/xml" />
+            </div>
+            <button class="btn btn--primary btn--sm" type="button" data-preview-btn disabled>Preview import</button>
+            <div data-preview-status class="small" style="margin-top: .5rem; min-height: 1.2em" aria-live="polite"></div>
+          </div>
+
+          <div class="card" data-preview-card hidden>
+            <div class="card__header"><h2>2. Review before importing</h2></div>
+            <div data-preview-report></div>
+            <button class="btn btn--primary" type="button" data-run-btn style="margin-top: 1rem">Confirm import</button>
+          </div>
+
+          <div class="card" data-result-card hidden>
+            <div class="card__header"><h2>Result</h2></div>
+            <div data-result-report></div>
+          </div>
+        </div>
+      </main>
+    </div>
+  </body>
+</html>

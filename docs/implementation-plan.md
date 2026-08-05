@@ -722,13 +722,26 @@ gated on a deploy rather than any new setup.
 - **Scheduled (automatic, periodic) export to R2** — distinct from the on-demand
   `/export` above: this one fires on its own schedule, no one has to click anything.
   Natural pairing with Phase 5f's cron infrastructure once it exists.
-- **Import from Ghost, WordPress and Markdown archives** — distinct from `/import`
-  above: parsers for other platforms' own proprietary export formats (Ghost's JSON
-  export, WordPress's WXR/XML), a bigger scope than the two generic shapes `/import`
-  handles. WordPress/WXR moved from an idea to a scoped feature on 2026-08-04 — see
-  below.
+- **Import from Ghost and Markdown archives** — parsers for other platforms' own
+  proprietary export formats, a bigger scope than the two generic shapes `/import`
+  handles. WordPress/WXR was the same idea, scoped on 2026-08-04 and **shipped** —
+  see below; Ghost and plain Markdown archives remain unbuilt.
 
-### WordPress import (WXR) — draft decisions (2026-08-04)
+### WordPress import (WXR) — shipped (2026-08-04)
+
+**Shipped in code:** `src/import-wxr.js` (hand-rolled WXR parser — no `DOMParser` in
+Workers, same reasoning as `assets/js/markdown.js`), `src/import-html-to-md.js`
+(HTML→Markdown converter targeting exactly `markdown.js`'s dialect, tested against
+paragraphs/headings/lists/links/images/tables/code/blockquotes plus Gutenberg-comment
+stripping and unknown-wrapper unwrapping), `src/admin-import.js`
+(`POST /api/admin/import/preview` and `/run`, `buildImportPlan`/`executeImportPlan`,
+old-domain link rewriting — see below), `migrations/0005_audit_via_import.sql`
+(widens `audit_log.via` to add `'import'`), the `import.wxr` owner-only permission
+(`src/auth.js`), and the admin UI page (`admin/import/`, `assets/js/admin.js`'s
+`initImport`, `assets/js/api.js`'s `previewImport`/`runImport`). Tests:
+`src/import-wxr.test.js`, `src/import-html-to-md.test.js`, `src/admin-import.test.js`.
+Not yet exercised against either real export — that's the owner's manual pass to run,
+per the Phase 7 kickoff plan's verification section.
 
 Scoped against two real exports the owner intends to import personally:
 `gcameron.com` (104 items — 26 posts / 4 pages / 67 attachments, 0 shortcodes, 0
@@ -805,16 +818,25 @@ converted content get rewritten to the new `/media/:key` URLs after re-upload.
   Still worth writing the loop so a mid-run failure leaves partial progress that the
   skip-on-collision re-run above can finish, rather than assuming one-shot always
   completes — the owner may point this at a larger export later.
-- Audit trail: **prefers a new `via: 'import'` value** on `audit_log`
-  (`migrations/0003_audit_via_cron.sql`'s widened enum is the precedent), falling
-  back to reusing `via: 'api'` if adding the enum value turns out disproportionate to
-  the rest of the work. Not fully settled — call it at implementation time.
+- Audit trail: **`via: 'import'`**, a new `audit_log` value added by
+  `migrations/0005_audit_via_import.sql` in the same rebuild style as 0003's
+  `'cron'` addition.
 
-**Still open:** whether to attempt any old-domain link rewriting inside imported
-content. Neither sample export needed it — every "content links to other domains"
-hit on both files (gcameron.com's 19, laax.ski's 1) was a legitimate external
-citation, not a self-reference to the old site — but a general importer will
-eventually meet an export where that isn't true.
+**Link rewriting (decided 2026-08-04, after the draft above).** Old-domain links
+inside imported content *are* rewritten, not left alone — worth doing even though
+neither sample export strictly needed it, since a general importer will eventually
+meet one that does. `src/admin-import.js`'s `buildRewriter` classifies every
+`href`/`src` whose host matches the WXR channel's own site host: to another
+imported post's new `/posts/:slug` (matched against every post in the export, not
+only ones this run actually creates, so a link to an already-imported post from a
+previous run still resolves), or to the new `/media/:key` once that attachment is
+re-uploaded (matching WordPress's `-WxH` size-variant suffix back to the original).
+A link to a WordPress **page** — never imported — is left as the old URL and
+reported under `links_to_dropped_pages`, exactly the "posts linking to pages is a
+problem and should be reported" case; anything else on the old host that doesn't
+resolve is reported under `links_unresolved`. Off-domain links (confirmed, on both
+real sample exports, to be legitimate external citations) are left untouched
+entirely, not even inspected.
 
 ---
 

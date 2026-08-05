@@ -25,6 +25,7 @@ const NAV = [
   { href: '/admin/media/', label: 'Media', icon: 'image' },
   { href: '/admin/mcp/', label: 'MCP access', icon: 'plug' },
   { href: '/admin/authors/', label: 'Authors', icon: 'users' },
+  { href: '/admin/import/', label: 'Import', icon: 'inbox' },
   { href: '/admin/settings/', label: 'Settings', icon: 'gear' },
 ];
 
@@ -1009,6 +1010,132 @@ async function initSettings() {
   });
 }
 
+/* --- Import page -------------------------------------------------------------
+ * Owner-only (src/auth.js: 'import.wxr'), and — unlike every other admin
+ * section — has no offline demo equivalent (see assets/js/api.js's
+ * previewImport/runImport comment): a WordPress export can't be faked
+ * against localStorage, so this checks isDemoMode() up front and disables
+ * itself entirely rather than pretending to preview a fake import.
+ * -------------------------------------------------------------------------- */
+
+function statRow(label, value) {
+  return el('div', { class: 'form-row', style: 'justify-content:space-between' }, [
+    el('span', { text: label }),
+    el('strong', { text: String(value) }),
+  ]);
+}
+
+function listCard(title, items, describe) {
+  if (!items?.length) return null;
+  return el('div', { style: 'margin-top: .75rem' }, [
+    el('p', { class: 'small', style: 'margin-bottom:.25rem', text: `${title} (${items.length})` }),
+    el('ul', { class: 'small muted', style: 'margin:0;padding-left:1.25rem' },
+      items.map((item) => el('li', { text: describe(item) }))),
+  ]);
+}
+
+function renderPreviewReport(host, data) {
+  clear(host).append(
+    statRow('Old site', `${data.site.title || 'Untitled'} — ${data.site.url || 'unknown URL'}`),
+    statRow('Posts to create', data.posts_to_create),
+    statRow('Posts already imported (will be skipped)', data.posts_skipped_duplicate),
+    statRow('Media files to fetch', data.media_to_fetch),
+    statRow('Tags to create', data.tags_to_create.length),
+    statRow('Tags to reuse', data.tags_to_reuse.length),
+    listCard('Pages in this export (not imported)', data.pages_dropped, (p) => `${p.title} — ${p.link}`),
+    listCard('Links pointing at a dropped page', data.links_to_dropped_pages, (l) => `${l.post_slug}: ${l.target_url}`),
+    listCard('Links this importer could not resolve', data.links_unresolved, (l) => `${l.post_slug}: ${l.target_url}`)
+  );
+}
+
+function renderRunReport(host, data) {
+  clear(host).append(
+    statRow('Posts created', data.posts_created),
+    statRow('Posts skipped (already imported)', data.posts_skipped),
+    statRow('Media uploaded', data.media_uploaded),
+    statRow('Links rewritten to the new site', data.links_rewritten),
+    listCard('Posts that failed to import', data.posts_failed, (p) => `${p.slug}: ${p.reason}`),
+    listCard('Media that failed to fetch', data.media_failed, (m) => `${m.url}: ${m.reason}`),
+    listCard('Links pointing at a dropped page', data.links_to_dropped_pages, (l) => `${l.post_slug}: ${l.target_url}`),
+    listCard('Links this importer could not resolve', data.links_unresolved, (l) => `${l.post_slug}: ${l.target_url}`)
+  );
+}
+
+async function initImport() {
+  const root = document.querySelector('[data-import-root]');
+  if (!root) return;
+
+  let role = null;
+  try {
+    role = (await api.me()).data.role;
+  } catch (error) {
+    if (!api.isDemoMode()) { renderError(root, error, initImport); return; }
+  }
+
+  if (api.isDemoMode()) {
+    clear(root).append(el('div', { class: 'card' }, [
+      el('p', { text: 'Import needs a live backend — there is nothing real to preview against demo data.' }),
+    ]));
+    return;
+  }
+  if (role !== 'owner') {
+    clear(root).append(el('div', { class: 'card' }, [
+      el('p', { text: 'Import is restricted to the owner role.' }),
+    ]));
+    return;
+  }
+
+  const fileInput = document.querySelector('[data-wxr-file]');
+  const previewBtn = document.querySelector('[data-preview-btn]');
+  const previewStatus = document.querySelector('[data-preview-status]');
+  const previewCard = document.querySelector('[data-preview-card]');
+  const previewHost = document.querySelector('[data-preview-report]');
+  const runBtn = document.querySelector('[data-run-btn]');
+  const resultCard = document.querySelector('[data-result-card]');
+  const resultHost = document.querySelector('[data-result-report]');
+
+  fileInput.addEventListener('change', () => {
+    previewBtn.disabled = !fileInput.files.length;
+    previewCard.hidden = true;
+    resultCard.hidden = true;
+  });
+
+  previewBtn.addEventListener('click', async () => {
+    const file = fileInput.files[0];
+    if (!file) return;
+    previewBtn.disabled = true;
+    previewStatus.textContent = 'Reading export…';
+    resultCard.hidden = true;
+    try {
+      const { data } = await api.previewImport(file);
+      renderPreviewReport(previewHost, data);
+      previewCard.hidden = false;
+    } catch (error) {
+      toast(error.message || 'Could not read that file', 'error');
+    } finally {
+      previewStatus.textContent = '';
+      previewBtn.disabled = !fileInput.files.length;
+    }
+  });
+
+  runBtn.addEventListener('click', async () => {
+    const file = fileInput.files[0];
+    if (!file) return;
+    if (!confirm('Import this file now? Posts and media will be created on the live site.')) return;
+    runBtn.disabled = true;
+    try {
+      const { data } = await api.runImport(file);
+      renderRunReport(resultHost, data);
+      resultCard.hidden = false;
+      toast(`${data.posts_created} post${data.posts_created === 1 ? '' : 's'} imported`);
+    } catch (error) {
+      toast(error.message || 'Import failed', 'error');
+    } finally {
+      runBtn.disabled = false;
+    }
+  });
+}
+
 /* --- Dispatch ------------------------------------------------------------- */
 
 const PAGES = {
@@ -1018,6 +1145,7 @@ const PAGES = {
   media: initMedia,
   mcp: initMcp,
   authors: initAuthors,
+  import: initImport,
   settings: initSettings,
 };
 

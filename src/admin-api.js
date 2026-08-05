@@ -3,9 +3,9 @@
  * Posts write path (src/admin-posts.js), Settings and the dashboard's
  * stats/audit reads (src/admin-settings.js, src/admin-dashboard.js), media
  * upload (src/admin-media.js), tags-as-a-resource (src/admin-tags.js) and
- * authors-as-a-resource (src/admin-authors.js, Phase 5e). `/export` and
- * `/import` remain unbuilt and fall through to `null` here, same as any
- * other not-yet-implemented route.
+ * authors-as-a-resource (src/admin-authors.js, Phase 5e). Phase 7 adds
+ * WordPress WXR import (src/admin-import.js). `/export` remains unbuilt and
+ * falls through to `null` here, same as any other not-yet-implemented route.
  *
  * By the time a request reaches here, src/index.js has already verified the
  * Access JWT and resolved `identity.author` — a null `identity` means Access
@@ -16,6 +16,7 @@
 
 import { handleAuthorsApi } from './admin-authors.js';
 import { handleDashboardApi } from './admin-dashboard.js';
+import { handleImportApi } from './admin-import.js';
 import { handleMediaApi } from './admin-media.js';
 import { handlePostsApi } from './admin-posts.js';
 import { handleSettingsApi } from './admin-settings.js';
@@ -48,6 +49,7 @@ export async function handleAdminApi(request, url, ctxBundle) {
     (await handleDashboardApi(request, url, ctxBundle)) ||
     (await handleMediaApi(request, url, ctxBundle)) ||
     (await handleTagsApi(request, url, ctxBundle)) ||
-    (await handleAuthorsApi(request, url, ctxBundle))
+    (await handleAuthorsApi(request, url, ctxBundle)) ||
+    (await handleImportApi(request, url, ctxBundle))
   );
 }

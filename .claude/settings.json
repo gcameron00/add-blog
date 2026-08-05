@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Read(//c/Users/GrahamCameron\\\\\\(M365\\\\\\)/Documents/GitHub/add-blog/**)",
+      "Bash(npx vitest *)",
+      "mcp__claude_ai_Cloudflare_Developer_Platform__d1_databases_list"
+    ]
+  }
+}

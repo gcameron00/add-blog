@@ -851,7 +851,13 @@ to fix this; it needed a different mechanism entirely, not a better-disguised fe
 skip fetching it entirely.** The browser reads the downloaded `uploads` folder
 locally (`<input type="file" webkitdirectory>` — no zip handling, no server-side
 decompression, matching this project's zero-dependency stance) and uploads it in
-batches of 15 files per request (`assets/js/admin.js`). The server
+batches capped by total size (`assets/js/admin.js`'s `chunkBySize`,
+`MEDIA_UPLOAD_BATCH_MAX_BYTES = 20 MB`) — first shipped as a flat 15-files-per-batch
+count, which broke within hours against `gcameron.com`'s larger photo library:
+Cloudflare's request body cap is 100 MB on Free/Pro (confirmed via
+`search_cloudflare_documentation`), and 15 full-resolution camera photos can clear
+that on their own even though 15 files sounds conservative. Batching by count never
+accounted for how big any given 15 files actually were. The server
 (`src/admin-import.js`'s `manualMediaHandler`) matches each uploaded file to a
 pending attachment **by filename** — parses the same WXR, builds the same plan, and
 writes through the same `storeAttachmentBytes` helper `fetchAndUploadAttachment` was

@@ -1143,12 +1143,31 @@ async function initImport() {
   // year/month upload folder) don't clutter the "didn't match" report with
   // noise the server would have reported anyway.
   const MANUAL_MEDIA_ALLOWED_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/avif', 'image/gif', 'application/pdf']);
-  const MEDIA_UPLOAD_BATCH_SIZE = 15;
 
-  function chunk(items, size) {
-    const chunks = [];
-    for (let i = 0; i < items.length; i += size) chunks.push(items.slice(i, i + size));
-    return chunks;
+  // By total size, not file count — Cloudflare's own request body cap is
+  // 100 MB on Free/Pro (up to 500 MB Enterprise), and a batch of ~15
+  // full-resolution camera photos can clear that on its own even though 15
+  // files sounds small. 20 MB stays comfortably under every plan's floor.
+  // A single file over this on its own still gets its own one-file batch —
+  // uploads are capped at 25 MB (src/admin-media.js's MAX_UPLOAD_BYTES)
+  // regardless, well under even the smallest platform ceiling.
+  const MEDIA_UPLOAD_BATCH_MAX_BYTES = 20 * 1024 * 1024;
+
+  function chunkBySize(files, maxBytes) {
+    const batches = [];
+    let current = [];
+    let currentBytes = 0;
+    for (const file of files) {
+      if (current.length && currentBytes + file.size > maxBytes) {
+        batches.push(current);
+        current = [];
+        currentBytes = 0;
+      }
+      current.push(file);
+      currentBytes += file.size;
+    }
+    if (current.length) batches.push(current);
+    return batches;
   }
 
   mediaFolderInput.addEventListener('change', () => {
@@ -1161,7 +1180,7 @@ async function initImport() {
     if (!wxrFile || !mediaFiles.length) return;
 
     uploadMediaBtn.disabled = true;
-    const batches = chunk(mediaFiles, MEDIA_UPLOAD_BATCH_SIZE);
+    const batches = chunkBySize(mediaFiles, MEDIA_UPLOAD_BATCH_MAX_BYTES);
     const totals = { matched: 0, already_resolved: 0, unmatched: [] };
     try {
       for (const [i, batch] of batches.entries()) {

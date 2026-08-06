@@ -1051,6 +1051,14 @@ function renderPreviewReport(host, data) {
   );
 }
 
+function renderManualMediaReport(host, data) {
+  append(clear(host),
+    statRow('Matched and uploaded', data.matched),
+    statRow('Already uploaded (skipped)', data.already_resolved),
+    listCard("Files that didn't match anything in this export", data.unmatched, (u) => `${u.name}: ${u.reason}`)
+  );
+}
+
 function renderRunReport(host, data) {
   append(clear(host),
     statRow('Posts created', data.posts_created),
@@ -1098,11 +1106,17 @@ async function initImport() {
   const runStatus = document.querySelector('[data-run-status]');
   const resultCard = document.querySelector('[data-result-card]');
   const resultHost = document.querySelector('[data-result-report]');
+  const manualMediaCard = document.querySelector('[data-manual-media-card]');
+  const mediaFolderInput = document.querySelector('[data-media-folder]');
+  const uploadMediaBtn = document.querySelector('[data-upload-media-btn]');
+  const mediaUploadStatus = document.querySelector('[data-media-upload-status]');
+  const mediaUploadReportHost = document.querySelector('[data-media-upload-report]');
 
   fileInput.addEventListener('change', () => {
     previewBtn.disabled = !fileInput.files.length;
     previewCard.hidden = true;
     resultCard.hidden = true;
+    manualMediaCard.hidden = true;
   });
 
   previewBtn.addEventListener('click', async () => {
@@ -1115,11 +1129,55 @@ async function initImport() {
       const { data } = await api.previewImport(file);
       renderPreviewReport(previewHost, data);
       previewCard.hidden = false;
+      manualMediaCard.hidden = false;
     } catch (error) {
       toast(error.message || 'Could not read that file', 'error');
     } finally {
       previewStatus.textContent = '';
       previewBtn.disabled = !fileInput.files.length;
+    }
+  });
+
+  // Same allow-list as src/admin-media.js's ALLOWED_TYPES — filtered here so
+  // WordPress's own placeholder files (index.php/.htaccess in every
+  // year/month upload folder) don't clutter the "didn't match" report with
+  // noise the server would have reported anyway.
+  const MANUAL_MEDIA_ALLOWED_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/avif', 'image/gif', 'application/pdf']);
+  const MEDIA_UPLOAD_BATCH_SIZE = 15;
+
+  function chunk(items, size) {
+    const chunks = [];
+    for (let i = 0; i < items.length; i += size) chunks.push(items.slice(i, i + size));
+    return chunks;
+  }
+
+  mediaFolderInput.addEventListener('change', () => {
+    uploadMediaBtn.disabled = !mediaFolderInput.files.length;
+  });
+
+  uploadMediaBtn.addEventListener('click', async () => {
+    const wxrFile = fileInput.files[0];
+    const mediaFiles = [...mediaFolderInput.files].filter((f) => MANUAL_MEDIA_ALLOWED_TYPES.has(f.type));
+    if (!wxrFile || !mediaFiles.length) return;
+
+    uploadMediaBtn.disabled = true;
+    const batches = chunk(mediaFiles, MEDIA_UPLOAD_BATCH_SIZE);
+    const totals = { matched: 0, already_resolved: 0, unmatched: [] };
+    try {
+      for (const [i, batch] of batches.entries()) {
+        mediaUploadStatus.textContent = batches.length > 1 ? `Uploading batch ${i + 1} of ${batches.length}…` : 'Uploading…';
+        const { data } = await api.uploadImportMedia(wxrFile, batch);
+        totals.matched += data.matched;
+        totals.already_resolved += data.already_resolved;
+        totals.unmatched.push(...data.unmatched);
+      }
+      renderManualMediaReport(mediaUploadReportHost, totals);
+      toast(`${totals.matched} file${totals.matched === 1 ? '' : 's'} uploaded — click "Confirm import" again to finish`);
+    } catch (error) {
+      toast(error.message || 'Media upload failed', 'error');
+    } finally {
+      mediaUploadStatus.textContent = '';
+      uploadMediaBtn.disabled = !mediaFolderInput.files.length;
     }
   });
 

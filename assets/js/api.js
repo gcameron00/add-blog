@@ -542,6 +542,20 @@ export function runImport(file) {
   return callMultipart('/admin/import/run', formData);
 }
 
+/**
+ * The alternative to fetching media over the network — for a host whose bot
+ * protection can't be gotten past by any request-side change (confirmed
+ * 2026-08-05 against SiteGround's AI Anti-Bot Protection). `mediaFiles` are
+ * matched server-side to pending attachments by filename; call `runImport`
+ * again afterward to actually create posts against them.
+ */
+export function uploadImportMedia(file, mediaFiles) {
+  const formData = new FormData();
+  formData.append('file', file);
+  for (const mediaFile of mediaFiles) formData.append('media', mediaFile);
+  return callMultipart('/admin/import/media', formData);
+}
+
 export function updateMedia(key, patch) {
   return withFallback(
     () => call(`/admin/media/${encodeURIComponent(key)}`, { method: 'PATCH', body: patch }),

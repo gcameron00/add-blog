@@ -224,8 +224,13 @@ function delay(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-async function fetchAndUploadAttachment(att, { db, mediaBucket, identity }) {
-  const { bytes, contentType } = await fetchMediaFromUrl(att.url, { allowedTypes: ALLOWED_TYPES, maxBytes: MAX_UPLOAD_BYTES });
+/**
+ * Stores already-in-hand bytes for an attachment (whether fetched over the
+ * network or uploaded directly from the browser — see `matchManualMedia`
+ * below) and returns the R2 key. Shared so both paths get the exact same
+ * dedupe/insert behavior, not two copies that could drift.
+ */
+async function storeAttachmentBytes(att, bytes, contentType, { db, mediaBucket, identity }) {
   const checksum = await sha256Hex(bytes);
 
   // Content-addressed dedupe (same as a direct upload) — makes re-running
@@ -253,6 +258,11 @@ async function fetchAndUploadAttachment(att, { db, mediaBucket, identity }) {
     source_url: att.url,
   });
   return key;
+}
+
+async function fetchAndUploadAttachment(att, ctx) {
+  const { bytes, contentType } = await fetchMediaFromUrl(att.url, { allowedTypes: ALLOWED_TYPES, maxBytes: MAX_UPLOAD_BYTES });
+  return storeAttachmentBytes(att, bytes, contentType, ctx);
 }
 
 /** WXR dates are "YYYY-MM-DD HH:MM:SS" GMT, or the "0000-00-00 00:00:00" null sentinel — invalid/null collapses to `null` so the caller falls back to now. */
@@ -387,20 +397,19 @@ export async function executeImportPlan(plan, { db, mediaBucket, identity }) {
   return report;
 }
 
-async function readWxrFile(request) {
+async function readMultipart(request) {
   const contentType = request.headers.get('Content-Type') || '';
   if (!contentType.includes('multipart/form-data')) apiFail(400, 'bad_request', 'Expected multipart/form-data.');
-
-  let formData;
   try {
-    formData = await request.formData();
+    return await request.formData();
   } catch {
-    apiFail(400, 'bad_request', 'Malformed multipart body.');
+    return apiFail(400, 'bad_request', 'Malformed multipart body.');
   }
+}
 
+async function extractWxrText(formData) {
   const file = formData.get('file');
   if (!file || typeof file.text !== 'function') apiFail(400, 'bad_request', 'A "file" field is required.', { field: 'file' });
-
   const text = await file.text();
   if (!text.includes('<channel') || !text.includes('<rss')) {
     apiFail(400, 'bad_request', "This doesn't look like a WordPress WXR export.", { field: 'file' });
@@ -410,16 +419,81 @@ async function readWxrFile(request) {
 
 async function previewHandler(request, env, identity) {
   requirePermission(identity, 'import.wxr');
-  const parsed = parseWxr(await readWxrFile(request));
+  const parsed = parseWxr(await extractWxrText(await readMultipart(request)));
   const plan = await buildImportPlan(env.DB, parsed);
   return Response.json({ data: previewReport(plan) });
 }
 
 async function runHandler(request, env, identity) {
   requirePermission(identity, 'import.wxr');
-  const parsed = parseWxr(await readWxrFile(request));
+  const parsed = parseWxr(await extractWxrText(await readMultipart(request)));
   const plan = await buildImportPlan(env.DB, parsed);
   const report = await executeImportPlan(plan, { db: env.DB, mediaBucket: env.MEDIA, identity });
+  return Response.json({ data: report });
+}
+
+function basenameOf(rawUrl) {
+  try {
+    return decodeURIComponent(new URL(rawUrl).pathname.split('/').pop() || '');
+  } catch {
+    return '';
+  }
+}
+
+/**
+ * The alternative to fetching media over the network (see `executeImportPlan`
+ * above) — for hosts whose bot protection can't be gotten past by a script no
+ * matter how it's shaped (confirmed 2026-08-05 against SiteGround's AI
+ * Anti-Bot Protection: no request-side mitigation cleared it). Matches each
+ * uploaded file to a pending attachment by filename — WordPress's own
+ * upload path already gives every file in a single export a name that's
+ * unique in practice, and matching this way means the browser needs nothing
+ * more than "here are the files", no path reconstruction against whatever
+ * that site's real upload URL structure happens to be. Writes through the
+ * exact same `storeAttachmentBytes` (dedupe, R2, `source_url`) as a fetched
+ * attachment, so a normal `/run` call afterward just sees these as already
+ * resolved and proceeds to create posts — no separate "resume" logic needed.
+ */
+async function manualMediaHandler(request, env, identity) {
+  requirePermission(identity, 'import.wxr');
+  const formData = await readMultipart(request);
+  const parsed = parseWxr(await extractWxrText(formData));
+  const plan = await buildImportPlan(env.DB, parsed);
+
+  const mediaFiles = formData.getAll('media').filter((f) => typeof f.arrayBuffer === 'function');
+  if (!mediaFiles.length) apiFail(400, 'bad_request', 'No media files were included.', { field: 'media' });
+
+  const byBasename = new Map(plan.mediaToFetch.map((att) => [basenameOf(att.url), att]));
+  const alreadyResolved = await getMediaKeysBySourceUrls(env.DB, plan.mediaToFetch.map((att) => att.url));
+
+  const report = { matched: 0, already_resolved: 0, unmatched: [] };
+
+  for (const file of mediaFiles) {
+    const att = byBasename.get(file.name);
+    if (!att) {
+      report.unmatched.push({ name: file.name, reason: "doesn't match any attachment in this export" });
+      continue;
+    }
+    if (alreadyResolved.has(att.url)) {
+      report.already_resolved += 1;
+      continue;
+    }
+
+    const contentType = file.type || '';
+    if (!ALLOWED_TYPES.has(contentType)) {
+      report.unmatched.push({ name: file.name, reason: `"${contentType || 'unknown'}" is not an allowed type` });
+      continue;
+    }
+    if (file.size > MAX_UPLOAD_BYTES) {
+      report.unmatched.push({ name: file.name, reason: `exceeds the ${MAX_UPLOAD_BYTES / (1024 * 1024)} MB cap` });
+      continue;
+    }
+
+    const bytes = new Uint8Array(await file.arrayBuffer());
+    await storeAttachmentBytes(att, bytes, contentType, { db: env.DB, mediaBucket: env.MEDIA, identity });
+    report.matched += 1;
+  }
+
   return Response.json({ data: report });
 }
 
@@ -434,6 +508,7 @@ export async function handleImportApi(request, url, ctxBundle) {
 
     if (url.pathname === '/api/admin/import/preview') return previewHandler(request, env, identity);
     if (url.pathname === '/api/admin/import/run') return runHandler(request, env, identity);
+    if (url.pathname === '/api/admin/import/media') return manualMediaHandler(request, env, identity);
     return null;
   });
 }

@@ -56,6 +56,28 @@
             <div class="card__header"><h2>Result</h2></div>
             <div data-result-report></div>
           </div>
+
+          <div class="card" data-manual-media-card hidden>
+            <div class="card__header"><h2>Media fetch blocked?</h2></div>
+            <p class="small muted" style="margin-top: 0">
+              Some hosts block automated requests for images entirely, no matter how
+              "Confirm import" asks — SiteGround's AI Anti-Bot Protection is a known
+              case, with no self-service allowlist. If "Media that failed to fetch"
+              above shows every file failing, download the <code>wp-content/uploads</code>
+              folder from the old host (SiteGround: Site Tools → File Manager, or SFTP)
+              and select it here instead. Files are matched to the export by filename;
+              anything that doesn't match is reported, not silently skipped. Run
+              "Confirm import" again afterward to finish creating posts against the
+              media you've uploaded.
+            </p>
+            <div class="field">
+              <label for="media-folder" class="visually-hidden">Downloaded uploads folder</label>
+              <input type="file" id="media-folder" data-media-folder webkitdirectory multiple />
+            </div>
+            <button class="btn btn--sm" type="button" data-upload-media-btn disabled>Upload media files</button>
+            <div data-media-upload-status class="small" style="margin-top: .5rem; min-height: 1.2em" aria-live="polite"></div>
+            <div data-media-upload-report></div>
+          </div>
         </div>
       </main>
     </div>

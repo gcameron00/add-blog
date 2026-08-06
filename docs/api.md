@@ -334,6 +334,7 @@ for migrating an existing WordPress site in, from its WP Admin → Tools → Exp
 | --- | --- | --- |
 | `POST` | `/import/preview` | Dry run — `multipart/form-data`: `file` (a WXR `.xml`). No writes, no network fetches. Returns counts plus the same link-classification report a real run would produce. |
 | `POST` | `/import/run` | Same upload shape. Fetches attachments, creates posts, and returns a report of what happened — may need calling more than once, see below. |
+| `POST` | `/import/media` | `multipart/form-data`: `file` (the WXR) plus one or more `media` files. The alternative to `/run` fetching attachments itself — see below. |
 
 **`/run` can require more than one call for a large export.** Workers caps external
 `fetch()` calls at 50 per invocation on the Free plan (10,000 on Paid) — a big media
@@ -350,6 +351,24 @@ baked into its `body_md` permanently, since the skip-on-duplicate-slug behavior 
 means a later call can never revisit its content. `/import/preview`'s response
 includes `media_batches_expected` so the admin UI can warn upfront that a large import
 will take multiple confirms.
+
+**`/import/media` is the alternative when `/run` can never fetch attachments at
+all.** Some hosts block automated requests for images outright, with no
+request-side workaround — confirmed 2026-08-05 against SiteGround's AI Anti-Bot
+Protection, which challenges every fetch with a CAPTCHA redirect
+(`/.well-known/sgcaptcha/…`) regardless of headers or pacing, and offers no
+self-service allowlist for a script. `/import/media` sidesteps fetching entirely:
+download the old site's `wp-content/uploads` folder directly (e.g. via the host's
+file manager or SFTP) and upload it here instead. Each `media` file is matched to a
+still-pending attachment **by filename** — WordPress's own upload path already keeps
+names unique within one export in practice, so no path reconstruction against the
+site's real URL structure is needed. A match writes through the exact same
+dedupe/`source_url` path a fetched attachment would
+(`src/admin-import.js`'s `storeAttachmentBytes`), so a following `/run` call simply
+finds it already resolved and proceeds — no separate "resume" logic. The response is
+`{ matched, already_resolved, unmatched: [{ name, reason }] }`; a file that doesn't
+match anything in the export, or fails the same type/size checks as a direct
+upload, is reported rather than silently dropped.
 
 Owner only (`import.wxr`, architecture.md §6). Only posts and their media are
 imported — WordPress pages, comments, and non-`category`/`post_tag` taxonomies

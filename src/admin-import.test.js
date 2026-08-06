@@ -115,10 +115,53 @@ ${attachments}
 </rss>`;
 }
 
+// A single post whose cover and one inline image both point at the same
+// attachment — for exercising manual media upload (src/admin-import.js's
+// POST /api/admin/import/media), where fetching is never attempted at all.
+function manualUploadWxr() {
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0" xmlns:wp="http://wordpress.org/export/1.2/">
+<channel>
+<title>Old Blog</title>
+<link>https://old.example.com</link>
+<wp:base_site_url>https://old.example.com</wp:base_site_url>
+<item>
+  <title>Manual Upload Post</title>
+  <link>https://old.example.com/manual-upload-post</link>
+  <content:encoded><![CDATA[<p>See <img src="https://old.example.com/wp-content/uploads/2024/07/manual-photo.jpg" alt="Manual"></p>]]></content:encoded>
+  <wp:post_id>1</wp:post_id>
+  <wp:post_date_gmt>2024-07-01 10:00:00</wp:post_date_gmt>
+  <wp:post_name><![CDATA[manual-upload-post]]></wp:post_name>
+  <wp:status>publish</wp:status>
+  <wp:post_type>post</wp:post_type>
+  <wp:postmeta><wp:meta_key>_thumbnail_id</wp:meta_key><wp:meta_value>900</wp:meta_value></wp:postmeta>
+</item>
+<item>
+  <title>manual-photo.jpg</title>
+  <link>https://old.example.com/manual-photo</link>
+  <wp:post_id>900</wp:post_id>
+  <wp:post_name><![CDATA[manual-photo]]></wp:post_name>
+  <wp:status>inherit</wp:status>
+  <wp:post_type>attachment</wp:post_type>
+  <wp:attachment_url><![CDATA[https://old.example.com/wp-content/uploads/2024/07/manual-photo.jpg]]></wp:attachment_url>
+</item>
+</channel>
+</rss>`;
+}
+
 function importReq(path, xmlText, { noOrigin = false } = {}) {
   const url = new URL(`https://${ADMIN_HOST}${path}`);
   const formData = new FormData();
   if (xmlText !== undefined) formData.append('file', new File([xmlText], 'export.xml', { type: 'text/xml' }));
+  const headers = noOrigin ? {} : { Origin: url.origin };
+  return { request: new Request(url, { method: 'POST', headers, body: formData }), url };
+}
+
+function mediaUploadReq(path, xmlText, files, { noOrigin = false } = {}) {
+  const url = new URL(`https://${ADMIN_HOST}${path}`);
+  const formData = new FormData();
+  formData.append('file', new File([xmlText], 'export.xml', { type: 'text/xml' }));
+  for (const file of files) formData.append('media', file);
   const headers = noOrigin ? {} : { Origin: url.origin };
   return { request: new Request(url, { method: 'POST', headers, body: formData }), url };
 }
@@ -366,6 +409,86 @@ describe('POST /api/admin/import/run', () => {
 
   it('403s a non-owner identity — import is owner-only', async () => {
     const res = await callImport(author, importReq('/api/admin/import/run', wxrFixture()));
+    expect(res.status).toBe(403);
+  });
+});
+
+describe('POST /api/admin/import/media', () => {
+  it('matches an uploaded file to a pending attachment by filename, and a following /run finishes the import without ever fetching', async () => {
+    const photoFile = new File([pngBytes('manual')], 'manual-photo.jpg', { type: 'image/jpeg' });
+    const uploadRes = await callImport(owner, mediaUploadReq('/api/admin/import/media', manualUploadWxr(), [photoFile]));
+    expect(uploadRes.status).toBe(200);
+    const uploadData = (await uploadRes.json()).data;
+    expect(uploadData.matched).toBe(1);
+    expect(uploadData.already_resolved).toBe(0);
+    expect(uploadData.unmatched).toEqual([]);
+
+    // No fetch stub at all — if /run tried to hit the network for media it
+    // hasn't been told is already resolved, this would throw and fail loudly.
+    vi.stubGlobal('fetch', async () => {
+      throw new Error('should not fetch — media was already uploaded manually');
+    });
+    const runRes = await callImport(owner, importReq('/api/admin/import/run', manualUploadWxr()));
+    expect(runRes.status).toBe(200);
+    const runData = (await runRes.json()).data;
+    expect(runData.media_pending).toBe(0);
+    expect(runData.media_uploaded).toBe(0); // resolved via source_url before this run, not fetched by it
+    expect(runData.posts_created).toBe(1);
+
+    const post = await env.DB.prepare(`SELECT cover_key, body_md FROM posts WHERE slug = 'manual-upload-post'`).first();
+    expect(post.cover_key).toMatch(/^\d{4}\/\d{2}\/[0-9a-f]{16}-manual-photo\.jpg$/);
+    expect(post.body_md).toMatch(/\]\(\/media\//);
+  });
+
+  it('reports a file that matches nothing in the export, without touching the ones that do', async () => {
+    // manual-photo-2, not manual-photo — a filename (and so a source_url)
+    // this describe block hasn't already resolved in an earlier test,
+    // since that would make this upload land in already_resolved instead.
+    const xml = manualUploadWxr().replaceAll('manual-upload-post', 'manual-upload-post-2').replaceAll('manual-photo', 'manual-photo-2');
+    const photoFile = new File([pngBytes('manual-2')], 'manual-photo-2.jpg', { type: 'image/jpeg' });
+    const strayFile = new File([pngBytes('stray')], 'not-in-the-export.jpg', { type: 'image/jpeg' });
+    const res = await callImport(owner, mediaUploadReq('/api/admin/import/media', xml, [photoFile, strayFile]));
+    expect(res.status).toBe(200);
+    const { data } = await res.json();
+
+    expect(data.matched).toBe(1);
+    expect(data.unmatched).toEqual([{ name: 'not-in-the-export.jpg', reason: "doesn't match any attachment in this export" }]);
+  });
+
+  it('counts an already-resolved attachment separately, without duplicating the media row', async () => {
+    const xml = manualUploadWxr().replaceAll('manual-upload-post', 'manual-upload-post-3');
+    const first = new File([pngBytes('manual-3')], 'manual-photo.jpg', { type: 'image/jpeg' });
+    await callImport(owner, mediaUploadReq('/api/admin/import/media', xml, [first]));
+
+    const second = new File([pngBytes('manual-3-again')], 'manual-photo.jpg', { type: 'image/jpeg' });
+    const res = await callImport(owner, mediaUploadReq('/api/admin/import/media', xml, [second]));
+    expect(res.status).toBe(200);
+    const { data } = await res.json();
+    expect(data.matched).toBe(0);
+    expect(data.already_resolved).toBe(1);
+
+    const mediaCount = await env.DB.prepare(`SELECT COUNT(*) AS n FROM media WHERE source_url = 'https://old.example.com/wp-content/uploads/2024/07/manual-photo.jpg'`).first();
+    expect(mediaCount.n).toBe(1);
+  });
+
+  it('reports a disallowed file type rather than uploading it', async () => {
+    const xml = manualUploadWxr().replaceAll('manual-upload-post', 'manual-upload-post-4').replaceAll('manual-photo', 'manual-photo-4');
+    const svg = new File(['<svg onload="alert(1)"></svg>'], 'manual-photo-4.jpg', { type: 'image/svg+xml' });
+    const res = await callImport(owner, mediaUploadReq('/api/admin/import/media', xml, [svg]));
+    expect(res.status).toBe(200);
+    const { data } = await res.json();
+    expect(data.matched).toBe(0);
+    expect(data.unmatched).toEqual([{ name: 'manual-photo-4.jpg', reason: '"image/svg+xml" is not an allowed type' }]);
+  });
+
+  it('rejects a request with no media files', async () => {
+    const res = await callImport(owner, mediaUploadReq('/api/admin/import/media', manualUploadWxr(), []));
+    expect(res.status).toBe(400);
+  });
+
+  it('403s a non-owner identity — import is owner-only', async () => {
+    const photoFile = new File([pngBytes('manual-owner-check')], 'manual-photo.jpg', { type: 'image/jpeg' });
+    const res = await callImport(author, mediaUploadReq('/api/admin/import/media', manualUploadWxr(), [photoFile]));
     expect(res.status).toBe(403);
   });
 });

@@ -839,11 +839,33 @@ determined WAF but both cheap and directly responsive to what's now confirmed:
   stays — it's what made this diagnosis certain instead of inferred, and is generally
   useful for any future "wrong content-type" failure.
 
-**If these aren't enough:** the reliable fix lives in SiteGround's Site Tools →
-Security section (an "AI Anti-Bot Protection" toggle is understood to exist there,
-separate from the KB article's visitor-facing whitelisting) — disabling it for the
-duration of an import, then re-enabling, is not something fixable from this
-repository's code and needs the owner's SiteGround access.
+**They weren't enough (confirmed 2026-08-06).** The owner re-tried twice — once
+immediately, once ~6 hours later — and both attempts hit the identical `sgcaptcha`
+redirect regardless of the User-Agent/stagger changes. Also confirmed: **there is no
+allowlist or disable option** — SiteGround support's own answer, when asked, was to
+download the `wp-content/uploads` folder directly rather than expect automated
+fetches to get through. No amount of request-shaping from this Worker was ever going
+to fix this; it needed a different mechanism entirely, not a better-disguised fetch.
+
+**Shipped 2026-08-06: `POST /api/admin/import/media` — upload media directly,
+skip fetching it entirely.** The browser reads the downloaded `uploads` folder
+locally (`<input type="file" webkitdirectory>` — no zip handling, no server-side
+decompression, matching this project's zero-dependency stance) and uploads it in
+batches of 15 files per request (`assets/js/admin.js`). The server
+(`src/admin-import.js`'s `manualMediaHandler`) matches each uploaded file to a
+pending attachment **by filename** — parses the same WXR, builds the same plan, and
+writes through the same `storeAttachmentBytes` helper `fetchAndUploadAttachment` was
+refactored to share, so a matched upload sets `media.source_url` exactly as a
+successful fetch would. That's what makes this genuinely optional rather than a
+parallel import path: a following `/run` call finds those attachments already
+resolved (same `getMediaKeysBySourceUrls` lookup the batching logic already used) and
+proceeds straight to creating posts — no new "resume" concept, no schema change
+beyond what 0006 already added. A file that doesn't match anything in the export, or
+fails the same type/size checks a direct upload would, is reported
+(`{ matched, already_resolved, unmatched: [{ name, reason }] }`) rather than silently
+dropped. Tests: `src/admin-import.test.js`'s new `POST /api/admin/import/media`
+block — match-and-finish-via-run, unmatched files, already-resolved dedup, disallowed
+type, empty upload, owner-only.
 
 Scoped against two real exports the owner intends to import personally:
 `gcameron.com` (104 items — 26 posts / 4 pages / 67 attachments, 0 shortcodes, 0

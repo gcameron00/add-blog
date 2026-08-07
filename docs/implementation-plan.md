@@ -727,151 +727,82 @@ gated on a deploy rather than any new setup.
   handles. WordPress/WXR was the same idea, scoped on 2026-08-04 and **shipped** —
   see below; Ghost and plain Markdown archives remain unbuilt.
 
-### WordPress import (WXR) — shipped (2026-08-04), fixed against a real production run (2026-08-05)
+### WordPress import (WXR) — shipped (2026-08-04–07)
 
-**Shipped in code:** `src/import-wxr.js` (hand-rolled WXR parser — no `DOMParser` in
-Workers, same reasoning as `assets/js/markdown.js`), `src/import-html-to-md.js`
-(HTML→Markdown converter targeting exactly `markdown.js`'s dialect, tested against
-paragraphs/headings/lists/links/images/tables/code/blockquotes plus Gutenberg-comment
-stripping and unknown-wrapper unwrapping), `src/admin-import.js`
-(`POST /api/admin/import/preview` and `/run`, `buildImportPlan`/`executeImportPlan`,
-old-domain link rewriting — see below), `migrations/0005_audit_via_import.sql`
-(widens `audit_log.via` to add `'import'`), `migrations/0006_media_source_url.sql`
-(see "batching" below), the `import.wxr` owner-only permission (`src/auth.js`), and
-the admin UI page (`admin/import/`, `assets/js/admin.js`'s `initImport`,
-`assets/js/api.js`'s `previewImport`/`runImport`). Tests: `src/import-wxr.test.js`,
-`src/import-html-to-md.test.js`, `src/admin-import.test.js`.
+**Status:** `laax.ski` confirmed fully working end-to-end 2026-08-06 — posts, tags,
+and media all correctly imported via the manual-media-upload path below.
+`gcameron.com` hit the same hosting-level bot-protection block `laax.ski` did; the
+fix for that plus a follow-up size-based batching fix are both live, but a complete
+`gcameron.com` run hasn't been re-confirmed since.
 
-**First real run (2026-08-05, `gcameron.com`, 26 posts / 67 attachments) surfaced two
-production-only bugs no test caught**, since both are specific to the real Cloudflare
-account this Worker actually runs on:
+**Shipped in code:**
+- `src/import-wxr.js` — hand-rolled WXR parser (no `DOMParser` in Workers, same
+  reasoning as `assets/js/markdown.js`).
+- `src/import-html-to-md.js` — HTML→Markdown converter targeting exactly
+  `markdown.js`'s dialect (paragraphs/headings/lists/links/images/tables/code/
+  blockquotes, Gutenberg-comment stripping, unknown-wrapper unwrapping).
+- `src/admin-import.js` — `POST /api/admin/import/preview`, `/run`, and `/media`;
+  `buildImportPlan`/`executeImportPlan`/`manualMediaHandler`; old-domain link
+  rewriting (`buildRewriter`, see below).
+- `migrations/0005_audit_via_import.sql` (`audit_log.via` gains `'import'`) and
+  `migrations/0006_media_source_url.sql` (`media.source_url` — tracks which
+  attachments are already resolved so a later call never re-fetches or re-uploads
+  them).
+- `import.wxr` owner-only permission (`src/auth.js`).
+- Admin UI: `admin/import/`, `assets/js/admin.js`'s `initImport` (dry-run preview,
+  resumable `/run` loop, chunked manual-media-upload loop), `assets/js/api.js`'s
+  `previewImport`/`runImport`/`uploadImportMedia`.
+- `wrangler.toml`'s `compatibility_flags = ["global_fetch_strictly_public"]` — real
+  and worth keeping, though it turned out not to be the fix for the failure it was
+  first suspected of causing (incident 1 below).
 
-1. **66 of 67 media fetches failed with `"text/html" is not an allowed type`,** even
-   though every URL was confirmed live and correctly serving the real image externally
-   (`curl` got a clean `image/jpeg` 200 for one of the failing URLs). Root cause:
-   Cloudflare error 1042 territory — a Worker's own `fetch()` to a hostname sharing a
-   Cloudflare zone with *any* other Worker on the account gets silently rerouted to
-   that other Worker instead of reaching the real internet, unless the
-   `global_fetch_strictly_public` compatibility flag is set. `gcameron.com`'s zone
-   also hosts an unrelated Worker (`gcameron-minisites`); that's almost certainly what
-   answered instead of WordPress. **Fixed** by adding
-   `compatibility_flags = ["global_fetch_strictly_public"]` to `wrangler.toml`
-   (applies to every site, not just `gcameron.com`) — see
-   [deployment.md §3](deployment.md#3-wranglertoml--one-shared-worker-one-envname-block-per-site)
-   for the full writeup. Confirmed via Cloudflare's own docs, not guessed.
-2. **The run then hit `"Too many subrequests by single Worker invocation"` partway
-   through the remaining media.** Workers Free caps external `fetch()` at 50 per
-   invocation (confirmed via `search_cloudflare_documentation`, not assumed) — a
-   67-attachment import can't fetch everything in one request on that plan
-   regardless of the fix above, and the one-shot design this shipped with had no way
-   to resume: it re-fetched every URL from scratch on every call, so a second attempt
-   would just fail at the same point again. **Fixed** by making `executeImportPlan`
-   batch media fetches (`MEDIA_FETCH_BATCH_LIMIT = 25` per call) and genuinely
-   resumable: `migrations/0006_media_source_url.sql` adds `media.source_url`, so a
-   later call can tell which attachments already succeeded without re-fetching them
-   to find out. Critically, **posts are not created until every attachment has had a
-   real chance** (`media_pending === 0`) — creating a post against still-unresolved
-   media would freeze broken image links into its `body_md` permanently, since
-   skip-on-duplicate-slug means no later call ever revisits an already-created post's
-   content. The admin UI (`assets/js/admin.js`'s `runBtn` handler) now loops, calling
-   `/run` again with the same file while `media_pending > 0`, showing round-by-round
-   progress, capped at 30 rounds as a safety stop. `/import/preview`'s response
-   gained `media_batches_expected` so the UI can warn upfront.
+Tests: `src/import-wxr.test.js`, `src/import-html-to-md.test.js`,
+`src/admin-import.test.js` (preview, run, batching/resumability, manual media
+upload, link rewriting — all owner-only-gated).
 
-Both fixes are covered by tests (`src/admin-import.test.js`'s batching test forces a
-26-attachment run over the 25-item cap and asserts the second call doesn't re-fetch
-the first 25). **Consequence of the first broken run:** it created 26 real posts
-against `gcameron.com`'s live D1 with old-domain image links baked into their
-`body_md` (media never resolved, so nothing to rewrite). Those don't self-heal — a
-clean re-run skips them as duplicates without touching their content. Deleted and
-re-imported once both fixes were confirmed live, rather than trying to patch them in
-place.
+**Production incidents, in the order they were found — kept as the record of what
+this design didn't anticipate going in, not just what got fixed:**
 
-**The `global_fetch_strictly_public` fix turned out to be necessary but not
-sufficient — media fetches kept failing identically (2026-08-05, still ongoing).**
-Confirmed the flag genuinely deployed (`wrangler versions view` showed it live), then
-re-ran the import: same `"text/html" is not an allowed type"` failures, unchanged. The
-decisive test: importing `laax.ski`'s WXR — a completely different Cloudflare zone,
-with no routes, no Custom Domain, no relationship of any kind to this Worker or to
-`gcameron.com` — produced the *identical* failure
-(`https://laax.ski/wp-content/uploads/.../....jpeg: "text/html" is not an allowed
-type.`). Same-zone Worker interception cannot explain a failure on a zone this Worker
-has never touched, so that theory is now believed incomplete or wrong, not confirmed —
-the flag stays (it's still correct, real behavior for the `gcameron.com` case
-specifically), but it isn't what's blocking imports.
-
-**Confirmed root cause (2026-08-05): SiteGround's AI Anti-Bot Protection, not
-Cloudflare at all.** The response-body preview captured by the fix below showed it
-directly on the very next real attempt:
-
-```
-<html><head><link rel="icon" href="data:;">
-<meta http-equiv="refresh" content="0;/.well-known/sgcaptcha/?r=%2Fwp-content%2F...">
-</head></html>
-```
-
-`sgcaptcha` is SiteGround's own hosting-level bot-challenge system (both sites are
-WordPress-on-SiteGround — confirmed via `siteground_optimizer_*` postmeta in both
-real WXR exports). It targets "bruteforce login and denial-of-service"-shaped
-traffic, and this importer's up-to-25-rapid-fetches-per-batch against the same host
-is exactly that shape. `laax.ski` isn't even in the owner's Cloudflare account (per
-the owner directly, 2026-08-05) — which is what ruled out every Cloudflare-side
-theory (same-zone routing, Bot Fight Mode) and pointed at the hosting layer instead;
-the `global_fetch_strictly_public` flag was real and worth keeping, but was never the
-actual fix for this failure on either site.
-
-Per SiteGround's own KB article on this CAPTCHA, whitelisting is **passive and
-visitor-triggered only** — an IP/UA pair gets whitelisted after solving the CAPTCHA
-once, which a script can't do, and there's no documented self-service allowlist for
-external callers. Two mitigations shipped 2026-08-05, neither guaranteed against a
-determined WAF but both cheap and directly responsive to what's now confirmed:
-
-- `src/mcp-media-fetch.js`'s `fetchMediaFromUrl` now sends a real browser-shaped
-  `User-Agent`/`Accept` pair (previously sent neither) and `cf: { cacheTtl: 0 }` (a
-  one-shot per-file fetch is never worth caching, and rules out a stale wrongly-cached
-  response as a variable regardless of the rest of this).
-- `src/admin-import.js`'s media loop now staggers fetches by
-  `MEDIA_FETCH_STAGGER_MS = 200`ms instead of firing them back-to-back — directly
-  targeting the "burst against one host" shape SiteGround's own docs say triggers
-  this. Covered by `src/admin-import.test.js` (real wall-clock delay, hence that
-  test's extended 15s timeout).
-- The response-body preview capture itself (`err.preview`, `media_failed[].preview`)
-  stays — it's what made this diagnosis certain instead of inferred, and is generally
-  useful for any future "wrong content-type" failure.
-
-**They weren't enough (confirmed 2026-08-06).** The owner re-tried twice — once
-immediately, once ~6 hours later — and both attempts hit the identical `sgcaptcha`
-redirect regardless of the User-Agent/stagger changes. Also confirmed: **there is no
-allowlist or disable option** — SiteGround support's own answer, when asked, was to
-download the `wp-content/uploads` folder directly rather than expect automated
-fetches to get through. No amount of request-shaping from this Worker was ever going
-to fix this; it needed a different mechanism entirely, not a better-disguised fetch.
-
-**Shipped 2026-08-06: `POST /api/admin/import/media` — upload media directly,
-skip fetching it entirely.** The browser reads the downloaded `uploads` folder
-locally (`<input type="file" webkitdirectory>` — no zip handling, no server-side
-decompression, matching this project's zero-dependency stance) and uploads it in
-batches capped by total size (`assets/js/admin.js`'s `chunkBySize`,
-`MEDIA_UPLOAD_BATCH_MAX_BYTES = 20 MB`) — first shipped as a flat 15-files-per-batch
-count, which broke within hours against `gcameron.com`'s larger photo library:
-Cloudflare's request body cap is 100 MB on Free/Pro (confirmed via
-`search_cloudflare_documentation`), and 15 full-resolution camera photos can clear
-that on their own even though 15 files sounds conservative. Batching by count never
-accounted for how big any given 15 files actually were. The server
-(`src/admin-import.js`'s `manualMediaHandler`) matches each uploaded file to a
-pending attachment **by filename** — parses the same WXR, builds the same plan, and
-writes through the same `storeAttachmentBytes` helper `fetchAndUploadAttachment` was
-refactored to share, so a matched upload sets `media.source_url` exactly as a
-successful fetch would. That's what makes this genuinely optional rather than a
-parallel import path: a following `/run` call finds those attachments already
-resolved (same `getMediaKeysBySourceUrls` lookup the batching logic already used) and
-proceeds straight to creating posts — no new "resume" concept, no schema change
-beyond what 0006 already added. A file that doesn't match anything in the export, or
-fails the same type/size checks a direct upload would, is reported
-(`{ matched, already_resolved, unmatched: [{ name, reason }] }`) rather than silently
-dropped. Tests: `src/admin-import.test.js`'s new `POST /api/admin/import/media`
-block — match-and-finish-via-run, unmatched files, already-resolved dedup, disallowed
-type, empty upload, owner-only.
+1. **Same-zone Worker fetch interception (2026-08-05).** A Worker's own `fetch()` to
+   a hostname sharing a Cloudflare zone with *any* Worker on the account can get
+   silently rerouted to that other Worker instead of reaching the real internet,
+   unless `global_fetch_strictly_public` is set (Cloudflare error 1042 territory).
+   Confirmed via Cloudflare's own docs and fixed — but turned out not to be the
+   actual cause of the media-fetch failures (see incident 3).
+2. **Workers Free's 50-subrequest-per-invocation cap (2026-08-05).** A
+   67-attachment import can't fetch everything in one request; D1/R2 draw from a
+   separate, much larger budget (confirmed empirically — posts kept writing
+   successfully after media fetches started failing). Fixed by batching media
+   fetches (`MEDIA_FETCH_BATCH_LIMIT = 25`) and making the run genuinely resumable
+   via `media.source_url`. Posts are deliberately held back until every attachment
+   has had a real chance (`media_pending === 0`) — a post created against
+   still-unresolved media freezes broken image links into `body_md` permanently,
+   since skip-on-duplicate-slug means no later run ever revisits its content. This
+   first broken run had already created 26 real posts with unresolved image links
+   before the fix landed; deleted and re-imported cleanly rather than patched in
+   place.
+3. **SiteGround's AI Anti-Bot Protection (confirmed 2026-08-05–06), not Cloudflare
+   at all.** The response-body preview this session added on the first failure
+   (`err.preview`) showed the real cause directly: a redirect to
+   `/.well-known/sgcaptcha/…`. Confirmed beyond doubt when the identical failure
+   reproduced against `laax.ski` — not even in this Cloudflare account, which ruled
+   out every Cloudflare-side theory. Browser-shaped `User-Agent`/`Accept` headers and
+   staggering fetches by 200ms were tried first and didn't help, confirmed by two
+   re-tests 2026-08-06 (immediate and ~6 hours later, both hit the same redirect) —
+   SiteGround support's own answer, when asked, was that no allowlist exists for a
+   script; download the media folder directly instead. Fixed by shipping
+   `POST /api/admin/import/media`: the browser reads a locally downloaded
+   `wp-content/uploads` folder and uploads it directly, matched to pending
+   attachments **by filename**, writing through the same `storeAttachmentBytes`/
+   `source_url` path a successful fetch would — so a following `/run` just finds it
+   already resolved and proceeds to create posts, no separate "resume" concept.
+4. **Request body size, not file count (2026-08-06).** The manual-upload feature's
+   first version batched by a flat file count (15), which worked for `laax.ski`'s
+   smaller images but broke against `gcameron.com`'s larger photo library —
+   Cloudflare's request body cap is 100 MB on Free/Pro, and 15 full-resolution
+   photos can clear that regardless of count. Fixed by batching on cumulative size
+   instead (`assets/js/admin.js`'s `chunkBySize`, `MEDIA_UPLOAD_BATCH_MAX_BYTES = 20
+   MB`).
 
 Scoped against two real exports the owner intends to import personally:
 `gcameron.com` (104 items — 26 posts / 4 pages / 67 attachments, 0 shortcodes, 0
@@ -919,9 +850,13 @@ links, SVG uploads (still disallowed, `src/admin-media.js`), and oversized files
 **collected into a per-item report, not treated as fatal** — the rest of the import
 proceeds. Both sample exports are the easy case (100% same-host image URLs, 0
 off-site, 0 `http://`, no SVGs), so in practice this path is expected to report
-empty more often than the general WXR case in the wild. `_thumbnail_id` postmeta
-resolves to an attachment URL and sets `posts.cover_key`; inline `<img>` URLs inside
-converted content get rewritten to the new `/media/:key` URLs after re-upload.
+empty more often than the general WXR case in the wild — in practice, both real
+target sites needed the manual-upload alternative instead (`POST /import/media`,
+incident 3 above), since their host blocks automated fetches outright. `_thumbnail_id`
+postmeta resolves to an attachment URL and sets `posts.cover_key`; inline `<img>` URLs
+inside converted content get rewritten to the new `/media/:key` URLs after re-upload
+(from either path — fetched or manually uploaded, the rewrite logic doesn't care
+which).
 
 **Mapping.**
 - Status: WP `publish` → `published`; `draft`/`pending`/`future` → `draft`;
@@ -943,10 +878,11 @@ converted content get rewritten to the new `/media/:key` URLs after re-upload.
 - Idempotent re-run: **skip on slug collision**, not upsert or error — makes a
   partial/failed import safe to just run again.
 - **Not one-shot** — the original draft assumed a single request would be enough;
-  a real run against `gcameron.com` (26 posts/67 media) proved that wrong on
-  2026-08-05 (Workers Free's 50-external-fetch-per-invocation ceiling). Media
-  fetching is batched and genuinely resumable across multiple `/run` calls — see
-  the "fixed against a real production run" note above.
+  a real run against `gcameron.com` (26 posts/67 media) proved that wrong (Workers
+  Free's 50-external-fetch-per-invocation ceiling, incident 2 above). Media fetching
+  is batched and genuinely resumable across multiple `/run` calls; the same media
+  can also arrive via `/media` (manual upload, incident 3 above) instead of being
+  fetched at all.
 - Audit trail: **`via: 'import'`**, a new `audit_log` value added by
   `migrations/0005_audit_via_import.sql` in the same rebuild style as 0003's
   `'cron'` addition.

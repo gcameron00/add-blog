@@ -138,7 +138,12 @@ async function patchHandler(request, env, identity, id) {
 
   await updateAuthorRow(env.DB, id, fields);
   await writeAuditLog(env.DB, {
-    actor: identity.email, via: 'ui', action: 'author.update', entity: 'author', entityId: id, detail: fields,
+    // `email: author.email` (the pre-update address) always identifies which
+    // account this is, even when `fields` alone is just e.g. `{role:
+    // 'editor'}` with nothing naming the account itself — see
+    // src/admin-dashboard.js's summariseDetail.
+    actor: identity.email, via: 'ui', action: 'author.update', entity: 'author', entityId: id,
+    detail: { ...fields, email: author.email },
   });
 
   const updated = await getAuthorById(env.DB, id);

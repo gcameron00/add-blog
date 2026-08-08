@@ -283,6 +283,7 @@ async function initDashboard() {
         el('li', {}, [
           el('code', { text: entry.action }),
           el('span', { text: entry.detail }),
+          entry.actor ? el('span', { class: 'small muted', text: entry.actor }) : null,
           entry.via === 'mcp' ? el('span', { class: 'badge badge--mcp', text: 'mcp' }) : null,
           timeEl(entry.at, { relative: true }),
         ])

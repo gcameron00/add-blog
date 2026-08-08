@@ -1,5 +1,6 @@
 import { createExecutionContext, env, waitOnExecutionContext } from 'cloudflare:test';
 import { describe, expect, it } from 'vitest';
+import { handleAuthorsApi } from './admin-authors.js';
 import { handleDashboardApi } from './admin-dashboard.js';
 import { handlePostsApi } from './admin-posts.js';
 import { resolveAuthor } from './auth.js';
@@ -26,6 +27,14 @@ async function callPosts(identity, method, path, opts) {
   const { request, url } = req(method, path, opts);
   const ctx = createExecutionContext();
   const response = await handlePostsApi(request, url, { env, ctx, identity });
+  await waitOnExecutionContext(ctx);
+  return response;
+}
+
+async function callAuthors(identity, method, path, opts) {
+  const { request, url } = req(method, path, opts);
+  const ctx = createExecutionContext();
+  const response = await handleAuthorsApi(request, url, { env, ctx, identity });
   await waitOnExecutionContext(ctx);
   return response;
 }
@@ -105,5 +114,17 @@ describe('GET /api/admin/audit', () => {
     const { data } = await (await callDashboard(owner, '/api/admin/audit?actor=ada@mysite.com&limit=50')).json();
     expect(data.length).toBeGreaterThan(0);
     expect(data.every((e) => e.actor === 'ada@mysite.com')).toBe(true);
+  });
+
+  it('summarises a fields-only update (author.update) by the target account rather than leaving it blank', async () => {
+    const owner = await identityFor('grant@mysite.com');
+    const created = await (
+      await callAuthors(owner, 'POST', '/api/admin/authors', { body: { name: 'Dashboard Fixture', email: 'dashboard-fixture@mysite.com' } })
+    ).json();
+    await callAuthors(owner, 'PATCH', `/api/admin/authors/${created.data.id}`, { body: { role: 'editor' } });
+
+    const { data } = await (await callDashboard(owner, '/api/admin/audit?action=author.update&limit=50')).json();
+    const entry = data.find((e) => e.detail === 'dashboard-fixture@mysite.com');
+    expect(entry).toBeTruthy();
   });
 });

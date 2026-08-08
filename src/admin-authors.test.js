@@ -111,6 +111,18 @@ describe('PATCH /api/admin/authors/:id', () => {
     expect(data.bio).toBe('New bio');
   });
 
+  it('logs the target account\'s email in the audit detail, not just the changed fields', async () => {
+    const a = await makeAuthor('Role Change Me', 'rolechange@mysite.com');
+    await call(owner, 'PATCH', `/api/admin/authors/${a.id}`, { body: { role: 'editor' } });
+    const row = await env.DB
+      .prepare(`SELECT * FROM audit_log WHERE action = 'author.update' AND entity_id = ? ORDER BY created_at DESC LIMIT 1`)
+      .bind(a.id)
+      .first();
+    const detail = JSON.parse(row.detail);
+    expect(detail.email).toBe('rolechange@mysite.com');
+    expect(detail.role).toBe('editor');
+  });
+
   it('disables and re-enables a non-owner author', async () => {
     const a = await makeAuthor('Disable Me', 'disable@mysite.com');
     const off = await call(owner, 'PATCH', `/api/admin/authors/${a.id}`, { body: { disabled: true } });

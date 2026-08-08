@@ -37,15 +37,34 @@ async function statsHandler(env) {
   });
 }
 
-/** `detail` is stored as JSON (see src/audit.js); the dashboard activity feed wants one human-readable line, not the raw object. */
+/**
+ * `detail` is stored as JSON (see src/audit.js); the dashboard activity feed
+ * wants one human-readable line, not the raw object. `title`/`slug`/`name`/
+ * `email`/`filename` are the identifying fields each write site logs
+ * (src/admin-posts.js, admin-authors.js, admin-tags.js, admin-media.js);
+ * `keys`/`from`+`into` cover settings.update and tag.merge. Anything else
+ * (a fields-only update, e.g. author.update's `{role: 'editor'}`) falls
+ * back to listing the changed fields rather than showing nothing.
+ */
 function summariseDetail(detailJson) {
   if (!detailJson) return '';
+  let parsed;
   try {
-    const parsed = JSON.parse(detailJson);
-    return parsed.title || parsed.slug || parsed.keys?.join(', ') || '';
+    parsed = JSON.parse(detailJson);
   } catch {
     return '';
   }
+  if (parsed.title) return parsed.title;
+  if (parsed.slug) return parsed.slug;
+  if (parsed.name) return parsed.name;
+  if (parsed.email) return parsed.email;
+  if (parsed.filename) return parsed.filename;
+  if (parsed.from && parsed.into) return `${parsed.from} → ${parsed.into}`;
+  if (parsed.keys) return parsed.keys.join(', ');
+  return Object.entries(parsed)
+    .filter(([, v]) => v !== null && v !== undefined)
+    .map(([k, v]) => `${k}: ${v}`)
+    .join(', ');
 }
 
 async function auditHandler(url, env) {

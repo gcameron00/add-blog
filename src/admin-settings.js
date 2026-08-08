@@ -20,7 +20,7 @@ import { purgeBrandedPages } from './cache-purge.js';
 
 // Keys src/site-template.js's applySiteBranding/applyHomeMeta actually
 // render — the only ones where a stale edge-cached page is visibly wrong.
-const BRANDING_KEYS = new Set(['site_title', 'site_description']);
+const BRANDING_KEYS = new Set(['site_title', 'site_description', 'admin_url']);
 
 // Exported so src/mcp-tools.js's `update_site_settings` validates against
 // the exact same allow-list — one list, not two that can drift apart.

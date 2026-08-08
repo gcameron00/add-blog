@@ -92,6 +92,19 @@ describe('site branding — settings.site_title/site_description reach the publi
     expect(html).toContain('<title>The add-blog Journal</title>');
   });
 
+  it('points the footer Admin link at settings.admin_url, not the public host\'s /admin/', async () => {
+    await setSetting('admin_url', 'https://blog-admin.example.com');
+    const html = await (await get('/')).text();
+    expect(html).toContain('<a href="https://blog-admin.example.com/admin/">Admin</a>');
+    expect(html).not.toContain('href="/admin/"');
+  });
+
+  it('leaves the footer Admin link as /admin/ when admin_url is empty', async () => {
+    await setSetting('admin_url', '');
+    const html = await (await get('/')).text();
+    expect(html).toContain('<a href="/admin/">Admin</a>');
+  });
+
   it('sets the public caching policy on the templated homepage', async () => {
     const res = await get('/');
     expect(res.headers.get('Cache-Control')).toBe('public, max-age=60, s-maxage=3600, stale-while-revalidate=86400');

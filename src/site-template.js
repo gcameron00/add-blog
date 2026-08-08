@@ -6,6 +6,14 @@
  * copyright, the homepage's og:title, the RSS <link>'s title attribute) — a
  * single global string replace covers all of them at once rather than a
  * separate regex per element per page.
+ *
+ * Every one also links "Admin" in its footer to the literal path `/admin/`,
+ * which 404s on the public host by design (src/index.js's isAdminOnlyPath —
+ * the admin app only lives on env.ADMIN_HOST, e.g. blog-admin.mysite.com).
+ * settings.admin_url is the owner-configured origin of that admin host
+ * (admin/settings/index.html has the field); rewritten to an absolute link
+ * here so "Admin" actually goes somewhere instead of always 404ing. Left as
+ * the bare `/admin/` path if admin_url hasn't been set yet, same as today.
  */
 import { escapeHtml } from '../assets/js/markdown.js';
 
@@ -13,7 +21,12 @@ const DEFAULT_TITLE = 'The add-blog Journal';
 
 export function applySiteBranding(html, settings) {
   const title = settings.site_title || DEFAULT_TITLE;
-  return html.split(DEFAULT_TITLE).join(escapeHtml(title));
+  let out = html.split(DEFAULT_TITLE).join(escapeHtml(title));
+  if (settings.admin_url) {
+    const adminOrigin = String(settings.admin_url).replace(/\/+$/, '');
+    out = out.replace('href="/admin/"', `href="${escapeHtml(adminOrigin)}/admin/"`);
+  }
+  return out;
 }
 
 // Homepage only — the one page whose meta description/og:description and

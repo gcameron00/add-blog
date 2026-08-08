@@ -634,7 +634,12 @@ a.tag:hover {
   color: var(--text-faint);
   pointer-events: none;
 }
-.search-field input { padding-left: 2.25rem; }
+/* [type="search"] (not just `input`) bumps specificity above the generic
+   `input[type="search"] { padding: ... }` rule below — same specificity as
+   plain `.search-field input`, so without this the generic rule's shorthand
+   `padding` was winning on source order alone and collapsing padding-left
+   back under the icon (icon and input text rendering on top of each other). */
+.search-field input[type="search"] { padding-left: 2.25rem; }
 
 input[type="text"], input[type="search"], input[type="url"], input[type="email"],
 input[type="datetime-local"], input[type="number"], select, textarea {

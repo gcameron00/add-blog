@@ -4,7 +4,9 @@
       "Read(//c/Users/GrahamCameron\\\\\\(M365\\\\\\)/Documents/GitHub/add-blog/**)",
       "Bash(npx vitest *)",
       "mcp__claude_ai_Cloudflare_Developer_Platform__d1_databases_list",
-      "Bash(curl -s \"https://api.github.com/repos/gcameron00/add-blog/issues?state=all\" -H \"Accept: application/vnd.github+json\")"
+      "Bash(curl -s \"https://api.github.com/repos/gcameron00/add-blog/issues?state=all\" -H \"Accept: application/vnd.github+json\")",
+      "Bash(curl -s \"https://api.github.com/repos/gcameron00/add-blog/issues?state=open&per_page=100\" -H \"Accept: application/vnd.github+json\")",
+      "Bash(python3 -c ' *)"
     ]
   }
 }

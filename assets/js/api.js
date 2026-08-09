@@ -452,18 +452,42 @@ export function unpublishPost(id) {
   );
 }
 
-export function deletePost(id) {
+export function unarchivePost(id) {
   return withFallback(
-    () => call(`/admin/posts/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+    () => call(`/admin/posts/${encodeURIComponent(id)}/unarchive`, { method: 'POST' }),
     async () => {
       await delay();
       const post = getStore().posts.find((p) => p.id === id);
       if (!post) throw new ApiError({ code: 'not_found', message: 'Post not found.' }, 404);
-      post.status = 'archived';
+      post.status = 'draft';
       post.updated_at = nowIso();
-      logActivity('post.delete', post.title);
+      logActivity('post.unarchive', post.title);
       persist();
       return { data: post };
+    }
+  );
+}
+
+/** `hard: true` permanently removes the row (owner-only, enforced server-side) rather than soft-deleting to `archived`. */
+export function deletePost(id, { hard = false } = {}) {
+  return withFallback(
+    () => call(`/admin/posts/${encodeURIComponent(id)}`, { method: 'DELETE', query: { hard: hard ? 'true' : undefined } }),
+    async () => {
+      await delay();
+      const state = getStore();
+      const index = state.posts.findIndex((p) => p.id === id);
+      if (index === -1) throw new ApiError({ code: 'not_found', message: 'Post not found.' }, 404);
+      if (hard) {
+        const [removed] = state.posts.splice(index, 1);
+        logActivity('post.delete_hard', removed.title);
+      } else {
+        const post = state.posts[index];
+        post.status = 'archived';
+        post.updated_at = nowIso();
+        logActivity('post.delete', post.title);
+      }
+      persist();
+      return { data: { id, status: hard ? 'deleted' : 'archived' } };
     }
   );
 }

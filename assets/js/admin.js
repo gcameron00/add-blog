@@ -296,7 +296,59 @@ async function initDashboard() {
 
 /* --- Posts table ---------------------------------------------------------- */
 
-function postsTable(posts, { compact = false, onChange } = {}) {
+/**
+ * Publish/Unpublish/Delete/Restore for one row — status-driven since
+ * `archived` needs a completely different pair (an archived post going
+ * straight to "Publish" would skip draft entirely) and hard-delete only
+ * ever applies once something is already archived. Left out of the
+ * compact dashboard widget (`compact: true`) to keep that view to a quick
+ * glance rather than a second place to manage every state transition.
+ */
+function postStatusActions(post, { compact, role, onChange }) {
+  if (post.status === 'archived') {
+    const restore = el('button', {
+      class: 'btn btn--sm btn--primary', type: 'button', text: 'Restore to draft',
+      onClick: () => act(() => api.unarchivePost(post.id), 'Restored to draft', onChange),
+    });
+    if (compact) return [restore];
+    return [
+      restore,
+      role === 'owner'
+        ? el('button', {
+            class: 'btn btn--sm btn--ghost btn--danger', type: 'button', text: 'Delete permanently',
+            onClick: () => {
+              const warning = `Permanently delete "${post.title}"? This cannot be undone — the post and its revisions are gone for good.`;
+              if (!confirm(warning)) return;
+              act(() => api.deletePost(post.id, { hard: true }), 'Deleted permanently', onChange);
+            },
+          })
+        : null,
+    ];
+  }
+
+  const toggle = post.status === 'published'
+    ? el('button', {
+        class: 'btn btn--sm', type: 'button', text: 'Unpublish',
+        onClick: () => act(() => api.unpublishPost(post.id), 'Unpublished', onChange),
+      })
+    : el('button', {
+        class: 'btn btn--sm btn--primary', type: 'button', text: 'Publish',
+        onClick: () => act(() => api.publishPost(post.id), 'Published', onChange),
+      });
+  if (compact) return [toggle];
+  return [
+    toggle,
+    el('button', {
+      class: 'btn btn--sm btn--ghost btn--danger', type: 'button', text: 'Delete',
+      onClick: () => {
+        if (!confirm(`Delete "${post.title}"? It will be archived and removed from the public site.`)) return;
+        act(() => api.deletePost(post.id), 'Deleted', onChange);
+      },
+    }),
+  ];
+}
+
+function postsTable(posts, { compact = false, onChange, role } = {}) {
   const table = el('table', { class: 'table' }, [
     el('thead', {}, [
       el('tr', {}, [
@@ -342,19 +394,7 @@ function postsTable(posts, { compact = false, onChange } = {}) {
                   title: 'View on the public site',
                 }, [icon('eye')])
               : null,
-            post.status === 'published'
-              ? el('button', {
-                  class: 'btn btn--sm',
-                  type: 'button',
-                  text: 'Unpublish',
-                  onClick: () => act(() => api.unpublishPost(post.id), 'Unpublished', onChange),
-                })
-              : el('button', {
-                  class: 'btn btn--sm btn--primary',
-                  type: 'button',
-                  text: 'Publish',
-                  onClick: () => act(() => api.publishPost(post.id), 'Published', onChange),
-                }),
+            ...postStatusActions(post, { compact, role, onChange }),
             el('a', { class: 'btn btn--sm', href: editHref(post), text: 'Edit' }),
           ]),
         ]),
@@ -390,6 +430,11 @@ async function initPosts() {
     sort: 'updated',
   };
 
+  let role = 'owner';
+  try {
+    role = (await api.me()).data.role;
+  } catch { /* fall back to showing owner-only controls, same as the MCP tools table */ }
+
   function paintSegmented() {
     if (!segmented) return;
     for (const button of segmented.querySelectorAll('button')) {
@@ -410,7 +455,7 @@ async function initPosts() {
         });
         return;
       }
-      host.append(postsTable(data, { onChange: load }));
+      host.append(postsTable(data, { onChange: load, role }));
       host.append(
         el('p', {
           class: 'small muted',

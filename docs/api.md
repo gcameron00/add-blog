@@ -205,6 +205,7 @@ not a security boundary — every endpoint re-checks the role server-side.
 | `GET` | `/posts/:id` | Full post including `body_md`, revision count, `ETag` |
 | `PATCH` | `/posts/:id` | Partial update. Honours `If-Match` |
 | `DELETE` | `/posts/:id` | Soft delete → `archived`. `?hard=true` (owner only) purges the row |
+| `POST` | `/posts/:id/unarchive` | `archived` → `draft`. `409` if the post isn't archived |
 | `POST` | `/posts/:id/publish` | Publish now. Sets `published_at` if unset |
 | `POST` | `/posts/:id/unpublish` | Back to `draft`, leaving `published_at` intact |
 | `POST` | `/posts/:id/schedule` | Body `{ "scheduled_for": "…" }`; must be in the future |

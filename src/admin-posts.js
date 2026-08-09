@@ -258,6 +258,30 @@ async function scheduleHandler(request, env, identity, id) {
   return { updated, wasPublished: post.status === 'published' };
 }
 
+/**
+ * The inverse of deleteHandler's soft delete — an archived post back to
+ * draft. Gated on `post.delete`, the same permission that archived it in
+ * the first place, rather than `post.publish` (unpublishHandler's
+ * permission): restoring doesn't require the ability to publish, only the
+ * ability to have deleted it. Its own audit action (rather than reusing
+ * 'post.unpublish') so the dashboard activity feed (#7) doesn't claim an
+ * archived draft that was never live was "unpublished".
+ */
+async function unarchiveHandler(env, identity, id) {
+  const post = await getAdminPostById(env.DB, id);
+  if (!post) return apiError(404, 'not_found', 'Post not found.');
+  requirePermission(identity, 'post.delete');
+  if (post.status !== 'archived') return apiError(409, 'conflict', 'Only an archived post can be restored.');
+
+  await updatePostRow(env.DB, id, { status: 'draft', updated_at: nowIso() });
+  await writeAuditLog(env.DB, {
+    actor: identity.email, via: 'ui', action: 'post.unarchive', entity: 'post', entityId: id, detail: { title: post.title },
+  });
+
+  const updated = await getAdminPostById(env.DB, id);
+  return { updated, wasPublished: false };
+}
+
 async function duplicateHandler(env, identity, id) {
   const source = await getAdminPostById(env.DB, id);
   if (!source) return apiError(404, 'not_found', 'Post not found.');
@@ -385,7 +409,7 @@ export async function handlePostsApi(request, url, ctxBundle) {
     const revisionsListMatch = rest.match(/^\/([^/]+)\/revisions$/);
     if (revisionsListMatch && request.method === 'GET') return revisionsListHandler(env, revisionsListMatch[1]);
 
-    const actionMatch = rest.match(/^\/([^/]+)\/(publish|unpublish|schedule|duplicate)$/);
+    const actionMatch = rest.match(/^\/([^/]+)\/(publish|unpublish|schedule|duplicate|unarchive)$/);
     if (actionMatch && request.method === 'POST') {
       const [, id, action] = actionMatch;
       if (action === 'duplicate') return duplicateHandler(env, identity, id);
@@ -393,6 +417,7 @@ export async function handlePostsApi(request, url, ctxBundle) {
       const result =
         action === 'publish' ? await publishHandler(env, identity, id) :
         action === 'unpublish' ? await unpublishHandler(env, identity, id) :
+        action === 'unarchive' ? await unarchiveHandler(env, identity, id) :
         await scheduleHandler(request, env, identity, id);
       if (result instanceof Response) return result;
       purgeIfPublic(ctx, env, { wasPublished: result.wasPublished, isPublished: result.updated.status === 'published', slug: result.updated.slug, tags: result.updated.tags.map((t) => t.slug) });

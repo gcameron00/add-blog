@@ -54,6 +54,7 @@ const state = {
   dirty: false,
   saving: false,
   conflict: false,
+  role: 'owner', // overwritten by init() — defaults to showing owner-only controls, same fallback admin.js's MCP tools table uses
 };
 
 let mde;
@@ -421,25 +422,74 @@ function paintActions() {
   // rather than implying a separate, un-pushed draft copy that doesn't
   // exist. See docs/implementation-plan.md's Phase 5 "known issue" note.
   const saveLabel = post.status === 'published' || post.status === 'scheduled' ? 'Save changes' : 'Save draft';
-  append(clear(dom.actions),
+  const buttons = [
     el('button', { class: 'btn', type: 'button', text: saveLabel, onClick: () => save({ notify: true }) }),
-    post.status === 'published'
-      ? el('button', {
-          class: 'btn', type: 'button', text: 'Unpublish',
-          onClick: () => transition((id) => api.unpublishPost(id), 'Unpublished'),
+  ];
+
+  // Archived is a dead end everywhere else in the editor's publish/unpublish
+  // toggle — same reasoning as admin.js's postStatusActions (#3/#5): jumping
+  // an archived post straight to "Publish now" would skip draft entirely.
+  if (post.status === 'archived') {
+    buttons.push(
+      el('button', {
+        class: 'btn btn--primary', type: 'button', text: 'Restore to draft',
+        onClick: () => transition((id) => api.unarchivePost(id), 'Restored to draft'),
+      })
+    );
+    if (post.id && state.role === 'owner') {
+      buttons.push(
+        el('button', {
+          class: 'btn btn--ghost btn--danger', type: 'button', text: 'Delete permanently',
+          onClick: () => deleteForever(),
         })
-      : el('button', {
-          class: 'btn btn--primary', type: 'button', text: 'Publish now',
-          onClick: () => transition((id) => api.publishPost(id), 'Published'),
-        }),
-    post.status === 'published' && post.slug
-      ? el('a', {
-          class: 'btn btn--ghost',
-          href: `/posts/${encodeURIComponent(post.slug)}`,
-          target: '_blank', rel: 'noopener', text: 'View',
-        })
-      : null
-  );
+      );
+    }
+  } else {
+    buttons.push(
+      post.status === 'published'
+        ? el('button', {
+            class: 'btn', type: 'button', text: 'Unpublish',
+            onClick: () => transition((id) => api.unpublishPost(id), 'Unpublished'),
+          })
+        : el('button', {
+            class: 'btn btn--primary', type: 'button', text: 'Publish now',
+            onClick: () => transition((id) => api.publishPost(id), 'Published'),
+          }),
+      post.status === 'published' && post.slug
+        ? el('a', {
+            class: 'btn btn--ghost',
+            href: `/posts/${encodeURIComponent(post.slug)}`,
+            target: '_blank', rel: 'noopener', text: 'View',
+          })
+        : null,
+      post.id
+        ? el('button', {
+            class: 'btn btn--ghost btn--danger', type: 'button', text: 'Delete',
+            onClick: () => {
+              const warning = `Delete "${post.title || 'this post'}"? It will be archived and removed from the public site.`;
+              if (!confirm(warning)) return;
+              transition((id) => api.deletePost(id), 'Deleted');
+            },
+          })
+        : null
+    );
+  }
+
+  append(clear(dom.actions), buttons);
+}
+
+/** Hard delete leaves nothing to keep editing, unlike every other transition() here — navigates back to the list instead of re-painting a post that no longer exists. */
+async function deleteForever() {
+  const post = state.post;
+  const warning = `Permanently delete "${post.title || 'this post'}"? This cannot be undone — the post and its revisions are gone for good.`;
+  if (!confirm(warning)) return;
+  try {
+    await api.deletePost(post.id, { hard: true });
+    toast('Deleted permanently');
+    location.href = '/admin/posts/';
+  } catch (error) {
+    toast(error.message || 'That did not work.', 'error');
+  }
 }
 
 /**
@@ -621,14 +671,22 @@ async function init() {
   wire();
   loadTagPool(); // fire-and-forget — suggestions fill in whenever this resolves, no need to block the post load on it
 
+  // Alongside the post fetch below (not a separate fire-and-forget) so an
+  // archived post's first paint already knows whether to offer "Delete
+  // permanently" — a new draft never starts archived, but an existing post
+  // loaded straight into that state shouldn't need a second interaction
+  // before the owner-only button appears.
+  const rolePromise = api.me().then(({ data }) => { state.role = data.role; }).catch(() => {});
+
   if (!postId) {
+    await rolePromise;
     fill({ status: 'draft', tags: [], body_md: '', title: '' });
     dom.title.focus();
     return;
   }
 
   try {
-    const { data } = await api.adminGetPost(postId);
+    const [{ data }] = await Promise.all([api.adminGetPost(postId), rolePromise]);
     fill(data);
   } catch (error) {
     toast(error.message || 'Could not load that post.', 'error');

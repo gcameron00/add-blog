@@ -288,6 +288,34 @@ describe('DELETE /api/admin/posts/:id', () => {
   });
 });
 
+describe('POST /api/admin/posts/:id/unarchive', () => {
+  it('restores an archived post to draft', async () => {
+    const post = await createPost(owner);
+    await call(owner, 'DELETE', `/api/admin/posts/${post.id}`);
+    const res = await call(owner, 'POST', `/api/admin/posts/${post.id}/unarchive`);
+    expect(res.status).toBe(200);
+    const { data } = await res.json();
+    expect(data.status).toBe('draft');
+  });
+
+  it('rejects restoring a post that is not archived', async () => {
+    const post = await createPost(owner);
+    const res = await call(owner, 'POST', `/api/admin/posts/${post.id}/unarchive`);
+    expect(res.status).toBe(409);
+  });
+
+  it('logs its own post.unarchive audit action rather than post.unpublish', async () => {
+    const post = await createPost(owner);
+    await call(owner, 'DELETE', `/api/admin/posts/${post.id}`);
+    await call(owner, 'POST', `/api/admin/posts/${post.id}/unarchive`);
+    const row = await env.DB
+      .prepare(`SELECT action FROM audit_log WHERE entity_id = ? ORDER BY created_at DESC LIMIT 1`)
+      .bind(post.id)
+      .first();
+    expect(row.action).toBe('post.unarchive');
+  });
+});
+
 describe('duplicate', () => {
   it('copies content into a new draft under the duplicator, slug suffixed -copy', async () => {
     const source = await createPost(owner, { slug: 'source-post', tags: ['cloudflare'] });

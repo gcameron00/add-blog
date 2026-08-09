@@ -103,6 +103,14 @@ redirect.
 > from the admin host it pointed at this same unbranded page instead of the actual
 > public site; fixed alongside the redirect by resolving it from `settings.site_url`.
 
+> **Fixed (2026-08-09, #13):** the "generic `add-blog admin`" branding described above
+> is no longer accurate as of this date — `renderSidebar` (`assets/js/admin.js`) now
+> reuses that same `settings.site_url` fetch to also pull `site_title`, swapping it into
+> the sidebar brand and every admin page's `<title>` (anchored to the exact static
+> `" — add-blog admin"` suffix, not a bare substring, so it can't clobber unrelated text
+> containing that phrase — e.g. the editor's own per-post title, added alongside this).
+> Falls back to the generic name exactly as before if settings can't be reached.
+
 ---
 
 ## 3. Data model (D1)

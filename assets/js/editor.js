@@ -55,6 +55,7 @@ const state = {
   saving: false,
   conflict: false,
   role: 'owner', // overwritten by init() — defaults to showing owner-only controls, same fallback admin.js's MCP tools table uses
+  siteTitle: 'add-blog', // overwritten by init() — same fallback name admin.js's renderSidebar uses
 };
 
 let mde;
@@ -412,6 +413,12 @@ function paintStatus() {
       : null
   );
   paintActions();
+  updateDocumentTitle();
+}
+
+/** Runs on initial load, every save, and every status transition — so a renamed/retitled post's tab stays accurate, and several posts open in different tabs stay distinguishable (#13). */
+function updateDocumentTitle() {
+  document.title = `${state.post.title || 'New post'} — Editor — ${state.siteTitle} admin`;
 }
 
 function paintActions() {
@@ -678,15 +685,25 @@ async function init() {
   // before the owner-only button appears.
   const rolePromise = api.me().then(({ data }) => { state.role = data.role; }).catch(() => {});
 
+  // Independent of admin.js's own site_title fetch (renderSidebar, #13) —
+  // that one only fixes the *static* "Editor — <site> admin" suffix, not
+  // the per-post prefix updateDocumentTitle() adds below, and there's no
+  // reliable way to tell which of the two modules' async fetches lands
+  // first. Fetching it again here and rebuilding the whole title from
+  // scratch each time sidesteps that race entirely — same fallback default
+  // as admin.js's, and a second cheap settings read is a fine price for not
+  // having two modules fight over one string.
+  const siteTitlePromise = api.getSettings().then(({ data }) => { state.siteTitle = data.site_title || state.siteTitle; }).catch(() => {});
+
   if (!postId) {
-    await rolePromise;
+    await Promise.all([rolePromise, siteTitlePromise]);
     fill({ status: 'draft', tags: [], body_md: '', title: '' });
     dom.title.focus();
     return;
   }
 
   try {
-    const [{ data }] = await Promise.all([api.adminGetPost(postId), rolePromise]);
+    const [{ data }] = await Promise.all([api.adminGetPost(postId), rolePromise, siteTitlePromise]);
     fill(data);
   } catch (error) {
     toast(error.message || 'Could not load that post.', 'error');

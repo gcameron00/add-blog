@@ -36,16 +36,34 @@ async function renderSidebar() {
   // This shell renders on blog-admin.* — a bare "/" href here would stay on
   // that host (and, since blog-admin.*'s root now redirects into /admin/,
   // would bounce straight back). "View blog" needs the actual public site.
+  //
+  // The whole admin bundle is one shared static asset across every site
+  // (wrangler.toml's `directory = "."`), so without this, two sites' admin
+  // tabs are pixel-identical apart from the URL bar (#13). site_title is
+  // already fetched here for `publicUrl`'s sake — reused to brand the
+  // sidebar and, since every admin/*/index.html's <title> is literally
+  // "<Page> — add-blog admin", the browser tab too. Falls back to the
+  // generic "add-blog" name (today's behaviour) if settings can't be
+  // reached or a site hasn't set a title yet, same as the public site's
+  // own applySiteBranding default.
   let publicUrl = '/';
+  let siteTitle = 'add-blog';
   try {
-    publicUrl = (await api.getSettings()).data.site_url || '/';
+    const { data } = await api.getSettings();
+    publicUrl = data.site_url || '/';
+    siteTitle = data.site_title || siteTitle;
   } catch {
     // Sidebar still has to render even if settings can't be reached.
   }
+  // Anchored to the exact static suffix, not a bare 'add-blog' substring
+  // replace — editor.js prepends the post title to this same document.title
+  // (regardless of which of the two runs first), and a post genuinely
+  // titled e.g. "My add-blog journey" must not get its own title mangled.
+  document.title = document.title.replace(/ — add-blog admin$/, ` — ${siteTitle} admin`);
 
-  const brand = el('a', { class: 'admin-brand', href: '/admin/', 'aria-label': 'add-blog admin' }, [
+  const brand = el('a', { class: 'admin-brand', href: '/admin/', 'aria-label': `${siteTitle} admin` }, [
     icon('check'),
-    el('div', {}, [el('span', { text: 'add-blog' }), el('small', { text: 'Admin' })]),
+    el('div', {}, [el('span', { text: siteTitle }), el('small', { text: 'Admin' })]),
   ]);
 
   // Click handling is delegated in main.js (initSidebarCollapse) — it has to

@@ -319,6 +319,7 @@ turned out to be the CI deploy tool installing an unrelated wrangler version, no
 | Edit the title/body of a published post | Public copy reflects the change within the cache window; button reads "Save changes", not "Save draft" | ✅ |
 | Unpublish, then delete | Gone from the public site at each step; a hard delete (owner only) removes the row entirely | ✅ |
 | Two tabs editing the same post, second one saves | No conflict prompt yet — the second save silently wins; `ETag`/`If-Match` exist server-side (test-verified) but the editor doesn't send `If-Match` yet | not yet exercised in prod |
+| Delete/Restore buttons, Posts table and editor (added 2026-08-09, #3/#5) | Delete archives from a button (the API already did this; there was previously no UI trigger anywhere); an archived row/post shows "Restore to draft" and, owner-only, "Delete permanently" | not yet exercised in prod |
 
 **Phase 5b, settings and dashboard (live for `gcameron`, verified 2026-07-28):**
 

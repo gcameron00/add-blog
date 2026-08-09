@@ -258,6 +258,21 @@ published-post concept — a shadow draft row, a `pending_body_md` column) is a 
 design decision, not a copy fix, and wasn't warranted for what turned out to be a
 labelling problem.
 
+**Found in production, fixed 2026-08-09 (issues #3/#5).** Soft/hard delete
+(`DELETE /api/admin/posts/:id`, listed as built in 5a above) had no UI trigger anywhere
+— `assets/js/api.js`'s `deletePost` was defined and unused. There was also no way back
+*out* of `archived`: nothing set status away from it, and the Posts table's Publish/
+Unpublish toggle showed a "Publish" button on an archived row that would have jumped it
+straight to `published`, skipping `draft`. Fixed by adding a new
+`POST /api/admin/posts/:id/unarchive` route (`archived` → `draft`, 409 otherwise; its
+own `post.unarchive` audit action rather than reusing `post.unpublish`, so the
+dashboard activity feed doesn't describe a draft that was never live as "unpublished"),
+and status-aware row/editor actions: non-archived posts get a **Delete** button
+(archives, editor/owner); archived posts get **Restore to draft** and, owner-only,
+**Delete permanently** (the hard delete MCP's `delete_post` tool description already
+promised "stays a deliberate human action in the admin UI" — now actually true). 4 new
+tests. Not yet hands-on verified in production — see docs/deployment.md §6.
+
 **5b — Settings and dashboard reads. Built, tested, and live for `gcameron`
 (`src/admin-settings.js`, `src/admin-dashboard.js`):**
 

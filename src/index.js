@@ -42,7 +42,7 @@
  */
 
 import { handlePublicApi } from './public-api.js';
-import { handlePostPage, handleHomePage, handleLegacyPostRedirect } from './pages.js';
+import { handlePostPage, handleHomePage, handleAboutPage, handleLegacyPostRedirect } from './pages.js';
 import { handleMedia } from './media.js';
 import { handleFeeds } from './feeds.js';
 import { verifyAccessIdentity } from './access.js';
@@ -51,7 +51,7 @@ import { handleAdminApi } from './admin-api.js';
 import { handleMcp } from './mcp.js';
 import { publishDuePosts } from './cron.js';
 import { getSettings } from './db.js';
-import { applySiteBranding } from './site-template.js';
+import { applySiteBranding, isFeatureEnabled } from './site-template.js';
 
 const DEFAULT_ADMIN_HOST = 'blog-admin.mysite.com';
 
@@ -141,19 +141,34 @@ function jsonError(status, code, message, { requestId, admin }) {
   return response;
 }
 
-// The remaining static pages (archive, tags, about, 404 — anything that
-// isn't already its own templated handler above) still carry the literal
-// "The add-blog Journal" wordmark in their header/footer. Branded here,
-// generically, rather than as one handler per route: the Content-Type check
-// keeps this off every non-HTML asset (CSS/JS/images), and `admin` keeps it
-// off the admin shell, so it only ever runs — and only ever queries D1 —
-// for an actual public HTML page load.
-async function brandStaticAsset(response, env, admin) {
+// The remaining static pages (archive, tags, 404 — anything that isn't
+// already its own templated handler above; /about is its own handler now,
+// see handleAboutPage) still carry the literal "The add-blog Journal"
+// wordmark in their header/footer. Branded here, generically, rather than as
+// one handler per route: the Content-Type check keeps this off every
+// non-HTML asset (CSS/JS/images), and `admin` keeps it off the admin shell,
+// so it only ever runs — and only ever queries D1 — for an actual public
+// HTML page load.
+//
+// Archive/Tags are gated on nav_config here too (isFeatureEnabled) — this is
+// the one place both already fetch settings for every branded page, so
+// there's nowhere cheaper to add "does this route even exist" than right
+// after that fetch.
+async function brandStaticAsset(response, env, admin, url) {
   if (admin || !env.DB) return response;
   const contentType = response.headers.get('Content-Type') || '';
   if (!contentType.includes('text/html')) return response;
 
   const settings = await getSettings(env.DB);
+  if (
+    (url.pathname === '/archive/' || url.pathname === '/archive') && !isFeatureEnabled(settings, 'archive')
+  ) {
+    return new Response('Not found', { status: 404 });
+  }
+  if ((url.pathname === '/tags/' || url.pathname === '/tags') && !isFeatureEnabled(settings, 'tags')) {
+    return new Response('Not found', { status: 404 });
+  }
+
   const html = applySiteBranding(await response.text(), settings);
   const headers = new Headers(response.headers);
   if (response.status === 200) {
@@ -218,12 +233,13 @@ export default {
           handleLegacyPostRedirect(url) ||
           (await handlePostPage(request, url, env)) ||
           (await handleHomePage(request, url, env, admin)) ||
+          (await handleAboutPage(request, url, env)) ||
           (await handleAdminApi(request, url, { env, ctx, identity })) ||
           (await handleMcp(request, url, { env, ctx, identity })) ||
           (await handlePublicApi(request, url, env)) ||
           (await handleMedia(request, url, env)) ||
           (await handleFeeds(request, url, env)) ||
-          (await brandStaticAsset(await env.ASSETS.fetch(request), env, admin));
+          (await brandStaticAsset(await env.ASSETS.fetch(request), env, admin, url));
         response = withSharedHeaders(response, { requestId, admin });
       }
     }

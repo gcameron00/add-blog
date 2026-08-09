@@ -113,3 +113,95 @@ export function validateScheduledFor(scheduledFor) {
   }
   return date.toISOString();
 }
+
+const NAV_URL_MAX_LENGTH = 500;
+const NAV_LINK_NAME_MAX_LENGTH = 60;
+const NAV_CUSTOM_LINKS_MAX = 20;
+const NAV_FEATURE_KEYS = ['posts', 'archive', 'tags', 'about', 'rss'];
+
+/** Absolute http(s) URL only — rejects `javascript:`/`data:` and anything unparseable. */
+export function validateUrl(url, field = 'url') {
+  if (typeof url !== 'string' || url.length < 1 || url.length > NAV_URL_MAX_LENGTH) {
+    throw new ValidationError(`${field} must be 1-${NAV_URL_MAX_LENGTH} characters.`, field);
+  }
+  let parsed;
+  try {
+    parsed = new URL(url);
+  } catch {
+    throw new ValidationError(`${field} must be a valid absolute URL.`, field);
+  }
+  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+    throw new ValidationError(`${field} must use http or https.`, field);
+  }
+  return url;
+}
+
+/**
+ * Shape validated here (src/site-template.js's resolveNavConfig is what
+ * interprets it — this only rejects malformed/unsafe input before it's
+ * stored):
+ *   { features: { <posts|archive|tags|about|rss>: { enabled?, header?, footer? } },
+ *     custom_links: [{ name, url, header?, footer? }] }
+ * Every field is optional (resolveNavConfig merges under its own defaults),
+ * but whatever IS present must be well-formed.
+ */
+export function validateNavConfig(navConfig) {
+  if (navConfig === null || typeof navConfig !== 'object' || Array.isArray(navConfig)) {
+    throw new ValidationError('nav_config must be an object.', 'nav_config');
+  }
+
+  const { features, custom_links: customLinks } = navConfig;
+  if (features !== undefined) {
+    if (typeof features !== 'object' || features === null || Array.isArray(features)) {
+      throw new ValidationError('nav_config.features must be an object.', 'nav_config');
+    }
+    for (const key of Object.keys(features)) {
+      if (!NAV_FEATURE_KEYS.includes(key)) {
+        throw new ValidationError(`nav_config.features has unknown key "${key}".`, 'nav_config');
+      }
+      const flags = features[key];
+      if (typeof flags !== 'object' || flags === null || Array.isArray(flags)) {
+        throw new ValidationError(`nav_config.features.${key} must be an object.`, 'nav_config');
+      }
+      for (const flag of ['enabled', 'header', 'footer']) {
+        if (flag in flags && typeof flags[flag] !== 'boolean') {
+          throw new ValidationError(`nav_config.features.${key}.${flag} must be a boolean.`, 'nav_config');
+        }
+      }
+    }
+  }
+
+  if (customLinks !== undefined) {
+    if (!Array.isArray(customLinks) || customLinks.length > NAV_CUSTOM_LINKS_MAX) {
+      throw new ValidationError(`nav_config.custom_links must be an array of at most ${NAV_CUSTOM_LINKS_MAX} items.`, 'nav_config');
+    }
+    for (const link of customLinks) {
+      if (typeof link !== 'object' || link === null || Array.isArray(link)) {
+        throw new ValidationError('Each custom link must be an object.', 'nav_config');
+      }
+      if (typeof link.name !== 'string' || link.name.trim().length < 1 || link.name.length > NAV_LINK_NAME_MAX_LENGTH) {
+        throw new ValidationError(`Each custom link needs a name (1-${NAV_LINK_NAME_MAX_LENGTH} characters).`, 'nav_config');
+      }
+      validateUrl(link.url, 'custom link URL');
+      for (const flag of ['header', 'footer']) {
+        if (flag in link && typeof link[flag] !== 'boolean') {
+          throw new ValidationError(`Each custom link's ${flag} must be a boolean.`, 'nav_config');
+        }
+      }
+    }
+  }
+
+  return navConfig;
+}
+
+const ABOUT_CONTENT_MAX_BYTES = 20 * 1024;
+
+export function validateAboutContent(aboutContent) {
+  if (typeof aboutContent !== 'string') {
+    throw new ValidationError('about_content must be a string.', 'about_content');
+  }
+  if (new TextEncoder().encode(aboutContent).length > ABOUT_CONTENT_MAX_BYTES) {
+    throw new ValidationError('about_content must be at most 20 KB.', 'about_content');
+  }
+  return aboutContent;
+}

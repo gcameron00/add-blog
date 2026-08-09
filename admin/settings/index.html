@@ -103,6 +103,58 @@
           </div>
 
           <div class="card">
+            <div class="card__header"><h2>Navigation</h2></div>
+            <p class="field__hint" style="margin-top: 0">
+              Choose which pages exist and where each is linked from. Turning a page off
+              also makes its URL 404, not just unlinked.
+            </p>
+            <div style="overflow-x: auto">
+              <table class="table" data-nav-features>
+                <thead>
+                  <tr>
+                    <th>Page</th>
+                    <th>Enabled</th>
+                    <th>Header</th>
+                    <th>Footer</th>
+                  </tr>
+                </thead>
+                <tbody></tbody>
+              </table>
+            </div>
+            <div class="field" style="margin-top: 1.5rem">
+              <label>Custom links</label>
+              <p class="field__hint">Link to anything else on your domain — or elsewhere.</p>
+              <div style="overflow-x: auto">
+                <table class="table" data-nav-custom-links>
+                  <thead>
+                    <tr>
+                      <th>Name</th>
+                      <th>URL</th>
+                      <th>Header</th>
+                      <th>Footer</th>
+                      <th><span class="visually-hidden">Actions</span></th>
+                    </tr>
+                  </thead>
+                  <tbody></tbody>
+                </table>
+              </div>
+              <button class="btn" type="button" data-nav-add-link style="margin-top: .75rem">Add link</button>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card__header"><h2>About page</h2></div>
+            <div class="field">
+              <label for="about_content">Content (Markdown)</label>
+              <textarea id="about_content" name="about_content" rows="12"></textarea>
+              <p class="field__hint">
+                Rendered the same way post bodies are. Leave blank to keep the built-in
+                placeholder copy.
+              </p>
+            </div>
+          </div>
+
+          <div class="card">
             <div class="card__header"><h2>Base path</h2></div>
             <div class="field">
               <label for="base_path">Path prefix</label>

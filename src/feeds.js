@@ -5,6 +5,7 @@
  */
 
 import { listRecentPosts, listSitemapEntries, getSettings } from './db.js';
+import { isFeatureEnabled } from './site-template.js';
 
 const FEED_CACHE_CONTROL = 'public, max-age=600, s-maxage=3600';
 
@@ -93,6 +94,9 @@ async function atom(url, env) {
 async function sitemap(url, env) {
   const { posts, tags } = await listSitemapEntries(env.DB);
 
+  // TODO: lists archive/tags/about unconditionally, regardless of
+  // nav_config's `enabled` flags — same class of gap as purgeBrandedPages'
+  // documented post-permalink limitation, not fixed here.
   const staticUrls = ['/', '/archive/', '/tags/', '/about/'];
   const postUrls = posts.map((p) =>
     `<url><loc>${url.origin}/posts/${encodeURIComponent(p.slug)}</loc><lastmod>${p.updated_at.slice(0, 10)}</lastmod></url>`
@@ -125,6 +129,13 @@ export async function handleFeeds(request, url, env) {
   // robots.txt needs no data — safe to serve even with no D1 binding yet.
   if (url.pathname === '/robots.txt') return robots(url);
   if (!env.DB) return null;
+
+  if (url.pathname === '/feed.xml' || url.pathname === '/rss.xml' || url.pathname === '/atom.xml') {
+    // RSS is owner-toggleable (nav_config); sitemap.xml/robots.txt are
+    // infrastructure, not a browsable "feature", so they aren't gated.
+    const settings = await getSettings(env.DB);
+    if (!isFeatureEnabled(settings, 'rss')) return new Response('Not found', { status: 404 });
+  }
 
   if (url.pathname === '/feed.xml' || url.pathname === '/rss.xml') return rss(url, env);
   if (url.pathname === '/atom.xml') return atom(url, env);

@@ -14,14 +14,99 @@
  * (admin/settings/index.html has the field); rewritten to an absolute link
  * here so "Admin" actually goes somewhere instead of always 404ing. Left as
  * the bare `/admin/` path if admin_url hasn't been set yet, same as today.
+ *
+ * Also regenerates the header/footer `<nav>` blocks from settings.nav_config
+ * (owner-configurable per-feature enable + header/footer placement, plus
+ * custom links — admin/settings/index.html's "Navigation" card) so all 6
+ * pages stay in sync with one edit instead of six.
  */
 import { escapeHtml } from '../assets/js/markdown.js';
 
 const DEFAULT_TITLE = 'The add-blog Journal';
 
+// Reproduces today's hardcoded markup exactly (verified against index.html,
+// archive/, tags/, about/, post/, 404.html): header has Posts/Archive/
+// Tags/About in that order; footer has About/Archive/RSS (Tags was never in
+// the footer). `posts` has no `enabled`/`footer` — it's the homepage post
+// list, can't be disabled, was never a footer link. A totally-missing
+// `nav_config` settings row resolves to exactly this, so existing sites see
+// no change until the owner edits it.
+const DEFAULT_NAV_CONFIG = {
+  features: {
+    posts: { header: true },
+    archive: { enabled: true, header: true, footer: true },
+    tags: { enabled: true, header: true, footer: false },
+    about: { enabled: true, header: true, footer: true },
+    rss: { enabled: true, header: false, footer: true },
+  },
+  custom_links: [],
+};
+
+const FEATURE_ORDER = ['posts', 'archive', 'tags', 'about', 'rss'];
+const FEATURE_LABEL = { posts: 'Posts', archive: 'Archive', tags: 'Tags', about: 'About', rss: 'RSS' };
+const FEATURE_HREF = { posts: '/', archive: '/archive/', tags: '/tags/', about: '/about/', rss: '/feed.xml' };
+
+/** Merges a stored (possibly partial/absent) nav_config under the defaults above. */
+export function resolveNavConfig(settings) {
+  const raw = settings.nav_config;
+  const features = {};
+  for (const key of FEATURE_ORDER) {
+    features[key] = { ...DEFAULT_NAV_CONFIG.features[key], ...((raw && raw.features && raw.features[key]) || {}) };
+  }
+  const custom_links = Array.isArray(raw?.custom_links) ? raw.custom_links : [];
+  return { features, custom_links };
+}
+
+/** Does this feature's route/content exist at all? (posts can't be disabled — always true.) */
+export function isFeatureEnabled(settings, feature) {
+  const nav = resolveNavConfig(settings);
+  const flags = nav.features[feature];
+  return !flags || flags.enabled !== false;
+}
+
+function navLink(url, name) {
+  return `<a href="${escapeHtml(url)}">${escapeHtml(name)}</a>`;
+}
+
+function renderHeaderNav(nav) {
+  const items = FEATURE_ORDER.filter((key) => key === 'posts' || nav.features[key].enabled !== false)
+    .filter((key) => nav.features[key].header)
+    .map((key) => navLink(FEATURE_HREF[key], FEATURE_LABEL[key]));
+  for (const link of nav.custom_links) {
+    if (link.header) items.push(navLink(link.url, link.name));
+  }
+  return items.join('\n          ');
+}
+
+function renderFooterNav(nav, includeAdmin) {
+  const items = FEATURE_ORDER.filter((key) => key !== 'posts' && nav.features[key].enabled !== false && nav.features[key].footer)
+    .map((key) => navLink(FEATURE_HREF[key], FEATURE_LABEL[key]));
+  for (const link of nav.custom_links) {
+    if (link.footer) items.push(navLink(link.url, link.name));
+  }
+  if (includeAdmin) items.push('<a href="/admin/">Admin</a>');
+  return items.join('\n          ');
+}
+
 export function applySiteBranding(html, settings) {
   const title = settings.site_title || DEFAULT_TITLE;
   let out = html.split(DEFAULT_TITLE).join(escapeHtml(title));
+
+  // Regenerated from settings before the admin_url rewrite below, so a
+  // freshly-emitted literal href="/admin/" still gets rewritten exactly as
+  // it does today. 404.html's footer has no Admin link at all (unlike every
+  // other public page) — includeAdmin is read off the *original* shell
+  // markup being processed, not hardcoded per route, so that stays true.
+  const nav = resolveNavConfig(settings);
+  out = out.replace(
+    /<nav class="site-nav" aria-label="Main">[\s\S]*?<\/nav>/,
+    `<nav class="site-nav" aria-label="Main">\n          ${renderHeaderNav(nav)}\n          <button class="theme-toggle" type="button" data-theme-toggle aria-label="Toggle theme"></button>\n        </nav>`
+  );
+  out = out.replace(/<nav aria-label="Footer">([\s\S]*?)<\/nav>/, (_match, inner) => {
+    const includeAdmin = inner.includes('href="/admin/"');
+    return `<nav aria-label="Footer">\n          ${renderFooterNav(nav, includeAdmin)}\n        </nav>`;
+  });
+
   if (settings.admin_url) {
     const adminOrigin = String(settings.admin_url).replace(/\/+$/, '');
     out = out.replace('href="/admin/"', `href="${escapeHtml(adminOrigin)}/admin/"`);

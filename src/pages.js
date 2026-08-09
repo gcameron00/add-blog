@@ -11,8 +11,8 @@
  */
 
 import { getPublishedPostBySlug, getSettings } from './db.js';
-import { escapeHtml } from '../assets/js/markdown.js';
-import { applySiteBranding, applyHomeMeta } from './site-template.js';
+import { escapeHtml, renderMarkdown } from '../assets/js/markdown.js';
+import { applySiteBranding, applyHomeMeta, isFeatureEnabled } from './site-template.js';
 
 function formatDate(iso) {
   if (!iso) return '';
@@ -119,6 +119,49 @@ export async function handleHomePage(request, url, env, admin) {
   const shellResponse = await env.ASSETS.fetch(request);
   let html = applySiteBranding(await shellResponse.text(), settings);
   html = applyHomeMeta(html, settings);
+
+  return new Response(html, {
+    headers: {
+      'Content-Type': 'text/html;charset=UTF-8',
+      // docs/architecture.md §5: "Public HTML pages" caching policy.
+      'Cache-Control': 'public, max-age=60, s-maxage=3600, stale-while-revalidate=86400',
+    },
+  });
+}
+
+/**
+ * GET /about — the /about/ shell, branded like every other public page, with
+ * settings.about_content (owner-authored markdown, admin/settings/index.html's
+ * "About page" card) rendered into the <!-- about-content:start/end --> region
+ * of about/index.html. Comment sentinels rather than a data-article-style
+ * element, because that block contains nested </div>s (a demo banner, a
+ * table) a non-greedy element regex would truncate at the wrong one.
+ *
+ * Empty about_content is left alone entirely — the page keeps its built-in
+ * placeholder copy, so a fresh install looks identical to today until the
+ * owner writes something. Disabled via nav_config (isFeatureEnabled) 404s,
+ * same as Archive/Tags in src/index.js's brandStaticAsset.
+ */
+export async function handleAboutPage(request, url, env) {
+  if ((url.pathname !== '/about/' && url.pathname !== '/about') ||
+      (request.method !== 'GET' && request.method !== 'HEAD')) {
+    return null;
+  }
+  if (!env.DB) return null;
+
+  const settings = await getSettings(env.DB);
+  if (!isFeatureEnabled(settings, 'about')) return new Response('Not found', { status: 404 });
+
+  const shellRequest = new Request(new URL('/about/', url), request);
+  const shellResponse = await env.ASSETS.fetch(shellRequest);
+  let html = applySiteBranding(await shellResponse.text(), settings);
+
+  if (settings.about_content) {
+    html = html.replace(
+      /<!-- about-content:start -->[\s\S]*?<!-- about-content:end -->/,
+      `<!-- about-content:start -->${renderMarkdown(settings.about_content)}<!-- about-content:end -->`
+    );
+  }
 
   return new Response(html, {
     headers: {

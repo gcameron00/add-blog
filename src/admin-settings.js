@@ -15,12 +15,14 @@
 import { getSettings } from './db.js';
 import { readJsonBody, requirePermission, requireSameOrigin, withErrors } from './admin-http.js';
 import { writeAuditLog } from './audit.js';
-import { ValidationError } from './validate.js';
+import { ValidationError, validateNavConfig, validateAboutContent } from './validate.js';
 import { purgeBrandedPages } from './cache-purge.js';
 
 // Keys src/site-template.js's applySiteBranding/applyHomeMeta actually
 // render — the only ones where a stale edge-cached page is visibly wrong.
-const BRANDING_KEYS = new Set(['site_title', 'site_description', 'admin_url']);
+// nav_config renders on every public page (header+footer); about_content is
+// /about/'s body — both edited here, so both belong in this set too.
+const BRANDING_KEYS = new Set(['site_title', 'site_description', 'admin_url', 'nav_config', 'about_content']);
 
 // Exported so src/mcp-tools.js's `update_site_settings` validates against
 // the exact same allow-list — one list, not two that can drift apart.
@@ -41,6 +43,12 @@ export const KNOWN_KEYS = new Set([
   // other value here is, just consumed by an MCP resource instead of a
   // public page.
   'style_guide',
+  // Owner-configurable header/footer nav (src/site-template.js's
+  // resolveNavConfig) and the About page's markdown body
+  // (src/pages.js's handleAboutPage) — the first JSON-object-valued
+  // settings, still stored the same key/value way as every scalar above.
+  'nav_config',
+  'about_content',
 ]);
 
 /**
@@ -52,6 +60,9 @@ export const KNOWN_KEYS = new Set([
 export async function writeSettings(db, input) {
   const unknown = Object.keys(input).find((key) => !KNOWN_KEYS.has(key));
   if (unknown) throw new ValidationError(`Unknown setting key: "${unknown}".`, unknown);
+
+  if ('nav_config' in input) validateNavConfig(input.nav_config);
+  if ('about_content' in input) validateAboutContent(input.about_content);
 
   const entries = Object.entries(input);
   if (entries.length) {

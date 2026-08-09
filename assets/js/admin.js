@@ -993,7 +993,96 @@ async function initMcp() {
   }
 }
 
-/* --- Settings page -------------------------------------------------------- */
+/* --- Settings page --------------------------------------------------------
+ * nav_config is the one settings value that isn't a plain scalar (a nested
+ * object of built-in features plus an array of custom links), so unlike
+ * every other field on this form it can't ride the generic name-attribute
+ * load/save loop below — it gets its own render/read pair instead, mirrored
+ * against src/site-template.js's DEFAULT_NAV_CONFIG/resolveNavConfig so a
+ * missing/partial stored value still shows sensible defaults.
+ */
+
+const NAV_FEATURES = [
+  { key: 'posts', label: 'Posts', special: true }, // homepage post list — can't be disabled, was never a footer link
+  { key: 'archive', label: 'Archive' },
+  { key: 'tags', label: 'Tags' },
+  { key: 'about', label: 'About' },
+  { key: 'rss', label: 'RSS' },
+];
+
+const DEFAULT_NAV_FEATURES = {
+  posts: { header: true },
+  archive: { enabled: true, header: true, footer: true },
+  tags: { enabled: true, header: true, footer: false },
+  about: { enabled: true, header: true, footer: true },
+  rss: { enabled: true, header: false, footer: true },
+};
+
+function renderNavFeaturesTable(tbody, features) {
+  clear(tbody);
+  for (const { key, label, special } of NAV_FEATURES) {
+    const flags = features[key] || {};
+    tbody.append(
+      el('tr', { dataset: { navFeature: key } }, [
+        el('td', { text: label }),
+        el('td', {}, [
+          special ? null : el('input', { type: 'checkbox', 'data-nav-enabled': '', checked: flags.enabled !== false ? '' : null, 'aria-label': `${label} enabled` }),
+        ]),
+        el('td', {}, [
+          el('input', { type: 'checkbox', 'data-nav-header': '', checked: flags.header ? '' : null, 'aria-label': `${label} in header` }),
+        ]),
+        el('td', {}, [
+          special ? null : el('input', { type: 'checkbox', 'data-nav-footer': '', checked: flags.footer ? '' : null, 'aria-label': `${label} in footer` }),
+        ]),
+      ])
+    );
+  }
+}
+
+function readNavFeaturesTable(tbody) {
+  const features = {};
+  for (const row of tbody.querySelectorAll('tr')) {
+    const { key } = NAV_FEATURES.find((f) => f.key === row.dataset.navFeature);
+    const spec = NAV_FEATURES.find((f) => f.key === key);
+    const header = row.querySelector('[data-nav-header]').checked;
+    features[key] = spec.special
+      ? { header }
+      : { enabled: row.querySelector('[data-nav-enabled]').checked, header, footer: row.querySelector('[data-nav-footer]').checked };
+  }
+  return features;
+}
+
+function renderNavCustomLinks(tbody, links, redraw) {
+  clear(tbody);
+  links.forEach((link, index) => {
+    tbody.append(
+      el('tr', {}, [
+        el('td', {}, [el('input', {
+          type: 'text', value: link.name || '', placeholder: 'Name', 'aria-label': 'Custom link name',
+          onInput: (event) => { link.name = event.target.value; },
+        })]),
+        el('td', {}, [el('input', {
+          type: 'url', value: link.url || '', placeholder: 'https://…', 'aria-label': 'Custom link URL',
+          onInput: (event) => { link.url = event.target.value; },
+        })]),
+        el('td', {}, [el('input', {
+          type: 'checkbox', checked: link.header ? '' : null, 'aria-label': 'In header',
+          onChange: (event) => { link.header = event.target.checked; },
+        })]),
+        el('td', {}, [el('input', {
+          type: 'checkbox', checked: link.footer ? '' : null, 'aria-label': 'In footer',
+          onChange: (event) => { link.footer = event.target.checked; },
+        })]),
+        el('td', {}, [
+          el('button', {
+            class: 'btn btn--sm btn--ghost btn--danger', type: 'button', text: 'Remove',
+            onClick: () => { links.splice(index, 1); redraw(); },
+          }),
+        ]),
+      ])
+    );
+  });
+}
 
 async function initSettings() {
   const form = document.querySelector('[data-settings-form]');
@@ -1021,6 +1110,29 @@ async function initSettings() {
     else field.value = value ?? '';
   }
 
+  // nav_config isn't a plain form field (see the block comment above
+  // initSettings) — loaded and re-serialized separately from the generic
+  // loops above/below, which skip it because no element has name="nav_config".
+  const navFeaturesBody = form.querySelector('[data-nav-features] tbody');
+  const navLinksBody = form.querySelector('[data-nav-custom-links] tbody');
+  const addLinkBtn = form.querySelector('[data-nav-add-link]');
+
+  const storedFeatures = (current.nav_config && current.nav_config.features) || {};
+  const features = {};
+  for (const { key } of NAV_FEATURES) features[key] = { ...DEFAULT_NAV_FEATURES[key], ...storedFeatures[key] };
+  if (navFeaturesBody) renderNavFeaturesTable(navFeaturesBody, features);
+
+  const customLinks = Array.isArray(current.nav_config?.custom_links)
+    ? current.nav_config.custom_links.map((link) => ({ ...link }))
+    : [];
+  const redrawLinks = () => renderNavCustomLinks(navLinksBody, customLinks, redrawLinks);
+  if (navLinksBody) redrawLinks();
+
+  addLinkBtn?.addEventListener('click', () => {
+    customLinks.push({ name: '', url: '', header: false, footer: false });
+    redrawLinks();
+  });
+
   form.addEventListener('submit', async (event) => {
     event.preventDefault();
     const values = {};
@@ -1035,6 +1147,12 @@ async function initSettings() {
       if (field.type === 'checkbox') values[field.name] = field.checked;
       else if (field.type === 'number') values[field.name] = Number(field.value);
       else values[field.name] = field.value;
+    }
+    if (navFeaturesBody) {
+      values.nav_config = {
+        features: readNavFeaturesTable(navFeaturesBody),
+        custom_links: customLinks.filter((link) => (link.name || '').trim() && (link.url || '').trim()),
+      };
     }
     const submit = form.querySelector('[type="submit"]');
     submit.disabled = true;

@@ -177,8 +177,8 @@ backs the whole archive page.
 
 | Route | Returns |
 | --- | --- |
-| `GET /feed.xml` | RSS 2.0, 20 most recent posts |
-| `GET /atom.xml` | Atom 1.0 |
+| `GET /feed.xml` | RSS 2.0, 20 most recent posts (`Content-Type: application/rss+xml`) |
+| `GET /atom.xml` | Atom 1.0 (`Content-Type: application/atom+xml`) |
 | `GET /sitemap.xml` | Every published permalink plus tag and archive pages |
 | `GET /robots.txt` | Generated; references the sitemap |
 | `GET /media/:key` | R2 object, immutable cache headers |

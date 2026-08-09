@@ -7,7 +7,7 @@ describe('GET /feed.xml', () => {
   it('serves RSS 2.0 with the published posts, newest first', async () => {
     const res = await SELF.fetch(`https://${HOST}/feed.xml`);
     expect(res.status).toBe(200);
-    expect(res.headers.get('Content-Type')).toContain('application/xml');
+    expect(res.headers.get('Content-Type')).toBe('application/rss+xml;charset=UTF-8');
     expect(res.headers.get('Cache-Control')).toBe('public, max-age=600, s-maxage=3600');
 
     const xml = await res.text();
@@ -23,6 +23,7 @@ describe('GET /atom.xml', () => {
   it('serves Atom 1.0', async () => {
     const res = await SELF.fetch(`https://${HOST}/atom.xml`);
     expect(res.status).toBe(200);
+    expect(res.headers.get('Content-Type')).toBe('application/atom+xml;charset=UTF-8');
     const xml = await res.text();
     expect(xml).toContain('<feed xmlns="http://www.w3.org/2005/Atom">');
     expect(xml).toContain('shipping-a-blog-on-cloudflare-workers');

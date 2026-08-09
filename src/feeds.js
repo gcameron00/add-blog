@@ -15,9 +15,9 @@ function xmlEscape(str) {
   ));
 }
 
-function xml(body) {
+function xml(body, contentType = 'application/xml;charset=UTF-8') {
   return new Response(`<?xml version="1.0" encoding="UTF-8"?>\n${body}`, {
-    headers: { 'Content-Type': 'application/xml;charset=UTF-8', 'Cache-Control': FEED_CACHE_CONTROL },
+    headers: { 'Content-Type': contentType, 'Cache-Control': FEED_CACHE_CONTROL },
   });
 }
 
@@ -54,7 +54,7 @@ async function rss(url, env) {
   <lastBuildDate>${new Date().toUTCString()}</lastBuildDate>
   ${items}
 </channel>
-</rss>`);
+</rss>`, 'application/rss+xml;charset=UTF-8');
 }
 
 async function atom(url, env) {
@@ -88,7 +88,7 @@ async function atom(url, env) {
   <id>${url.origin}/</id>
   <updated>${updated}</updated>
   ${entries}
-</feed>`);
+</feed>`, 'application/atom+xml;charset=UTF-8');
 }
 
 async function sitemap(url, env) {

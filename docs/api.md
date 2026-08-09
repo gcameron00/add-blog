@@ -182,6 +182,7 @@ backs the whole archive page.
 | `GET /sitemap.xml` | Every published permalink plus tag and archive pages |
 | `GET /robots.txt` | Generated; references the sitemap |
 | `GET /media/:key` | R2 object, immutable cache headers |
+| `GET /feed/`, `/feed/rss/`, `/feed/rss2/`, `/feed/rdf/`, `/feed/atom/` | 301 to `/feed.xml` or `/atom.xml` — WordPress migration compatibility, see `src/pages.js`'s `handleWordpressFeedRedirect` |
 
 ---
 

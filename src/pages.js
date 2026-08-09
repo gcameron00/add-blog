@@ -179,3 +179,18 @@ export function handleLegacyPostRedirect(url) {
   if (!slug) return null;
   return Response.redirect(`${url.origin}/posts/${encodeURIComponent(slug)}`, 301);
 }
+
+/**
+ * WordPress's feed paths (/feed/, /feed/rss2/, …) → 301 to add-blog's own
+ * feed URLs, so readers already subscribed via the old WordPress URL follow
+ * the site move automatically — feed readers update their stored URL on a
+ * 301, no subscriber action required.
+ */
+export function handleWordpressFeedRedirect(url) {
+  const path = url.pathname.replace(/\/$/, '') || '/';
+  if (path === '/feed/atom') return Response.redirect(`${url.origin}/atom.xml`, 301);
+  if (['/feed', '/feed/rss', '/feed/rss2', '/feed/rdf'].includes(path)) {
+    return Response.redirect(`${url.origin}/feed.xml`, 301);
+  }
+  return null;
+}

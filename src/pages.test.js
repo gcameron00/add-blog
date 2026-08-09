@@ -70,6 +70,31 @@ describe('GET /post/?slug=… (legacy)', () => {
   });
 });
 
+describe('WordPress feed redirects', () => {
+  it.each([
+    ['/feed/', '/feed.xml'],
+    ['/feed', '/feed.xml'],
+    ['/feed/rss/', '/feed.xml'],
+    ['/feed/rss2/', '/feed.xml'],
+    ['/feed/rdf/', '/feed.xml'],
+    ['/feed/atom/', '/atom.xml'],
+  ])('301s %s to %s', async (path, target) => {
+    const res = await get(path);
+    expect(res.status).toBe(301);
+    expect(res.headers.get('Location')).toBe(`https://${HOST}${target}`);
+  });
+
+  it('does not redirect /comments/feed/ — add-blog has no comments feature', async () => {
+    const res = await get('/comments/feed/');
+    expect(res.status).not.toBe(301);
+  });
+
+  it('does not redirect a near-miss path like /feeds/', async () => {
+    const res = await get('/feeds/');
+    expect(res.status).not.toBe(301);
+  });
+});
+
 describe('site branding — settings.site_title/site_description reach the public pages', () => {
   it('templates the homepage <title>, meta description, og tags, header, and footer from settings', async () => {
     await setSetting('site_title', "Caitlin's Ski Blog");

@@ -42,7 +42,13 @@
  */
 
 import { handlePublicApi } from './public-api.js';
-import { handlePostPage, handleHomePage, handleAboutPage, handleLegacyPostRedirect } from './pages.js';
+import {
+  handlePostPage,
+  handleHomePage,
+  handleAboutPage,
+  handleLegacyPostRedirect,
+  handleWordpressFeedRedirect,
+} from './pages.js';
 import { handleMedia } from './media.js';
 import { handleFeeds } from './feeds.js';
 import { verifyAccessIdentity } from './access.js';
@@ -231,6 +237,7 @@ export default {
         response =
           redirectAdminRoot(url, admin) ||
           handleLegacyPostRedirect(url) ||
+          handleWordpressFeedRedirect(url) ||
           (await handlePostPage(request, url, env)) ||
           (await handleHomePage(request, url, env, admin)) ||
           (await handleAboutPage(request, url, env)) ||

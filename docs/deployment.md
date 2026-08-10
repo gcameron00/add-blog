@@ -329,6 +329,7 @@ turned out to be the CI deploy tool installing an unrelated wrangler version, no
 | A non-owner tries to save settings | 403, form shows an error toast | ✅ |
 | Dashboard tiles (published/draft/scheduled/media/words) | Real counts, not demo numbers | ✅ |
 | Dashboard activity feed | Real entries with a post title per line, newest first | ✅ |
+| `/admin/audit/` page (added 2026-08-10, #12) | Source/Actor/Action filters narrow the list; "Load more" appends the next page; a row with a linked entity (e.g. a post) opens it | not yet exercised in prod |
 
 **Phase 5c, media upload (live for `gcameron`, confirmed working):**
 

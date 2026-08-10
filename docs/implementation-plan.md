@@ -297,6 +297,23 @@ tests. Not yet hands-on verified in production — see docs/deployment.md §6.
   — `assets/js/admin.js` renders `entry.detail` as plain text, unchanged since Phase 1.
 - 15 new tests (122 total).
 
+**Full `/admin/audit/` page, added 2026-08-10 (#12).** `GET /api/admin/audit` above
+already had everything a real page needed — `actor`/`action`/`via` filters,
+`limit`/`offset` — but only the dashboard's 7-row widget ever called it. Added:
+`entity`/`entity_id` in the response (not selected before, since the widget never
+needed them) and a `page` envelope (`limit`/`offset`/`total`/`has_more`, same shape
+`listAdminPosts` already uses) for a real "Load more" instead of a fixed cap. New
+`admin/audit/index.html` + `initAudit()` (`assets/js/admin.js`) — Source segmented
+filter (`ui`/`mcp`/`cron`/`import`), Actor and Action `<select>`s (Actor from
+`GET /api/admin/authors`; Action from a hardcoded ~21-entry list grouped by resource —
+MCP's own ~13 audit actions deliberately left out of that dropdown since Source→MCP
+already isolates them). Each row now links back to the actual resource when one exists
+(`entityHref` — posts to the editor via `?id=`, everything else to its list page,
+nothing for `settings` since there's no per-row target). `auditRow` is shared with the
+dashboard widget, which gained the same entity links for free. 4 new tests
+(`src/admin-dashboard.test.js`, 291 total across the whole suite). Not yet hands-on
+verified in production.
+
 **Follow-up UI cleanup (2026-07-28), once 5a/5b were confirmed live.** Two pieces of
 Phase 1/4 UI copy had gone stale now that real data backs them:
 - The dashboard's "Access-controlled; still a read-only prototype" callout

@@ -301,7 +301,7 @@ rather than a guess.
 | `POST` | `/authors` | Create by email (owner only) — the row Access identities map onto; no email is sent |
 | `PATCH` | `/authors/:id` | Update name, email, role, or `disabled` (owner only) |
 | `DELETE` | `/authors/:id` | Remove (owner only); their posts are reassigned to whoever performed the delete |
-| `GET` | `/audit` | Audit log, newest first, filterable by `actor`, `action`, `via` |
+| `GET` | `/audit` | Audit log, newest first, filterable by `actor`, `action`, `via`, paginated (`limit`/`offset`, `page` envelope). Each entry includes `entity`/`entity_id` (added for the full `/admin/audit/` page, #12) |
 | `GET` | `/stats` | Dashboard counters: posts by status, views, recent activity |
 | `POST` | `/export` | Full content export to R2 as JSON; returns a short-lived link |
 | `POST` | `/import` | Import from an export bundle or a Markdown/front-matter archive |

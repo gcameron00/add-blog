@@ -923,6 +923,27 @@ export function getActivity(limit = 8) {
   );
 }
 
+/** The full, filterable/paginated audit log (#12) — getActivity above stays as the dashboard widget's simpler 7-row call, unchanged. */
+export function getAudit({ actor, action, via, limit = 20, offset = 0 } = {}) {
+  return withFallback(
+    () => call('/admin/audit', { query: { actor, action, via, limit, offset } }),
+    async () => {
+      await delay(60);
+      const filtered = getStore().activity.filter(
+        (entry) =>
+          (!actor || entry.actor === actor) &&
+          (!action || entry.action === action) &&
+          (!via || entry.via === via)
+      );
+      const total = filtered.length;
+      return {
+        data: filtered.slice(offset, offset + limit),
+        page: { limit, offset, total, has_more: offset + limit < total },
+      };
+    }
+  );
+}
+
 export function previewMarkdown(bodyMd) {
   // Rendered locally on purpose: the preview must stay responsive per keystroke.
   // Phase 5 adds POST /api/admin/preview for a server-authoritative render on save.

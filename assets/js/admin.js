@@ -20,6 +20,7 @@ import {
 
 const NAV = [
   { href: '/admin/', label: 'Dashboard', icon: 'home' },
+  { href: '/admin/audit/', label: 'Activity', icon: 'clock' },
   { href: '/admin/posts/', label: 'Posts', icon: 'file' },
   { href: '/admin/tags/', label: 'Tags', icon: 'tag' },
   { href: '/admin/media/', label: 'Media', icon: 'image' },
@@ -296,20 +297,134 @@ async function initDashboard() {
 
   try {
     const { data } = await api.getActivity(7);
-    clear(activityHost).append(
-      el('ul', { class: 'activity' }, data.map((entry) =>
-        el('li', {}, [
-          el('code', { text: entry.action }),
-          el('span', { text: entry.detail }),
-          entry.actor ? el('span', { class: 'small muted', text: entry.actor }) : null,
-          entry.via === 'mcp' ? el('span', { class: 'badge badge--mcp', text: 'mcp' }) : null,
-          timeEl(entry.at, { relative: true }),
-        ])
-      ))
-    );
+    clear(activityHost).append(el('ul', { class: 'activity' }, data.map(auditRow)));
   } catch (error) {
     renderError(activityHost, error, initDashboard);
   }
+}
+
+/* --- Activity / audit log page (#12) ---------------------------------------
+ * The dashboard's Activity widget above is this same shape, capped at 7 rows
+ * with no filters — GET /api/admin/audit already supported actor/action/via
+ * filters and limit/offset pagination server-side well before this page
+ * existed to use them (Phase 5b). auditRow is shared by both.
+ */
+
+// MCP's own audit actions (mcp.create_post, mcp.list_posts, …) are left out
+// of this dropdown — the Source filter's "MCP" option already isolates
+// them, and folding in all ~13 alongside these ~21 would make a single flat
+// list unwieldy for what's fundamentally a small filter control.
+const AUDIT_ACTIONS = [
+  ['Posts', ['post.create', 'post.update', 'post.publish', 'post.unpublish', 'post.schedule', 'post.duplicate', 'post.restore', 'post.unarchive', 'post.delete', 'post.delete_hard']],
+  ['Tags', ['tag.create', 'tag.update', 'tag.delete', 'tag.merge']],
+  ['Media', ['media.upload', 'media.update', 'media.delete']],
+  ['Authors', ['author.create', 'author.update', 'author.delete']],
+  ['Settings', ['settings.update']],
+];
+
+/** Where an entry's `entity`/`entity_id` (added alongside this page — src/admin-dashboard.js) actually leads. Only posts get a deep link (the editor takes `?id=`); the rest link to their list page since there's no per-row anchor there. */
+function entityHref(entity, entityId) {
+  if (!entityId) return null;
+  if (entity === 'post') return `/admin/editor/?id=${encodeURIComponent(entityId)}`;
+  if (entity === 'author') return '/admin/authors/';
+  if (entity === 'tag') return '/admin/tags/';
+  if (entity === 'media') return '/admin/media/';
+  return null;
+}
+
+function auditRow(entry) {
+  const href = entityHref(entry.entity, entry.entity_id);
+  return el('li', {}, [
+    el('code', { text: entry.action }),
+    href
+      ? el('a', { href, text: entry.detail || entry.action })
+      : el('span', { text: entry.detail || '—' }),
+    entry.actor ? el('span', { class: 'small muted', text: entry.actor }) : null,
+    entry.via === 'mcp' ? el('span', { class: 'badge badge--mcp', text: 'mcp' }) : null,
+    timeEl(entry.at, { relative: true }),
+  ]);
+}
+
+async function initAudit() {
+  const host = document.querySelector('[data-audit]');
+  const viaFilter = document.querySelector('[data-via-filter]');
+  const actorSelect = document.querySelector('[data-actor-filter]');
+  const actionSelect = document.querySelector('[data-action-filter]');
+  const more = document.querySelector('[data-load-more]');
+  const PAGE_SIZE = 30;
+
+  const state = { via: '', actor: '', action: '', offset: 0 };
+
+  for (const [group, actions] of AUDIT_ACTIONS) {
+    const optgroup = el('optgroup', { label: group });
+    for (const action of actions) optgroup.append(el('option', { value: action, text: action }));
+    actionSelect?.append(optgroup);
+  }
+
+  try {
+    const { data } = await api.adminListAuthors();
+    for (const author of data) {
+      actorSelect?.append(el('option', { value: author.email, text: `${author.name} <${author.email}>` }));
+    }
+  } catch {
+    // Page still works with just the Source/Action filters if authors can't be fetched.
+  }
+
+  function paintViaFilter() {
+    if (!viaFilter) return;
+    for (const button of viaFilter.querySelectorAll('button')) {
+      button.setAttribute('aria-pressed', String(button.dataset.via === state.via));
+    }
+  }
+
+  async function load({ append = false } = {}) {
+    if (!append) state.offset = 0;
+    host.setAttribute('aria-busy', 'true');
+    try {
+      const { data, page } = await api.getAudit({
+        actor: state.actor || undefined,
+        action: state.action || undefined,
+        via: state.via || undefined,
+        limit: PAGE_SIZE,
+        offset: state.offset,
+      });
+
+      if (!append) clear(host);
+
+      if (!data.length && !append) {
+        renderEmpty(host, { title: 'No activity matches these filters' });
+        if (more) more.hidden = true;
+        return;
+      }
+
+      let list = host.querySelector('ul.activity');
+      if (!list) {
+        list = el('ul', { class: 'activity' });
+        host.append(list);
+      }
+      for (const entry of data) list.append(auditRow(entry));
+
+      state.offset += data.length;
+      if (more) more.hidden = !page.has_more;
+    } catch (error) {
+      renderError(host, error, load);
+    } finally {
+      host.removeAttribute('aria-busy');
+    }
+  }
+
+  viaFilter?.addEventListener('click', (event) => {
+    const button = event.target.closest('button[data-via]');
+    if (!button) return;
+    state.via = button.dataset.via;
+    paintViaFilter();
+    load();
+  });
+  actorSelect?.addEventListener('change', () => { state.actor = actorSelect.value; load(); });
+  actionSelect?.addEventListener('change', () => { state.action = actionSelect.value; load(); });
+  more?.addEventListener('click', () => load({ append: true }));
+
+  load();
 }
 
 /* --- Posts table ---------------------------------------------------------- */
@@ -1428,6 +1543,7 @@ async function initImport() {
 
 const PAGES = {
   dashboard: initDashboard,
+  audit: initAudit,
   posts: initPosts,
   tags: initTags,
   media: initMedia,

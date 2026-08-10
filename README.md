@@ -119,6 +119,7 @@ with D1 keeping the metadata row that points at each R2 object.
 ├── 404.html                   Not-found page
 ├── admin/
 │   ├── index.html             Dashboard
+│   ├── audit/index.html       Full activity log — filters, pagination (#12)
 │   ├── posts/index.html       Post list, filters, delete/restore, bulk actions
 │   ├── editor/index.html      Markdown editor with live preview
 │   ├── tags/index.html        Tag list — rename, delete, merge

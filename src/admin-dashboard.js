@@ -82,10 +82,17 @@ async function auditHandler(url, env) {
   const offset = Math.max(0, Number(q.get('offset')) || 0);
   const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
 
-  const { results } = await env.DB
-    .prepare(`SELECT actor, via, action, detail, created_at FROM audit_log ${whereSql} ORDER BY created_at DESC LIMIT ? OFFSET ?`)
-    .bind(...params, limit, offset)
-    .all();
+  // `entity`/`entity_id` weren't selected before #12 — the dashboard's 7-row
+  // widget never needed them, but the full /admin/audit/ page links a row
+  // back to the actual post/tag/author/etc they're about, same idea as
+  // `listAdminPosts`'s `page` envelope (src/admin-db.js) for "Load more".
+  const [{ total }, { results }] = await Promise.all([
+    env.DB.prepare(`SELECT COUNT(*) AS total FROM audit_log ${whereSql}`).bind(...params).first().then((r) => r || { total: 0 }),
+    env.DB
+      .prepare(`SELECT actor, via, action, entity, entity_id, detail, created_at FROM audit_log ${whereSql} ORDER BY created_at DESC LIMIT ? OFFSET ?`)
+      .bind(...params, limit, offset)
+      .all(),
+  ]);
 
   return Response.json({
     data: results.map((row) => ({
@@ -93,8 +100,11 @@ async function auditHandler(url, env) {
       actor: row.actor,
       via: row.via,
       action: row.action,
+      entity: row.entity,
+      entity_id: row.entity_id,
       detail: summariseDetail(row.detail),
     })),
+    page: { limit, offset, total, has_more: offset + results.length < total },
   });
 }
 

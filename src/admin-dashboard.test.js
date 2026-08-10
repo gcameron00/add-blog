@@ -116,6 +116,27 @@ describe('GET /api/admin/audit', () => {
     expect(data.every((e) => e.actor === 'ada@mysite.com')).toBe(true);
   });
 
+  it('includes entity/entity_id so the full audit page (#12) can link back to the actual resource', async () => {
+    const owner = await identityFor('grant@mysite.com');
+    const post = await createPost(owner, { title: 'Linkable post' });
+
+    const { data } = await (await callDashboard(owner, '/api/admin/audit?action=post.create&limit=50')).json();
+    const entry = data.find((e) => e.entity_id === post.id);
+    expect(entry).toBeTruthy();
+    expect(entry.entity).toBe('post');
+  });
+
+  it('returns a page envelope with a real total, for "Load more" (#12)', async () => {
+    const owner = await identityFor('grant@mysite.com');
+    for (let i = 0; i < 3; i++) await createPost(owner, { title: `Paged post ${i}` });
+
+    const { page } = await (await callDashboard(owner, '/api/admin/audit?action=post.create&limit=2')).json();
+    expect(page.limit).toBe(2);
+    expect(page.offset).toBe(0);
+    expect(page.total).toBeGreaterThanOrEqual(3);
+    expect(page.has_more).toBe(true);
+  });
+
   it('summarises a fields-only update (author.update) by the target account rather than leaving it blank', async () => {
     const owner = await identityFor('grant@mysite.com');
     const created = await (

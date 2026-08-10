@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light dark" />
+    <script src="/assets/js/theme-init.js"></script>
+    <meta name="robots" content="noindex, nofollow" />
+    <title>Activity — add-blog admin</title>
+    <link rel="icon" href="/assets/favicon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="/assets/css/styles.css" />
+    <link rel="stylesheet" href="/assets/css/admin.css" />
+    <script type="module" src="/assets/js/admin.js"></script>
+  </head>
+  <body class="admin" data-page="audit">
+    <a class="skip-link" href="#main">Skip to content</a>
+
+    <div class="admin-layout">
+      <aside class="admin-sidebar" data-sidebar></aside>
+
+      <main class="admin-main" id="main" data-demo-slot>
+        <div class="admin-header">
+          <div>
+            <h1>Activity</h1>
+            <p>Every write, who made it, and whether it came from the UI or MCP.</p>
+          </div>
+          <div class="admin-header__actions">
+            <button class="btn" type="button" data-theme-toggle aria-label="Toggle theme"></button>
+          </div>
+        </div>
+
+        <div class="card card--flush">
+          <div class="filters">
+            <div class="segmented" role="group" aria-label="Filter by source" data-via-filter>
+              <button type="button" data-via="" aria-pressed="true">All sources</button>
+              <button type="button" data-via="ui" aria-pressed="false">UI</button>
+              <button type="button" data-via="mcp" aria-pressed="false">MCP</button>
+              <button type="button" data-via="cron" aria-pressed="false">Cron</button>
+              <button type="button" data-via="import" aria-pressed="false">Import</button>
+            </div>
+
+            <label class="visually-hidden" for="audit-actor">Filter by actor</label>
+            <select id="audit-actor" data-actor-filter>
+              <option value="">All authors</option>
+            </select>
+
+            <label class="visually-hidden" for="audit-action">Filter by action</label>
+            <select id="audit-action" data-action-filter>
+              <option value="">All actions</option>
+            </select>
+          </div>
+
+          <div data-audit aria-live="polite"></div>
+
+          <div class="pagination" style="padding: var(--sp-4) var(--sp-5)">
+            <button class="btn" type="button" data-load-more hidden>Load more</button>
+          </div>
+        </div>
+      </main>
+    </div>
+  </body>
+</html>

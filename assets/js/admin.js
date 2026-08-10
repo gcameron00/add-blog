@@ -18,16 +18,31 @@ import {
 
 /* --- Shell ---------------------------------------------------------------- */
 
+// Grouped sections (#17) — the first has no `label`, so it renders as a bare,
+// pinned link above every section rather than under a heading. Activity has
+// no entry here at all: it's reachable from the Dashboard's "complete
+// activity log" link instead (#12) rather than taking up its own row — the
+// page itself (admin/audit/index.html, initAudit below) is unchanged, only
+// this sidebar shortcut to it is gone.
 const NAV = [
-  { href: '/admin/', label: 'Dashboard', icon: 'home' },
-  { href: '/admin/audit/', label: 'Activity', icon: 'clock' },
-  { href: '/admin/posts/', label: 'Posts', icon: 'file' },
-  { href: '/admin/tags/', label: 'Tags', icon: 'tag' },
-  { href: '/admin/media/', label: 'Media', icon: 'image' },
-  { href: '/admin/mcp/', label: 'MCP access', icon: 'plug' },
-  { href: '/admin/authors/', label: 'Authors', icon: 'users' },
-  { href: '/admin/import/', label: 'Import', icon: 'inbox' },
-  { href: '/admin/settings/', label: 'Settings', icon: 'gear' },
+  { items: [{ href: '/admin/', label: 'Dashboard', icon: 'home' }] },
+  {
+    label: 'Content',
+    items: [
+      { href: '/admin/posts/', label: 'Posts', icon: 'file' },
+      { href: '/admin/tags/', label: 'Tags', icon: 'tag' },
+      { href: '/admin/media/', label: 'Media', icon: 'image' },
+    ],
+  },
+  {
+    label: 'Manage',
+    items: [
+      { href: '/admin/mcp/', label: 'MCP access', icon: 'plug' },
+      { href: '/admin/authors/', label: 'Authors', icon: 'users' },
+      { href: '/admin/import/', label: 'Import', icon: 'inbox' },
+      { href: '/admin/settings/', label: 'Settings', icon: 'gear' },
+    ],
+  },
 ];
 
 async function renderSidebar() {
@@ -78,10 +93,12 @@ async function renderSidebar() {
   const header = el('div', { class: 'admin-sidebar__header' }, [brand, sidebarToggle]);
 
   const nav = el('nav', { class: 'admin-nav', 'aria-label': 'Admin' }, [
-    el('div', { class: 'admin-nav__label', text: 'Manage' }),
-    ...NAV.map((item) =>
-      el('a', { href: item.href, title: item.label }, [icon(item.icon), el('span', { text: item.label })])
-    ),
+    ...NAV.flatMap((section) => [
+      section.label ? el('div', { class: 'admin-nav__label', text: section.label }) : null,
+      ...section.items.map((item) =>
+        el('a', { href: item.href, title: item.label }, [icon(item.icon), el('span', { text: item.label })])
+      ),
+    ]),
     el('div', { class: 'admin-nav__label', text: 'Public site' }),
     el('a', { href: publicUrl, target: '_blank', rel: 'noopener', title: 'View blog' }, [
       icon('external'), el('span', { text: 'View blog' }),

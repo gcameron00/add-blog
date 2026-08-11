@@ -72,6 +72,7 @@ body.admin {
 }
 .admin-brand:hover { text-decoration: none; color: var(--text); }
 .admin-brand svg { width: 1.4rem; height: 1.4rem; color: var(--accent); flex: none; }
+.admin-brand img { width: 1.4rem; height: 1.4rem; border-radius: var(--radius-sm); object-fit: cover; flex: none; }
 .admin-brand small {
   display: block;
   font-size: var(--text-xs);
@@ -655,6 +656,19 @@ body.admin {
   margin-bottom: var(--sp-3);
 }
 .cover-preview img { width: 100%; height: 100%; object-fit: cover; }
+
+.icon-preview {
+  width: 4rem;
+  aspect-ratio: 1 / 1;
+  border-radius: var(--radius);
+  overflow: hidden;
+  background: var(--bg-inset);
+  display: grid;
+  place-items: center;
+  color: var(--text-faint);
+  font-size: var(--text-xs);
+}
+.icon-preview img { width: 100%; height: 100%; object-fit: cover; }
 
 /* --- Activity ------------------------------------------------------------- */
 

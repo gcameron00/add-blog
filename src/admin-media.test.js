@@ -250,6 +250,21 @@ describe('DELETE /api/admin/media/:key', () => {
     expect(await env.MEDIA.get(key)).toBeTruthy(); // not deleted
   });
 
+  it('409s deleting a file referenced by settings.site_icon_key (#15), without force', async () => {
+    const uploaded = await (await upload(owner, { file: pngFile('icon-guarded.png'), alt: 'x' })).json();
+    const key = uploaded.data.key;
+    await env.DB.prepare(`UPDATE settings SET value = ? WHERE key = 'site_icon_key'`).bind(JSON.stringify(key)).run();
+
+    const res = await callMedia(owner, jsonReq('DELETE', `/api/admin/media/${encodeURIComponent(key)}`));
+    expect(res.status).toBe(409);
+    const { error } = await res.json();
+    expect(error.detail.referencing_settings).toEqual(['site_icon_key']);
+    expect(await env.MEDIA.get(key)).toBeTruthy(); // not deleted
+
+    const listed = await (await callMedia(owner, jsonReq('GET', '/api/admin/media'))).json();
+    expect(listed.data.find((m) => m.key === key).used_by).toBe(1);
+  });
+
   it('force=true deletes despite being referenced', async () => {
     const uploaded = await (await upload(owner, { file: pngFile('force-deletable.png'), alt: 'x' })).json();
     const key = uploaded.data.key;

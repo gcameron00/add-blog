@@ -26,6 +26,7 @@ import {
   insertMedia,
   listAdminMedia,
   listPostsReferencingMedia,
+  listSettingsReferencingMedia,
   updateMediaRow,
 } from './admin-db.js';
 import { apiError, readJsonBody, requirePermission, requireSameOrigin, withErrors } from './admin-http.js';
@@ -49,7 +50,8 @@ export const ALLOWED_TYPES = new Set([
 // same shape a human sees in the admin media library, so an agent and an
 // editor are never looking at two different ideas of what a media row is.
 export async function mapMedia(db, row) {
-  const usedBy = (await listPostsReferencingMedia(db, row.key)).length;
+  const [posts, settings] = await Promise.all([listPostsReferencingMedia(db, row.key), listSettingsReferencingMedia(db, row.key)]);
+  const usedBy = posts.length + settings.length;
   return {
     key: row.key,
     url: `/media/${row.key}`,
@@ -176,11 +178,17 @@ async function deleteHandler(url, env, identity, key) {
   const media = await getMediaByKey(env.DB, key);
   if (!media) return apiError(404, 'not_found', 'Not found.');
 
-  const referencing = await listPostsReferencingMedia(env.DB, key);
+  const [referencing, referencingSettings] = await Promise.all([
+    listPostsReferencingMedia(env.DB, key),
+    listSettingsReferencingMedia(env.DB, key),
+  ]);
   const force = url.searchParams.get('force') === 'true';
-  if (referencing.length && !force) {
-    return apiError(409, 'conflict', 'This file is used by a post. Remove it from the post first, or pass ?force=true.', {
-      detail: { referencing },
+  if ((referencing.length || referencingSettings.length) && !force) {
+    const parts = [];
+    if (referencing.length) parts.push(`${referencing.length} post${referencing.length === 1 ? '' : 's'}`);
+    if (referencingSettings.length) parts.push(`site settings (${referencingSettings.join(', ')})`);
+    return apiError(409, 'conflict', `This file is used by ${parts.join(' and ')}. Remove it there first, or pass ?force=true.`, {
+      detail: { referencing, referencing_settings: referencingSettings },
     });
   }
 
@@ -188,7 +196,7 @@ async function deleteHandler(url, env, identity, key) {
   await deleteMediaRow(env.DB, key);
   await writeAuditLog(env.DB, {
     actor: identity.email, via: 'ui', action: 'media.delete', entity: 'media', entityId: key,
-    detail: { filename: media.filename, forced: referencing.length > 0 },
+    detail: { filename: media.filename, forced: referencing.length > 0 || referencingSettings.length > 0 },
   });
 
   return Response.json({ data: { key } });

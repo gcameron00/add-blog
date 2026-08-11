@@ -341,6 +341,8 @@ turned out to be the CI deploy tool installing an unrelated wrangler version, no
 | Delete a file used as a post's cover | `409`, refused, with the referencing post(s) named | not yet exercised in prod |
 | Delete an unused file | Removed from both R2 and the library listing | not yet exercised in prod |
 | "Copy URL" on a real (non-demo) item | Copies `/media/<key>` — this used to be broken (missing `/media/`) before this pass fixed the `key`/`url` shape | not yet exercised in prod |
+| Delete a file set as the brand icon (added 2026-08-10, #15) | `409`, refused, naming `site_icon_key` | not yet exercised in prod |
+| Set a brand icon in Settings, save | Favicon and header mark change on the public site and in this admin, on both, within the cache window | not yet exercised in prod |
 
 **Phase 5d, tags (deployed for `gcameron` since 2026-07-28 — not yet hands-on
 verified):**

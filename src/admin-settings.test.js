@@ -37,6 +37,7 @@ describe('GET /api/admin/settings', () => {
     expect(typeof data.allow_raw_html).toBe('boolean');
     expect(data.social_image_key).toBeNull();
     expect(data.admin_url).toContain('blog-admin');
+    expect(data.site_icon_key).toBeNull();
   });
 });
 
@@ -59,6 +60,14 @@ describe('PUT /api/admin/settings', () => {
     const { data } = await (await call(owner, 'GET')).json();
     expect(data.social_image_key).toBeNull(); // still present, not dropped
     expect(data.admin_url).toBeTruthy();
+  });
+
+  it('accepts site_icon_key (#15) and persists it', async () => {
+    const owner = await identityFor('grant@mysite.com');
+    const res = await call(owner, 'PUT', { body: { site_icon_key: '2026/08/abc123-icon.png' } });
+    expect(res.status).toBe(200);
+    const { data } = await res.json();
+    expect(data.site_icon_key).toBe('2026/08/abc123-icon.png');
   });
 
   it('rejects an unknown key with a field-tagged 400', async () => {

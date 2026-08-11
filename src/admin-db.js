@@ -374,6 +374,22 @@ export async function listPostsReferencingMedia(db, key) {
   return results;
 }
 
+// Settings keys that store a media R2 key (#15's site_icon_key, and
+// social_image_key which already existed but had this same gap) — kept as
+// one list so a future settings-driven image field only needs adding here,
+// not touching every media-delete-guard call site.
+const MEDIA_SETTINGS_KEYS = ['site_icon_key', 'social_image_key'];
+
+/** Which of MEDIA_SETTINGS_KEYS currently point at this media key — settings.value is JSON-encoded, so a string value is stored quoted. */
+export async function listSettingsReferencingMedia(db, key) {
+  const placeholders = MEDIA_SETTINGS_KEYS.map(() => '?').join(', ');
+  const { results } = await db
+    .prepare(`SELECT key FROM settings WHERE key IN (${placeholders}) AND value = ?`)
+    .bind(...MEDIA_SETTINGS_KEYS, JSON.stringify(key))
+    .all();
+  return results.map((row) => row.key);
+}
+
 /**
  * `unused=true` needs a per-row reference count that isn't cheap to express
  * as one WHERE clause (cover_key equality vs. a body_md substring search are
@@ -401,7 +417,13 @@ export async function listAdminMedia(db, { q, type, unused, limit = 50, offset =
     .all();
 
   const withUsage = await Promise.all(
-    results.map(async (row) => ({ ...row, used_by: (await listPostsReferencingMedia(db, row.key)).length }))
+    results.map(async (row) => {
+      const [posts, settings] = await Promise.all([
+        listPostsReferencingMedia(db, row.key),
+        listSettingsReferencingMedia(db, row.key),
+      ]);
+      return { ...row, used_by: posts.length + settings.length };
+    })
   );
   const filtered = unused ? withUsage.filter((row) => row.used_by === 0) : withUsage;
 

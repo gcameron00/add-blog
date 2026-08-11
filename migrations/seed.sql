@@ -446,3 +446,4 @@ INSERT OR IGNORE INTO settings (key, value, updated_at) VALUES ('allow_raw_html'
 INSERT OR IGNORE INTO settings (key, value, updated_at) VALUES ('feed_full_content', 'false', '2026-07-26T18:01:44Z');
 INSERT OR IGNORE INTO settings (key, value, updated_at) VALUES ('analytics_enabled', 'true', '2026-07-26T18:01:44Z');
 INSERT OR IGNORE INTO settings (key, value, updated_at) VALUES ('social_image_key', 'null', '2026-07-26T18:01:44Z');
+INSERT OR IGNORE INTO settings (key, value, updated_at) VALUES ('site_icon_key', 'null', '2026-07-26T18:01:44Z');

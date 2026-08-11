@@ -22,7 +22,8 @@ import { purgeBrandedPages } from './cache-purge.js';
 // render — the only ones where a stale edge-cached page is visibly wrong.
 // nav_config renders on every public page (header+footer); about_content is
 // /about/'s body — both edited here, so both belong in this set too.
-const BRANDING_KEYS = new Set(['site_title', 'site_description', 'admin_url', 'nav_config', 'about_content']);
+// site_icon_key (#15) brands the favicon and header mark the same way.
+const BRANDING_KEYS = new Set(['site_title', 'site_description', 'admin_url', 'nav_config', 'about_content', 'site_icon_key']);
 
 // Exported so src/mcp-tools.js's `update_site_settings` validates against
 // the exact same allow-list — one list, not two that can drift apart.
@@ -38,6 +39,7 @@ export const KNOWN_KEYS = new Set([
   'feed_full_content',
   'analytics_enabled',
   'social_image_key',
+  'site_icon_key',
   // Phase 6 — the source `blog://style-guide` reads from (docs/mcp.md). A
   // settings key, not new schema: it's owner-managed the same way every
   // other value here is, just consumed by an MCP resource instead of a

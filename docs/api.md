@@ -315,11 +315,22 @@ deleting your own row is rejected the same way regardless of how many other owne
 exist; only another owner can do either to you.
 
 Settings keys: `site_title`, `site_description`, `site_url`, `admin_url`, `base_path`,
-`timezone`, `posts_per_page`, `allow_raw_html`, `social_image_key`,
+`timezone`, `posts_per_page`, `allow_raw_html`, `social_image_key`, `site_icon_key`,
 `analytics_enabled`, `feed_full_content`. `PUT` only touches keys present in the
 request body — not a literal full-replace — since the settings form only submits the
 keys it has inputs for; a stricter reading would silently drop `social_image_key`
 (the one seeded key with no form field) on every save.
+
+`site_icon_key` is an R2 media key, same shape as a post's `cover_key` — set via
+admin/settings/index.html's "Brand icon" field (the same library picker the editor's
+cover image uses), not a direct upload of its own. `src/site-template.js`'s
+`applySiteBranding` swaps it into the favicon `<link>` and the header's inline mark on
+every public page; `assets/js/admin.js`'s `renderSidebar` does the same client-side for
+the admin shell, which isn't server-templated (see architecture.md §2's 2026-08-01
+note). Falls back to the static `assets/favicon.svg`/inline SVG mark when unset. SVG
+uploads aren't accepted (see "Uploads" below), so this is raster-only in practice.
+Deleting a media item referenced by `site_icon_key` (or `social_image_key`) is guarded
+the same way a post's `cover_key` is — `409 conflict` without `?force=true`.
 
 `site_title` and `site_description` aren't admin-only values — `src/site-template.js`
 templates them onto every public page (see [architecture.md](architecture.md) §2's

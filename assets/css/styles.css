@@ -272,6 +272,7 @@ hr { border: 0; border-top: 1px solid var(--border); margin: var(--sp-6) 0; }
 }
 .brand:hover { color: var(--text); text-decoration: none; }
 .brand svg { width: 1.5rem; height: 1.5rem; }
+.brand-mark { width: 1.5rem; height: 1.5rem; border-radius: var(--radius-sm); object-fit: cover; flex: none; }
 
 .site-nav {
   display: flex;

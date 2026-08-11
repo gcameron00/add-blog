@@ -92,6 +92,24 @@ export function applySiteBranding(html, settings) {
   const title = settings.site_title || DEFAULT_TITLE;
   let out = html.split(DEFAULT_TITLE).join(escapeHtml(title));
 
+  // #15 — settings.site_icon_key is an R2 media key (admin/settings/index.html's
+  // "Brand icon" field, same picker the editor's cover image uses), swapped
+  // into the favicon <link> and the header's inline checkmark mark. Left
+  // alone — exactly today's static favicon.svg and inline SVG — when unset,
+  // same non-regressive fallback every other settings-driven bit of
+  // branding here already uses.
+  if (settings.site_icon_key) {
+    const iconUrl = `/media/${settings.site_icon_key}`;
+    out = out.replace(
+      '<link rel="icon" href="/assets/favicon.svg" type="image/svg+xml" />',
+      `<link rel="icon" href="${escapeHtml(iconUrl)}" />`
+    );
+    out = out.replace(
+      /<svg viewBox="0 0 32 32" aria-hidden="true"[\s\S]*?<\/svg>/,
+      `<img class="brand-mark" src="${escapeHtml(iconUrl)}" alt="" width="32" height="32">`
+    );
+  }
+
   // Regenerated from settings before the admin_url rewrite below, so a
   // freshly-emitted literal href="/admin/" still gets rewritten exactly as
   // it does today. 404.html's footer has no Admin link at all (unlike every

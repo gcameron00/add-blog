@@ -543,6 +543,7 @@ export const SETTINGS = {
   feed_full_content: false,
   analytics_enabled: true,
   social_image_key: null,
+  site_icon_key: null,
 };
 
 export const ACTIVITY = [

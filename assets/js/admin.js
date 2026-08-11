@@ -64,10 +64,16 @@ async function renderSidebar() {
   // own applySiteBranding default.
   let publicUrl = '/';
   let siteTitle = 'add-blog';
+  let iconUrl = null;
   try {
     const { data } = await api.getSettings();
     publicUrl = data.site_url || '/';
     siteTitle = data.site_title || siteTitle;
+    // #15 — same settings.site_icon_key applySiteBranding (src/site-template.js)
+    // reads for public pages, applied here client-side instead since this
+    // shell is deliberately JS-rendered, not server-templated (see file-top
+    // comment). Left null (today's generic checkmark/favicon) if unset.
+    if (data.site_icon_key) iconUrl = `/media/${data.site_icon_key}`;
   } catch {
     // Sidebar still has to render even if settings can't be reached.
   }
@@ -77,8 +83,11 @@ async function renderSidebar() {
   // titled e.g. "My add-blog journey" must not get its own title mangled.
   document.title = document.title.replace(/ — add-blog admin$/, ` — ${siteTitle} admin`);
 
+  const faviconLink = document.querySelector('link[rel="icon"]');
+  if (iconUrl && faviconLink) faviconLink.href = iconUrl;
+
   const brand = el('a', { class: 'admin-brand', href: '/admin/', 'aria-label': `${siteTitle} admin` }, [
-    icon('check'),
+    iconUrl ? el('img', { src: iconUrl, alt: '' }) : icon('check'),
     el('div', {}, [el('span', { text: siteTitle }), el('small', { text: 'Admin' })]),
   ]);
 
@@ -672,8 +681,10 @@ async function initMedia() {
                 [TYPE_LABEL(item.content_type),
                  item.width ? `${item.width}×${item.height}` : null,
                  formatBytes(item.size_bytes)].filter(Boolean).join(' · ') }),
-              el('div', { class: 'media-item__meta', text:
-                item.used_by ? `Used in ${item.used_by} post${item.used_by === 1 ? '' : 's'}` : 'Unused' }),
+              // Generic "In use" rather than "Used in N posts" — used_by now also
+              // counts settings references (site_icon_key, social_image_key, #15),
+              // and "N posts" would misdescribe a file that's only the site icon.
+              el('div', { class: 'media-item__meta', text: item.used_by ? 'In use' : 'Unused' }),
               el('div', { class: 'media-item__actions' }, [
                 el('button', {
                   class: 'btn btn--sm btn--ghost', type: 'button', text: 'Copy URL',
@@ -1258,6 +1269,38 @@ async function initSettings() {
     if (!field) continue;
     if (field.type === 'checkbox') field.checked = Boolean(value);
     else field.value = value ?? '';
+  }
+
+  // site_icon_key (#15) rides the generic load/save loop above/below like any
+  // other scalar field (it's just a hidden input) — this only adds the
+  // picker/preview around it, the same pattern editor.js's cover image uses.
+  const iconInput = form.elements.site_icon_key;
+  const iconPreview = form.querySelector('[data-icon-preview]');
+  const iconPick = form.querySelector('[data-icon-pick]');
+  const iconRemove = form.querySelector('[data-icon-remove]');
+
+  function renderIconPreview() {
+    if (!iconPreview) return;
+    clear(iconPreview);
+    if (iconInput.value) {
+      iconPreview.append(el('img', { src: `/media/${iconInput.value}`, alt: '' }));
+    } else {
+      iconPreview.append(el('span', { text: 'Default' }));
+    }
+    if (iconRemove) iconRemove.hidden = !iconInput.value;
+  }
+  if (iconInput) {
+    renderIconPreview();
+    iconPick?.addEventListener('click', () => openMediaPicker({
+      onSelect: (item) => {
+        iconInput.value = item.key;
+        renderIconPreview();
+      },
+    }));
+    iconRemove?.addEventListener('click', () => {
+      iconInput.value = '';
+      renderIconPreview();
+    });
   }
 
   // nav_config isn't a plain form field (see the block comment above

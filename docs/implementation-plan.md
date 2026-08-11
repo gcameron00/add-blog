@@ -396,6 +396,32 @@ Phase 1/4 UI copy had gone stale now that real data backs them:
   existing "Missing alt text" flag — unchanged — is the nudge to fix it afterward via
   "Edit alt", not a blocker before it.
 
+**Custom brand icon, added 2026-08-10 (#15).** New `site_icon_key` setting (an R2
+media key, same shape as `cover_key`), set via a new "Brand icon" field in
+admin/settings/index.html's Identity card — reuses the editor's existing
+`openMediaPicker` rather than any new upload UI. `src/site-template.js`'s
+`applySiteBranding` swaps it into the favicon `<link>` and the header's inline
+checkmark mark on every public page; `assets/js/admin.js`'s `renderSidebar` does the
+same client-side for the admin shell (which isn't server-templated — see
+architecture.md §2's 2026-08-01 note), including the sidebar brand mark and the admin
+`<link rel="icon">`. Both fall back to today's static defaults when unset. Deliberately
+raster-only: the media upload allow-list still excludes `image/svg+xml` (Phase 5c's
+security call, unchanged) — a custom icon needs to be PNG or another allowed type; no
+new resizing was added, so an oversized upload is a UI-copy nudge ("square, e.g.
+512×512"), not an enforced constraint.
+
+**Real gap found and fixed alongside this, not filed separately:** the media
+delete-guard (`listPostsReferencingMedia`) only ever checked `posts.cover_key`/
+`body_md` — a file referenced by a *setting* (this new `site_icon_key`, and the
+already-existing but equally unguarded `social_image_key`) could be deleted with no
+warning, silently leaving the setting pointing at a 404. New
+`listSettingsReferencingMedia` (`src/admin-db.js`) closes this for both keys; the
+`DELETE /api/admin/media/:key` `409` and the media list's usage count
+(`used_by`) now account for settings references the same way they already did for
+posts. The media grid's "Used in N posts" label is now the more accurate generic "In
+use" — it could describe a settings reference, not only a post, once this landed.
+4 new tests. Not yet hands-on verified in production.
+
 **5d — Tags as their own resource. Built, tested, and deployed for `gcameron` since
 2026-07-28 — not yet hands-on verified in production (`src/admin-tags.js`,
 `src/admin-db.js`):**

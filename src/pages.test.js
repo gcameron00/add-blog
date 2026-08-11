@@ -130,6 +130,22 @@ describe('site branding — settings.site_title/site_description reach the publi
     expect(html).toContain('<a href="/admin/">Admin</a>');
   });
 
+  it('swaps the favicon and header mark for settings.site_icon_key (#15)', async () => {
+    await setSetting('site_icon_key', '2026/08/abc123-icon.png');
+    const html = await (await get('/')).text();
+    expect(html).toContain('<link rel="icon" href="/media/2026/08/abc123-icon.png" />');
+    expect(html).toContain('<img class="brand-mark" src="/media/2026/08/abc123-icon.png" alt="" width="32" height="32">');
+    expect(html).not.toContain('/assets/favicon.svg');
+    expect(html).not.toMatch(/<svg viewBox="0 0 32 32"/);
+  });
+
+  it('falls back to the default favicon and inline mark when site_icon_key is empty', async () => {
+    await setSetting('site_icon_key', '');
+    const html = await (await get('/')).text();
+    expect(html).toContain('<link rel="icon" href="/assets/favicon.svg" type="image/svg+xml" />');
+    expect(html).toMatch(/<svg viewBox="0 0 32 32"/);
+  });
+
   it('sets the public caching policy on the templated homepage', async () => {
     const res = await get('/');
     expect(res.headers.get('Cache-Control')).toBe('public, max-age=60, s-maxage=3600, stale-while-revalidate=86400');
@@ -145,11 +161,17 @@ describe('site branding — settings.site_title/site_description reach the publi
   it('brands the archive/tags/about pages without altering their own hero copy or meta description', async () => {
     await setSetting('site_title', 'Caitlin Ski');
     await setSetting('site_description', 'Adventures on snow.');
+    await setSetting('site_icon_key', '2026/08/abc123-icon.png');
     for (const path of ['/archive/', '/tags/', '/about/']) {
       const html = await (await get(path)).text();
       expect(html).toContain('<span>Caitlin Ski</span>');
       expect(html).not.toContain('The add-blog Journal');
       expect(html).not.toContain('Adventures on snow.');
+      // brandStaticAsset (src/index.js) is a separate call site of
+      // applySiteBranding from the homepage/post-permalink one above —
+      // worth its own assertion so a regression there isn't hidden by only
+      // ever testing icon branding through the other path.
+      expect(html).toContain('<link rel="icon" href="/media/2026/08/abc123-icon.png" />');
     }
     expect(await (await get('/archive/')).text()).toContain('<h1>Archive</h1>');
     const archiveHtml = await (await get('/archive/')).text();

@@ -40,7 +40,7 @@ run_worker_first = true
 [env.gcameron]
 name = "gcameron-blog"
 routes = [
-  { pattern = "blog.gcameron.com",       custom_domain = true },
+  { pattern = "gcameron.com",       custom_domain = true },
   { pattern = "blog-admin.gcameron.com", custom_domain = true },
 ]
 
@@ -71,7 +71,7 @@ run_worker_first = true
 
 [env.gcameron.vars]
 ADMIN_HOST = "blog-admin.gcameron.com"
-PUBLIC_HOST = "blog.gcameron.com"
+PUBLIC_HOST = "gcameron.com"
 
 # Phase 4 — Access application over blog-admin.gcameron.com. Non-secret: see
 # docs/deployment.md §5 on why these are plain vars, not `wrangler secret`s.

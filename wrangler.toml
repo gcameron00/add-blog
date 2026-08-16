@@ -130,7 +130,7 @@ PUBLIC_HOST = "blog.laax.ski"
 # Phase 4 — Access application over blog-admin.gcameron.com. Non-secret: see
 # docs/deployment.md §5 on why these are plain vars, not `wrangler secret`s.
 ACCESS_TEAM_DOMAIN = "grahamcameron.cloudflareaccess.com"
-ACCESS_AUD = "1d519becd47d98d3f450013b2124ab97d5ce468452735bd8bfb71f87b5941ca6"
+ACCESS_AUD = "cb105446cef1a7949f764c3f648b3fd4f72ab0dac708c23c3f05e6365b553dcb"
 
 # Phase 5f — sweeps `scheduled` posts to `published` every 5 minutes (src/cron.js).
 # A standing, automatically-firing job — added only after an explicit

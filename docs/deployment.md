@@ -67,6 +67,7 @@ npx wrangler d1 execute gcameron-blog --file=./migrations/0003_audit_via_cron.sq
 npx wrangler d1 execute gcameron-blog --file=./migrations/0004_mcp.sql --remote
 npx wrangler d1 execute gcameron-blog --file=./migrations/0005_audit_via_import.sql --remote
 npx wrangler d1 execute gcameron-blog --file=./migrations/0006_media_source_url.sql --remote
+npx wrangler d1 execute gcameron-blog --file=./migrations/0007_nav_config.sql --remote
 ```
 
 **0003 is a rebuild, not a plain `ALTER TABLE ADD COLUMN` like 0002** — SQLite can't
@@ -79,6 +80,12 @@ column add — worth running it on its own, confirming the row count matches aft
 **0004 (Phase 6, MCP) is additive only** — a new `mcp_sessions` table plus one new
 `settings` row (`style_guide`, empty by default). Nothing existing is touched, so
 there's no row-count check to make afterwards the way 0003 needed one.
+
+**0007 (menu/About-page admin option, #4/#6/#8) is additive only** — two new
+`settings` rows (`nav_config`, `about_content`), seeded so the admin Settings page
+shows real defaults on first load. `resolveNavConfig` merges under its own defaults
+if this row is ever missing, so it's a nicety, not a hard dependency — but a
+brand-new site still needs it applied to get real values instead of the fallback.
 
 This list is the full bootstrap sequence for a brand-new site; for a site that's
 already live (`gcameron`), only run the migration file(s) that haven't been applied
@@ -330,6 +337,7 @@ turned out to be the CI deploy tool installing an unrelated wrangler version, no
 | Dashboard tiles (published/draft/scheduled/media/words) | Real counts, not demo numbers | ✅ |
 | Dashboard activity feed | Real entries with a post title per line, newest first | ✅ |
 | `/admin/audit/` page (added 2026-08-10, #12) | Source/Actor/Action filters narrow the list; "Load more" appends the next page; a row with a linked entity (e.g. a post) opens it | not yet exercised in prod |
+| Menu options and About page (added 2026-08-09, #4/#6/#8) | Header/footer nav items (Posts/Archive/Tags/About/RSS) toggle on/off per Settings; custom links appear where configured; About page content saved in Settings renders on `/about/` | not yet exercised in prod |
 
 **Phase 5c, media upload (live for `gcameron`, confirmed working):**
 

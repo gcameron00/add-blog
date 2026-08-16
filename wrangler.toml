@@ -89,6 +89,60 @@ ACCESS_AUD = "1d519becd47d98d3f450013b2124ab97d5ce468452735bd8bfb71f87b5941ca6"
 [env.gcameron.triggers]
 crons = ["*/5 * * * *"]
 
+# --- laax.ski -------------------------------------------------------
+
+[env.laax-ski]
+name = "laax-ski-blog"
+routes = [
+  { pattern = "blog.laax.ski",       custom_domain = true },
+  { pattern = "blog-admin.laax.ski", custom_domain = true },
+]
+
+# Phase 3 — this site's own D1 database and R2 bucket (never shared with
+# any other site — see the single-tenant decision in implementation-plan.md).
+# Schema and seed applied via the commands in docs/deployment.md §1.
+[[env.laax-ski.d1_databases]]
+binding = "DB"
+database_name = "laax-ski-blog"
+database_id = "73ceef8a-4a19-4d95-a04d-19c6dd0057df"
+
+[[env.laax-ski.r2_buckets]]
+binding = "MEDIA"
+bucket_name = "laax-ski-media"
+
+# Deliberately repeated rather than relied on as inherited from the
+# top-level [assets] above — production kept serving static assets for
+# /admin/* without ever invoking the Worker (confirmed with Development Mode
+# on, so it isn't a caching issue: request never reaches src/index.js's
+# guard at all), which is exactly the symptom of run_worker_first not being
+# active for this environment specifically. Repeating it here removes the
+# question of whether [assets] inherits into [env.NAME] instead of relying
+# on an assumption that didn't hold up against the real deploy.
+[env.laax-ski.assets]
+directory = "."
+binding = "ASSETS"
+run_worker_first = true
+
+[env.laax-ski.vars]
+ADMIN_HOST = "blog-admin.laax.ski"
+PUBLIC_HOST = "blog.laax.ski"
+
+# Phase 4 — Access application over blog-admin.gcameron.com. Non-secret: see
+# docs/deployment.md §5 on why these are plain vars, not `wrangler secret`s.
+ACCESS_TEAM_DOMAIN = "grahamcameron.cloudflareaccess.com"
+ACCESS_AUD = "1d519becd47d98d3f450013b2124ab97d5ce468452735bd8bfb71f87b5941ca6"
+
+# Phase 5f — sweeps `scheduled` posts to `published` every 5 minutes (src/cron.js).
+# A standing, automatically-firing job — added only after an explicit
+# owner conversation, per docs/implementation-plan.md's Phase 5 note.
+# A TOML table header applies to every key that follows until the next one —
+# this one must come after every [env.gcameron.vars] key above, never between
+# them, or those later keys silently join *this* table instead (see git
+# history: that exact mistake briefly took ACCESS_TEAM_DOMAIN/ACCESS_AUD out
+# of vars and disabled the Worker's own Access check in production).
+[env.laax-ski.triggers]
+crons = ["*/5 * * * *"]
+
 # --- caitlincameron.ski -------------------------------------------------------
 
 [env.caitlin-ski]

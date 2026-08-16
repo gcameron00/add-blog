@@ -239,13 +239,22 @@ Protect the admin hostname:
    workable start for a small site.
 6. **Enable Managed OAuth** on the application. This is what lets MCP clients complete
    an OAuth flow against Access without add-blog implementing an OAuth provider.
-   **Allow each MCP client's redirect URI** in Managed OAuth's dynamic-client-
-   registration settings — an unlisted redirect URI is refused at registration, before
-   a login screen ever appears, which is a Cloudflare-side rejection, not anything
-   `/mcp` returns (see [mcp.md](mcp.md)'s Client configuration section for exactly
-   which URI a given client needs and why Claude Code/Desktop don't need this step but
-   claude.ai does).
-7. Copy the **Application Audience (AUD) tag** into `ACCESS_AUD`.
+7. **Allow-list each MCP client's redirect URI**, under this application's Managed
+   OAuth settings → **Allowed redirect URIs**. An unlisted redirect URI is refused at
+   registration, before a login screen ever appears — a Cloudflare-side rejection, not
+   anything `/mcp` returns. This step is required before **any** client that registers
+   with a fixed HTTPS callback can connect; skipping it is the single most common cause
+   of a new MCP connection failing on the first try. Concretely, for claude.ai (web/iOS/
+   desktop app, added via Settings → Connectors → Add custom connector), add:
+   ```
+   https://claude.ai/api/mcp/auth_callback
+   ```
+   Claude Code and Claude Desktop don't need an entry here — their OAuth flow redirects
+   to a local loopback address, which Managed OAuth handles through a separate "allow
+   localhost/loopback clients" setting rather than a fixed URI to allow-list. See
+   [mcp.md](mcp.md)'s Client configuration section for exactly which URI any other
+   client needs.
+8. Copy the **Application Audience (AUD) tag** into `ACCESS_AUD`.
 
 Verify before trusting it:
 

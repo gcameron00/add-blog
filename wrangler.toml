@@ -94,7 +94,7 @@ crons = ["*/5 * * * *"]
 [env.laax-ski]
 name = "laax-ski-blog"
 routes = [
-  { pattern = "blog.laax.ski",       custom_domain = true },
+  { pattern = "laax.ski",       custom_domain = true },
   { pattern = "blog-admin.laax.ski", custom_domain = true },
 ]
 
@@ -125,7 +125,7 @@ run_worker_first = true
 
 [env.laax-ski.vars]
 ADMIN_HOST = "blog-admin.laax.ski"
-PUBLIC_HOST = "blog.laax.ski"
+PUBLIC_HOST = "laax.ski"
 
 # Phase 4 — Access application over blog-admin.gcameron.com. Non-secret: see
 # docs/deployment.md §5 on why these are plain vars, not `wrangler secret`s.

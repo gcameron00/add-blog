@@ -15,7 +15,7 @@
 import { getSettings } from './db.js';
 import { readJsonBody, requirePermission, requireSameOrigin, withErrors } from './admin-http.js';
 import { writeAuditLog } from './audit.js';
-import { ValidationError, validateNavConfig, validateAboutContent } from './validate.js';
+import { ValidationError, validateNavConfig, validateAboutContent, validateCollections } from './validate.js';
 import { purgeBrandedPages } from './cache-purge.js';
 
 // Keys src/site-template.js's applySiteBranding/applyHomeMeta actually
@@ -23,7 +23,10 @@ import { purgeBrandedPages } from './cache-purge.js';
 // nav_config renders on every public page (header+footer); about_content is
 // /about/'s body — both edited here, so both belong in this set too.
 // site_icon_key (#15) brands the favicon and header mark the same way.
-const BRANDING_KEYS = new Set(['site_title', 'site_description', 'admin_url', 'nav_config', 'about_content', 'site_icon_key']);
+// collections (migrations/0008) renders into the header/footer nav
+// (src/site-template.js) same as nav_config, so a change there needs the
+// same purge.
+const BRANDING_KEYS = new Set(['site_title', 'site_description', 'admin_url', 'nav_config', 'about_content', 'site_icon_key', 'collections']);
 
 // Exported so src/mcp-tools.js's `update_site_settings` validates against
 // the exact same allow-list — one list, not two that can drift apart.
@@ -51,6 +54,11 @@ export const KNOWN_KEYS = new Set([
   // settings, still stored the same key/value way as every scalar above.
   'nav_config',
   'about_content',
+  // migrations/0008_collections.sql — the site's custom-content-type
+  // registry (src/collections.js's resolveCollections is what interprets
+  // it). Seeded to '[]' by that migration, same "feature is off until an
+  // owner writes something" posture as nav_config/about_content above.
+  'collections',
 ]);
 
 /**
@@ -65,6 +73,7 @@ export async function writeSettings(db, input) {
 
   if ('nav_config' in input) validateNavConfig(input.nav_config);
   if ('about_content' in input) validateAboutContent(input.about_content);
+  if ('collections' in input) validateCollections(input.collections);
 
   const entries = Object.entries(input);
   if (entries.length) {

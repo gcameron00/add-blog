@@ -154,12 +154,15 @@ CREATE TABLE posts (
   created_at      TEXT NOT NULL,
   updated_at      TEXT NOT NULL,
   published_at    TEXT,                  -- set once, on first publish
-  scheduled_for   TEXT                   -- when status = 'scheduled'
+  scheduled_for   TEXT,                  -- when status = 'scheduled'
+  post_type       TEXT NOT NULL DEFAULT 'post', -- 'post', or a collection's type — migrations/0008
+  type_fields     TEXT                   -- JSON object, NULL for post_type = 'post' — migrations/0008
 );
 
 CREATE INDEX idx_posts_published ON posts(status, published_at DESC);
 CREATE INDEX idx_posts_scheduled ON posts(status, scheduled_for) WHERE status = 'scheduled';
 CREATE INDEX idx_posts_author    ON posts(author_id);
+CREATE INDEX idx_posts_type_published ON posts(post_type, status, published_at DESC); -- migrations/0008
 
 CREATE TABLE tags (
   id    TEXT PRIMARY KEY,
@@ -276,6 +279,32 @@ publishing, so it's queued alongside it, not built.
 **FTS is populated by trigger** on `posts` insert/update/delete. If FTS proves awkward
 on D1, the fallback is `LIKE` over `title` and `excerpt`, which is acceptable at the
 scale a single site's blog operates at.
+
+**Collections (custom content types) overload `posts` rather than adding a parallel
+table.** `post_type` (default `'post'`) and `type_fields` (a JSON object, NULL for
+ordinary posts) are the whole of it — added by `migrations/0008_collections.sql`,
+additive-only, no `CHECK` on `post_type` (see that migration's own comment and
+[deployment.md](deployment.md) §"Rollback" on why: SQLite can't widen a `CHECK` in
+place, and the set of valid `post_type`s is meant to grow per-site as an owner adds
+collections, not per-migration — `src/validate.js`'s `validatePostType` enforces it
+in application code instead, against the site's own collection registry). A
+collection (e.g. `"project"`) is itself just a `settings` row — the `collections` key,
+same key/value mechanism as `nav_config`/`about_content` (migrations/0007) — resolved
+by `src/collections.js`'s `resolveCollections`. The alternative, a `projects` table of
+its own, would need to duplicate `post_tags`, `revisions` and the `posts_fts` triggers
+(or exclude collection items from all three, which is its own maintenance burden) for
+every future content type, when what a "portfolio item" actually wants is nearly
+everything a post already has: a slug, a status/visibility lifecycle, a cover image,
+publish/schedule, revisions, and cache purge on mutation. Every public read that backs
+the blog itself (`src/db.js`'s `listPublishedPosts`, `getPublishedPostBySlug`,
+`relatedPosts`, `listTags`, `getArchive`, `listRecentPosts`, and the sitemap's posts
+leg) filters on `post_type = 'post'` — through one shared helper, not the literal
+string repeated at each call site — so a collection item is invisible to the blog
+exactly the way a `draft` post already is invisible to the public API. Collection
+items get their own parallel read functions, `listPublishedItems`/
+`getPublishedItemBySlug`, filtered by `post_type` instead. See
+[vibecode-migration.md](vibecode-migration.md) for the feature's full design
+rationale and the migration it was built for.
 
 ---
 

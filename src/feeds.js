@@ -6,6 +6,7 @@
 
 import { listRecentPosts, listSitemapEntries, getSettings } from './db.js';
 import { isFeatureEnabled } from './site-template.js';
+import { resolveCollections } from './collections.js';
 
 const FEED_CACHE_CONTROL = 'public, max-age=600, s-maxage=3600';
 
@@ -92,7 +93,9 @@ async function atom(url, env) {
 }
 
 async function sitemap(url, env) {
-  const { posts, tags } = await listSitemapEntries(env.DB);
+  const settings = await getSettings(env.DB);
+  const collections = resolveCollections(settings).filter((c) => c.in_sitemap);
+  const { posts, tags, items } = await listSitemapEntries(env.DB, collections);
 
   // TODO: lists archive/tags/about unconditionally, regardless of
   // nav_config's `enabled` flags — same class of gap as purgeBrandedPages'
@@ -102,11 +105,18 @@ async function sitemap(url, env) {
     `<url><loc>${url.origin}/posts/${encodeURIComponent(p.slug)}</loc><lastmod>${p.updated_at.slice(0, 10)}</lastmod></url>`
   );
   const tagUrls = tags.map((slug) => `<url><loc>${url.origin}/tags/?tag=${encodeURIComponent(slug)}</loc></url>`);
+  // One entry for each in_sitemap collection's own index page, plus one per published item.
+  const collectionIndexUrls = collections.map((c) => `<url><loc>${url.origin}${c.base_path}/</loc></url>`);
+  const itemUrls = items.map((item) =>
+    `<url><loc>${url.origin}${item.base_path}/${encodeURIComponent(item.slug)}</loc><lastmod>${item.updated_at.slice(0, 10)}</lastmod></url>`
+  );
 
   const entries = [
     ...staticUrls.map((path) => `<url><loc>${url.origin}${path}</loc></url>`),
     ...postUrls,
     ...tagUrls,
+    ...collectionIndexUrls,
+    ...itemUrls,
   ].join('\n  ');
 
   return xml(`<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">

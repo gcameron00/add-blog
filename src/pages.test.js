@@ -1,8 +1,23 @@
 import { SELF, env } from 'cloudflare:test';
 import { describe, expect, it } from 'vitest';
+import { handleCollectionIndexPage, handleCollectionItemPage, handleLegacyCollectionRedirect } from './pages.js';
 
 const HOST = 'blog.mysite.com';
 const SLUG = 'shipping-a-blog-on-cloudflare-workers';
+
+const PROJECT_COLLECTION = {
+  type: 'project',
+  label: 'Project',
+  label_plural: 'Projects',
+  base_path: '/portfolio',
+  legacy_path: '/project',
+  index_title: 'Portfolio',
+  layout: 'grid',
+  in_feed: false,
+  in_sitemap: true,
+  nav: { header: true, footer: false },
+  fields: [{ key: 'status', label: 'Status', type: 'enum', options: ['Live'], display: 'badge' }],
+};
 
 async function get(path, init) {
   return SELF.fetch(`https://${HOST}${path}`, { redirect: 'manual', ...init });
@@ -182,5 +197,93 @@ describe('site branding — settings.site_title/site_description reach the publi
     const res = await get('/assets/css/styles.css');
     expect(res.status).toBe(200);
     expect(res.headers.get('Content-Type') || '').not.toContain('text/html');
+  });
+});
+
+describe('handleCollectionIndexPage / handleCollectionItemPage / handleLegacyCollectionRedirect', () => {
+  it('return null for every collection route when settings.collections is empty (the default)', async () => {
+    await setSetting('collections', []);
+    const url = new URL(`https://${HOST}/portfolio/`);
+    const req = new Request(url);
+    expect(await handleCollectionIndexPage(req, url, env)).toBeNull();
+    expect(await handleCollectionItemPage(req, url, env)).toBeNull();
+  });
+
+  it('handleCollectionIndexPage returns null for a path outside every configured collection', async () => {
+    await setSetting('collections', [PROJECT_COLLECTION]);
+    const url = new URL(`https://${HOST}/nope/`);
+    const req = new Request(url);
+    expect(await handleCollectionIndexPage(req, url, env)).toBeNull();
+  });
+
+  it('handleCollectionIndexPage renders the configured collection\'s index page', async () => {
+    await setSetting('collections', [PROJECT_COLLECTION]);
+    const url = new URL(`https://${HOST}/portfolio/`);
+    const req = new Request(url);
+    const res = await handleCollectionIndexPage(req, url, env);
+    expect(res).not.toBeNull();
+    expect(res.status).toBe(200);
+    expect(res.headers.get('Cache-Control')).toBe('public, max-age=60, s-maxage=3600, stale-while-revalidate=86400');
+    const html = await res.text();
+    expect(html).toContain('<h1>Portfolio</h1>');
+  });
+
+  it('src/site-template.js adds a header nav link for a collection with nav.header true', async () => {
+    await setSetting('collections', [PROJECT_COLLECTION]);
+    const html = await (await get('/')).text();
+    expect(html).toMatch(/<nav class="site-nav"[^>]*>[\s\S]*<a href="\/portfolio\/">Projects<\/a>[\s\S]*<\/nav>/);
+  });
+
+  it('omits the collection nav link when nav.header is false', async () => {
+    await setSetting('collections', [{ ...PROJECT_COLLECTION, nav: { header: false, footer: false } }]);
+    const html = await (await get('/')).text();
+    expect(html).not.toContain('href="/portfolio/">Projects');
+  });
+
+  it('handleCollectionItemPage returns null for the collection\'s own index path', async () => {
+    await setSetting('collections', [PROJECT_COLLECTION]);
+    const url = new URL(`https://${HOST}/portfolio/`);
+    const req = new Request(url);
+    expect(await handleCollectionItemPage(req, url, env)).toBeNull();
+  });
+
+  it('handleCollectionItemPage returns null for a path outside every configured collection', async () => {
+    await setSetting('collections', [PROJECT_COLLECTION]);
+    const url = new URL(`https://${HOST}/nope/something`);
+    const req = new Request(url);
+    expect(await handleCollectionItemPage(req, url, env)).toBeNull();
+  });
+
+  it('handleCollectionItemPage 404s a nonexistent item but still returns the page shell', async () => {
+    await setSetting('collections', [PROJECT_COLLECTION]);
+    const url = new URL(`https://${HOST}/portfolio/does-not-exist`);
+    const req = new Request(url);
+    const res = await handleCollectionItemPage(req, url, env);
+    expect(res).not.toBeNull();
+    expect(res.status).toBe(404);
+    expect(res.headers.get('Content-Type')).toContain('text/html');
+  });
+
+  it('handleLegacyCollectionRedirect 301s the query-string legacy form to the canonical <base_path>/<slug>', async () => {
+    await setSetting('collections', [PROJECT_COLLECTION]);
+    const url = new URL(`https://${HOST}/project/?slug=my-project`);
+    const req = new Request(url);
+    const res = await handleLegacyCollectionRedirect(req, url, env);
+    expect(res.status).toBe(301);
+    expect(res.headers.get('Location')).toBe(`https://${HOST}/portfolio/my-project`);
+  });
+
+  it('handleLegacyCollectionRedirect returns null without a ?slug=', async () => {
+    await setSetting('collections', [PROJECT_COLLECTION]);
+    const url = new URL(`https://${HOST}/project/`);
+    const req = new Request(url);
+    expect(await handleLegacyCollectionRedirect(req, url, env)).toBeNull();
+  });
+
+  it('handleLegacyCollectionRedirect returns null for a legacy_path no collection declares', async () => {
+    await setSetting('collections', []);
+    const url = new URL(`https://${HOST}/project/?slug=my-project`);
+    const req = new Request(url);
+    expect(await handleLegacyCollectionRedirect(req, url, env)).toBeNull();
   });
 });

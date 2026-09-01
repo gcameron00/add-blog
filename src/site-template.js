@@ -21,6 +21,7 @@
  * pages stay in sync with one edit instead of six.
  */
 import { escapeHtml } from '../assets/js/markdown.js';
+import { resolveCollections } from './collections.js';
 
 const DEFAULT_TITLE = 'The add-blog Journal';
 
@@ -68,19 +69,29 @@ function navLink(url, name) {
   return `<a href="${escapeHtml(url)}">${escapeHtml(name)}</a>`;
 }
 
-function renderHeaderNav(nav) {
+// Appended after the fixed feature items, before any owner-added custom
+// links — collections are a step up from a custom link (they're real
+// content, backed by their own index page) but still less "built-in" than
+// Posts/Archive/Tags/About/RSS, so they sit between the two in nav order.
+function collectionNavLinks(collections, placement) {
+  return collections.filter((c) => c.nav?.[placement]).map((c) => navLink(`${c.base_path}/`, c.label_plural || c.label));
+}
+
+function renderHeaderNav(nav, collections) {
   const items = FEATURE_ORDER.filter((key) => key === 'posts' || nav.features[key].enabled !== false)
     .filter((key) => nav.features[key].header)
     .map((key) => navLink(FEATURE_HREF[key], FEATURE_LABEL[key]));
+  items.push(...collectionNavLinks(collections, 'header'));
   for (const link of nav.custom_links) {
     if (link.header) items.push(navLink(link.url, link.name));
   }
   return items.join('\n          ');
 }
 
-function renderFooterNav(nav, includeAdmin) {
+function renderFooterNav(nav, collections, includeAdmin) {
   const items = FEATURE_ORDER.filter((key) => key !== 'posts' && nav.features[key].enabled !== false && nav.features[key].footer)
     .map((key) => navLink(FEATURE_HREF[key], FEATURE_LABEL[key]));
+  items.push(...collectionNavLinks(collections, 'footer'));
   for (const link of nav.custom_links) {
     if (link.footer) items.push(navLink(link.url, link.name));
   }
@@ -116,13 +127,14 @@ export function applySiteBranding(html, settings) {
   // other public page) — includeAdmin is read off the *original* shell
   // markup being processed, not hardcoded per route, so that stays true.
   const nav = resolveNavConfig(settings);
+  const collections = resolveCollections(settings);
   out = out.replace(
     /<nav class="site-nav" aria-label="Main">[\s\S]*?<\/nav>/,
-    `<nav class="site-nav" aria-label="Main">\n          ${renderHeaderNav(nav)}\n          <button class="theme-toggle" type="button" data-theme-toggle aria-label="Toggle theme"></button>\n        </nav>`
+    `<nav class="site-nav" aria-label="Main">\n          ${renderHeaderNav(nav, collections)}\n          <button class="theme-toggle" type="button" data-theme-toggle aria-label="Toggle theme"></button>\n        </nav>`
   );
   out = out.replace(/<nav aria-label="Footer">([\s\S]*?)<\/nav>/, (_match, inner) => {
     const includeAdmin = inner.includes('href="/admin/"');
-    return `<nav aria-label="Footer">\n          ${renderFooterNav(nav, includeAdmin)}\n        </nav>`;
+    return `<nav aria-label="Footer">\n          ${renderFooterNav(nav, collections, includeAdmin)}\n        </nav>`;
   });
 
   if (settings.admin_url) {

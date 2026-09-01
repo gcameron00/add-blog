@@ -23,10 +23,36 @@ import {
 import { apiError, readJsonBody, requirePermission, requireSameOrigin, withErrors } from './admin-http.js';
 import { writeAuditLog } from './audit.js';
 import { purgePostUrls } from './cache-purge.js';
-import { ValidationError, validateBodyMd, validateScheduledFor, validateSlug, validateTags, validateTitle, validateVisibility } from './validate.js';
+import { findCollectionByType, resolveCollections } from './collections.js';
+import { getSettings } from './db.js';
+import {
+  ValidationError,
+  validateBodyMd,
+  validatePostType,
+  validateScheduledFor,
+  validateSlug,
+  validateTags,
+  validateTitle,
+  validateTypeFields,
+  validateVisibility,
+} from './validate.js';
 
 function requirePostWriteAccess(identity, post) {
   requirePermission(identity, post.author.id === identity.author.id ? 'post.editOwn' : 'post.editOthers');
+}
+
+/**
+ * Validates `post_type` against the site's own collections registry, then
+ * `type_fields` against that specific collection's declared fields — the
+ * two are checked together because the second validation needs the first
+ * one's result (a 'post' has no field spec to validate against at all).
+ */
+async function validatePostTypeAndFields(env, postType, typeFields) {
+  const settings = await getSettings(env.DB);
+  const type = validatePostType(postType ?? 'post', settings);
+  const collection = type === 'post' ? null : findCollectionByType(resolveCollections(settings), type);
+  const fields = validateTypeFields(typeFields, collection?.fields);
+  return { type, fields };
 }
 
 function computeContent(bodyMd, explicitExcerpt) {
@@ -42,9 +68,24 @@ function nowIso() {
   return new Date().toISOString();
 }
 
-function purgeIfPublic(ctx, env, { wasPublished, isPublished, slug, previousSlug, tags = [] }) {
+// postType defaults to 'post' — purgePostUrls's own default basePath ('/posts')
+// is then exactly right and no extra settings read happens. A collection item
+// needs its own collection's base_path instead, which means resolving
+// settings first — done inside the waitUntil'd promise itself so this stays
+// a fire-and-forget call from every dispatch site below, same as before.
+function purgeIfPublic(ctx, env, { wasPublished, isPublished, slug, previousSlug, tags = [], postType = 'post' }) {
   if (!wasPublished && !isPublished) return;
-  ctx.waitUntil(purgePostUrls(`https://${env.PUBLIC_HOST}`, { slug, previousSlug, tags }));
+  ctx.waitUntil(
+    (async () => {
+      let basePath;
+      if (postType !== 'post') {
+        const settings = await getSettings(env.DB);
+        const collection = findCollectionByType(resolveCollections(settings), postType);
+        if (collection) basePath = collection.base_path;
+      }
+      await purgePostUrls(`https://${env.PUBLIC_HOST}`, { slug, previousSlug, tags, ...(basePath ? { basePath } : {}) });
+    })()
+  );
 }
 
 /* --- Route handlers -------------------------------------------------------- */
@@ -56,6 +97,7 @@ async function listHandler(url, env) {
     tag: q.get('tag') || undefined,
     author: q.get('author') || undefined,
     q: q.get('q') || undefined,
+    type: q.get('type') || undefined,
     sort: q.get('sort') || 'updated',
     limit: q.get('limit'),
     offset: q.get('offset'),
@@ -73,6 +115,7 @@ async function createHandler(request, env, identity) {
   const bodyMd = validateBodyMd(input.body_md || '');
   const tags = validateTags(input.tags);
   const visibility = validateVisibility(input.visibility);
+  const { type: postType, fields: typeFields } = await validatePostTypeAndFields(env, input.post_type, input.type_fields);
   const { body_html, word_count, reading_minutes, excerpt } = computeContent(bodyMd, input.excerpt?.trim());
 
   const post = {
@@ -91,6 +134,8 @@ async function createHandler(request, env, identity) {
     canonical_url: input.canonical_url || null,
     word_count,
     reading_minutes,
+    post_type: postType,
+    type_fields: postType === 'post' ? null : typeFields,
     created_at: nowIso(),
     updated_at: nowIso(),
     published_at: null,
@@ -129,6 +174,27 @@ async function patchHandler(request, env, identity, id) {
   const input = await readJsonBody(request);
   const fields = {};
   const previousSlug = post.slug;
+
+  // post_type is fixed at create time — changing it would change the post's
+  // URL (a different collection's base_path) and its field contract
+  // (a different collection's fields) out from under whatever's already
+  // stored. The client deletes and recreates instead, same as any other
+  // "this is really a different resource" case.
+  if (input.post_type !== undefined && input.post_type !== post.post_type) {
+    return apiError(400, 'bad_request', 'post_type cannot be changed after creation — delete and recreate instead.', { field: 'post_type' });
+  }
+  if (input.type_fields !== undefined) {
+    if (post.post_type === 'post') {
+      fields.type_fields = null;
+    } else {
+      const settings = await getSettings(env.DB);
+      const collection = findCollectionByType(resolveCollections(settings), post.post_type);
+      // updatePostRow (src/admin-db.js) binds whatever's here straight into
+      // SQL as a param — it has no column-specific JSON-encoding knowledge
+      // the way insertPost does, so this has to stringify itself.
+      fields.type_fields = JSON.stringify(validateTypeFields(input.type_fields, collection?.fields));
+    }
+  }
 
   if (input.title !== undefined) fields.title = validateTitle(input.title);
   if (input.slug !== undefined && input.slug !== post.slug) {
@@ -304,6 +370,8 @@ async function duplicateHandler(env, identity, id) {
     canonical_url: null,
     word_count: source.word_count,
     reading_minutes: source.reading_minutes,
+    post_type: source.post_type,
+    type_fields: source.type_fields,
     created_at: nowIso(),
     updated_at: nowIso(),
     published_at: null,
@@ -399,7 +467,7 @@ export async function handlePostsApi(request, url, ctxBundle) {
     if (restoreMatch && request.method === 'POST') {
       const result = await restoreHandler(env, identity, restoreMatch[1], restoreMatch[2]);
       if (result instanceof Response) return result;
-      purgeIfPublic(ctx, env, { ...result, wasPublished: result.wasPublished, isPublished: result.updated.status === 'published', slug: result.updated.slug, tags: result.updated.tags.map((t) => t.slug) });
+      purgeIfPublic(ctx, env, { ...result, wasPublished: result.wasPublished, isPublished: result.updated.status === 'published', slug: result.updated.slug, tags: result.updated.tags.map((t) => t.slug), postType: result.updated.post_type });
       return Response.json({ data: result.updated }, { headers: { ETag: etagFor(result.updated) } });
     }
 
@@ -420,7 +488,7 @@ export async function handlePostsApi(request, url, ctxBundle) {
         action === 'unarchive' ? await unarchiveHandler(env, identity, id) :
         await scheduleHandler(request, env, identity, id);
       if (result instanceof Response) return result;
-      purgeIfPublic(ctx, env, { wasPublished: result.wasPublished, isPublished: result.updated.status === 'published', slug: result.updated.slug, tags: result.updated.tags.map((t) => t.slug) });
+      purgeIfPublic(ctx, env, { wasPublished: result.wasPublished, isPublished: result.updated.status === 'published', slug: result.updated.slug, tags: result.updated.tags.map((t) => t.slug), postType: result.updated.post_type });
       return Response.json({ data: result.updated }, { headers: { ETag: etagFor(result.updated) } });
     }
 
@@ -431,13 +499,13 @@ export async function handlePostsApi(request, url, ctxBundle) {
       if (request.method === 'PATCH') {
         const result = await patchHandler(request, env, identity, id);
         if (result instanceof Response) return result;
-        purgeIfPublic(ctx, env, { wasPublished: result.wasPublished, isPublished: result.updated.status === 'published', slug: result.updated.slug, previousSlug: result.previousSlug, tags: result.updated.tags.map((t) => t.slug) });
+        purgeIfPublic(ctx, env, { wasPublished: result.wasPublished, isPublished: result.updated.status === 'published', slug: result.updated.slug, previousSlug: result.previousSlug, tags: result.updated.tags.map((t) => t.slug), postType: result.updated.post_type });
         return Response.json({ data: result.updated }, { headers: { ETag: etagFor(result.updated) } });
       }
       if (request.method === 'DELETE') {
         const result = await deleteHandler(url, env, identity, id);
         if (result instanceof Response) return result;
-        purgeIfPublic(ctx, env, { wasPublished: result.post.status === 'published', isPublished: false, slug: result.post.slug, tags: result.post.tags.map((t) => t.slug) });
+        purgeIfPublic(ctx, env, { wasPublished: result.post.status === 'published', isPublished: false, slug: result.post.slug, tags: result.post.tags.map((t) => t.slug), postType: result.post.post_type });
         return Response.json({ data: { id, status: result.hard ? 'deleted' : 'archived' } });
       }
     }

@@ -10,9 +10,10 @@
  * docs/architecture.md §2.
  */
 
-import { getPublishedPostBySlug, getSettings } from './db.js';
+import { getPublishedItemBySlug, getPublishedPostBySlug, getSettings, listPublishedItems } from './db.js';
 import { escapeHtml, renderMarkdown } from '../assets/js/markdown.js';
 import { applySiteBranding, applyHomeMeta, isFeatureEnabled } from './site-template.js';
+import { findCollectionByLegacyPath, findCollectionByPath, renderCollectionIndex, renderCollectionItem, resolveCollections } from './collections.js';
 
 function formatDate(iso) {
   if (!iso) return '';
@@ -105,6 +106,113 @@ export async function handlePostPage(request, url, env) {
   });
 }
 
+// Trims a trailing slash the same way src/collections.js's own internal
+// helper does — kept here too rather than exported/shared, since these two
+// handlers are the only pages.js callers and it's a one-line normalisation.
+function trimTrailingSlash(path) {
+  return String(path).replace(/\/+$/, '') || '/';
+}
+
+// A collection's base_path is owner-configured and dynamic, so — unlike
+// every other handler in this file — these two can't cheaply tell "not my
+// route" from the pathname alone; they have to load settings first. Skipping
+// obvious non-page requests (static assets, anything with a file extension)
+// before that keeps the extra settings read off the hot path for every CSS/
+// JS/image request, which is the overwhelming majority of traffic on a
+// public host that doesn't use collections at all.
+function looksLikeStaticAsset(pathname) {
+  return pathname.startsWith('/assets/') || /\.[a-z0-9]{1,8}$/i.test(pathname);
+}
+
+/** GET <base_path>[/] for a configured collection — the index/grid page. Returns null for anything else. */
+export async function handleCollectionIndexPage(request, url, env) {
+  if (request.method !== 'GET' && request.method !== 'HEAD') return null;
+  if (!env.DB || looksLikeStaticAsset(url.pathname)) return null;
+
+  const settings = await getSettings(env.DB);
+  const collections = resolveCollections(settings);
+  const collection = findCollectionByPath(collections, url.pathname);
+  if (!collection) return null;
+
+  const base = trimTrailingSlash(collection.base_path);
+  if (trimTrailingSlash(url.pathname) !== base) return null; // an item path — handleCollectionItemPage owns it
+
+  const siteTitle = settings.site_title || 'The add-blog Journal';
+  const { data: items } = await listPublishedItems(env.DB, collection.type, { limit: 100 });
+
+  const shellRequest = new Request(new URL('/collection/', url), request);
+  const shellResponse = await env.ASSETS.fetch(shellRequest);
+  let html = applySiteBranding(await shellResponse.text(), settings);
+
+  const indexTitle = collection.index_title || collection.label_plural || collection.label || 'Collection';
+  const canonical = `${url.origin}${base}/`;
+
+  html = html
+    .replace(`<title>Collection — ${escapeHtml(siteTitle)}</title>`, `<title>${escapeHtml(indexTitle)} — ${escapeHtml(siteTitle)}</title>`)
+    .replace('<link rel="canonical" href="/" />', `<link rel="canonical" href="${canonical}" />`)
+    .replace('<h1>Collection</h1>', `<h1>${escapeHtml(indexTitle)}</h1>`)
+    .replace(/<div data-collection-index><\/div>/, `<div data-collection-index>${renderCollectionIndex(items, collection)}</div>`);
+
+  return new Response(html, {
+    headers: {
+      'Content-Type': 'text/html;charset=UTF-8',
+      // docs/architecture.md §5: "Public HTML pages" caching policy.
+      'Cache-Control': 'public, max-age=60, s-maxage=3600, stale-while-revalidate=86400',
+    },
+  });
+}
+
+/** GET <base_path>/<slug> for a configured collection — one item's detail page. Returns null for anything else, including the collection's own index path. */
+export async function handleCollectionItemPage(request, url, env) {
+  if (request.method !== 'GET' && request.method !== 'HEAD') return null;
+  if (!env.DB || looksLikeStaticAsset(url.pathname)) return null;
+
+  const settings = await getSettings(env.DB);
+  const collections = resolveCollections(settings);
+  const collection = findCollectionByPath(collections, url.pathname);
+  if (!collection) return null;
+
+  const base = trimTrailingSlash(collection.base_path);
+  const normalized = trimTrailingSlash(url.pathname);
+  if (normalized === base) return null; // the index path — handleCollectionIndexPage owns it
+  const rest = normalized.slice(base.length + 1);
+  if (!rest || rest.includes('/')) return null; // only a single slug segment is a valid item path
+
+  const slug = decodeURIComponent(rest);
+  const siteTitle = settings.site_title || 'The add-blog Journal';
+  const item = await getPublishedItemBySlug(env.DB, collection.type, slug);
+
+  const shellRequest = new Request(new URL('/collection-item/', url), request);
+  const shellResponse = await env.ASSETS.fetch(shellRequest);
+  let html = applySiteBranding(await shellResponse.text(), settings);
+
+  if (!item) {
+    // Same "let the shell's own not-found state stand, but a real 404
+    // status" contract as handlePostPage below.
+    return new Response(html, { status: 404, headers: { 'Content-Type': 'text/html;charset=UTF-8' } });
+  }
+
+  const title = `${escapeHtml(item.title)} — ${escapeHtml(siteTitle)}`;
+  const description = escapeHtml(item.excerpt || '');
+  const canonical = `${url.origin}${base}/${encodeURIComponent(item.slug)}`;
+
+  html = html
+    .replace(`<title>Item — ${escapeHtml(siteTitle)}</title>`, `<title>${title}</title>`)
+    .replace('<meta name="description" content="" />', `<meta name="description" content="${description}" />`)
+    .replace('<meta property="og:title" content="" />', `<meta property="og:title" content="${escapeHtml(item.title)}" />`)
+    .replace('<meta property="og:description" content="" />', `<meta property="og:description" content="${description}" />`)
+    .replace('<link rel="canonical" href="/" />', `<link rel="canonical" href="${canonical}" />`)
+    .replace(/<article data-collection-item>[\s\S]*?<\/article>/, `<article data-collection-item>${renderCollectionItem(item, collection)}</article>`);
+
+  return new Response(html, {
+    headers: {
+      'Content-Type': 'text/html;charset=UTF-8',
+      // docs/architecture.md §5: "Public HTML pages" caching policy.
+      'Cache-Control': 'public, max-age=60, s-maxage=3600, stale-while-revalidate=86400',
+    },
+  });
+}
+
 /**
  * GET / — same static shell as every other public page, templated with live
  * settings the same way the post permalink above is. The one page whose meta
@@ -178,6 +286,27 @@ export function handleLegacyPostRedirect(url) {
   const slug = url.searchParams.get('slug');
   if (!slug) return null;
   return Response.redirect(`${url.origin}/posts/${encodeURIComponent(slug)}`, 301);
+}
+
+/**
+ * GET <legacy_path>/?slug=… → 301 to the canonical <base_path>/:slug for
+ * whichever collection declares that legacy_path — mirrors
+ * handleLegacyPostRedirect above exactly, just resolved against the site's
+ * collections registry instead of a fixed /post path. Needs settings (to
+ * resolve collections), unlike the fixed-target post redirect, so this
+ * takes `env` too and is async.
+ */
+export async function handleLegacyCollectionRedirect(request, url, env) {
+  if (!env.DB) return null;
+  const slug = url.searchParams.get('slug');
+  if (!slug) return null;
+
+  const settings = await getSettings(env.DB);
+  const collection = findCollectionByLegacyPath(resolveCollections(settings), url.pathname);
+  if (!collection) return null;
+
+  const base = trimTrailingSlash(collection.base_path);
+  return Response.redirect(`${url.origin}${base}/${encodeURIComponent(slug)}`, 301);
 }
 
 /**

@@ -201,7 +201,7 @@ not a security boundary — every endpoint re-checks the role server-side.
 
 | Method | Path | Purpose |
 | --- | --- | --- |
-| `GET` | `/posts` | All statuses. Filters: `status`, `tag`, `author`, `q`, `limit`, `offset`, `sort` |
+| `GET` | `/posts` | All statuses. Filters: `status`, `tag`, `author`, `q`, `type`, `limit`, `offset`, `sort` |
 | `POST` | `/posts` | Create. Only `title` is required; slug is derived if omitted |
 | `GET` | `/posts/:id` | Full post including `body_md`, revision count, `ETag` |
 | `PATCH` | `/posts/:id` | Partial update. Honours `If-Match` |
@@ -230,7 +230,9 @@ Create/update body:
   "cover_alt": "Edge map",
   "status": "draft",
   "visibility": "public",
-  "canonical_url": null
+  "canonical_url": null,
+  "post_type": "post",
+  "type_fields": null
 }
 ```
 
@@ -238,6 +240,22 @@ Validation: `title` 1–200 characters; `slug` matches `^[a-z0-9]+(-[a-z0-9]+)*$
 characters, unique; `body_md` at most 512 KB; at most 10 tags, each at most 40
 characters; `scheduled_for` strictly in the future. `word_count`, `reading_minutes`,
 `excerpt` (when omitted) and `body_html` are computed server-side and are read-only.
+
+**`post_type`/`type_fields` (migrations/0008_collections.sql, `src/collections.js`).**
+`post_type` defaults to `"post"` and is optional on create; when set to a value other
+than `"post"`, it must be a type declared in the site's `collections` setting (`GET
+/settings`, or the `list_collections` MCP tool) — an unconfigured type is rejected
+`400 bad_request` with `field: "post_type"`. `type_fields` is a JSON object of values
+for that collection's declared fields, validated per field's `type` (`text`, `enum`,
+`url`, `tags`, `date`); an unknown key, or a value that doesn't match its field's
+type, is rejected the same way. **`post_type` cannot be changed on `PATCH`** — a `400`
+with `field: "post_type"` if the body includes one that differs from the post's
+current value, since changing it would change the post's URL (a different
+collection's `base_path`) and its field contract (a different collection's fields)
+out from under content that's already there. `type_fields` can be patched on its own.
+`GET /posts?type=<type>` (default `"post"`, `"all"` for every type) filters the list
+the same way `status` does; a plain `GET /posts` with no `type` still shows only
+ordinary posts, unchanged from before this existed.
 
 **A publish is not complete until the cache is purged.** `publish`, `unpublish` and
 `PATCH` on a published post (`src/admin-posts.js`) share one purge helper
@@ -316,7 +334,10 @@ exist; only another owner can do either to you.
 
 Settings keys: `site_title`, `site_description`, `site_url`, `admin_url`, `base_path`,
 `timezone`, `posts_per_page`, `allow_raw_html`, `social_image_key`, `site_icon_key`,
-`analytics_enabled`, `feed_full_content`. `PUT` only touches keys present in the
+`analytics_enabled`, `feed_full_content`, `nav_config`, `about_content`,
+`style_guide`, `collections` (the custom-content-type registry, migrations/
+0008_collections.sql — see [architecture.md](architecture.md) §3; validated by
+`validateCollections` on write). `PUT` only touches keys present in the
 request body — not a literal full-replace — since the settings form only submits the
 keys it has inputs for; a stricter reading would silently drop `social_image_key`
 (the one seeded key with no form field) on every save.

@@ -372,3 +372,106 @@ describe('POST /api/admin/preview', () => {
     expect(data.body_html).toContain('<h1');
   });
 });
+
+/* --- post_type / type_fields (migrations/0008_collections.sql) ------------- */
+
+const PROJECT_COLLECTION = {
+  type: 'project',
+  label: 'Project',
+  label_plural: 'Projects',
+  base_path: '/portfolio',
+  legacy_path: '/project',
+  index_title: 'Portfolio',
+  layout: 'grid',
+  in_feed: false,
+  in_sitemap: true,
+  nav: { header: true, footer: false },
+  fields: [{ key: 'status', label: 'Status', type: 'enum', options: ['Live', 'Archived'], display: 'badge' }],
+};
+
+async function setCollectionsSetting(collections) {
+  await env.DB.prepare(`UPDATE settings SET value = ? WHERE key = 'collections'`).bind(JSON.stringify(collections)).run();
+}
+
+describe('post_type / type_fields', () => {
+  it('defaults post_type to "post" with null type_fields when omitted', async () => {
+    const post = await createPost(owner);
+    expect(post.post_type).toBe('post');
+    expect(post.type_fields).toBeNull();
+  });
+
+  it('rejects an unknown post_type', async () => {
+    await setCollectionsSetting([]);
+    const res = await call(owner, 'POST', '/api/admin/posts', { body: { title: 'Bad type', post_type: 'project' } });
+    expect(res.status).toBe(400);
+    const { error } = await res.json();
+    expect(error.field).toBe('post_type');
+  });
+
+  it('rejects type_fields with a key the collection does not declare', async () => {
+    await setCollectionsSetting([PROJECT_COLLECTION]);
+    const res = await call(owner, 'POST', '/api/admin/posts', {
+      body: { title: 'Bad fields', post_type: 'project', type_fields: { nope: 'x' } },
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it('round-trips post_type/type_fields through create → get → update', async () => {
+    await setCollectionsSetting([PROJECT_COLLECTION]);
+    const created = await createPost(owner, { title: 'My Project', post_type: 'project', type_fields: { status: 'Live' } });
+    expect(created.post_type).toBe('project');
+    expect(created.type_fields).toEqual({ status: 'Live' });
+
+    const got = await (await call(owner, 'GET', `/api/admin/posts/${created.id}`)).json();
+    expect(got.data.post_type).toBe('project');
+    expect(got.data.type_fields).toEqual({ status: 'Live' });
+
+    const patched = await (
+      await call(owner, 'PATCH', `/api/admin/posts/${created.id}`, { body: { type_fields: { status: 'Archived' } } })
+    ).json();
+    expect(patched.data.type_fields).toEqual({ status: 'Archived' });
+  });
+
+  it('rejects changing post_type after creation', async () => {
+    await setCollectionsSetting([PROJECT_COLLECTION]);
+    const created = await createPost(owner, { title: 'Fixed type', post_type: 'project', type_fields: { status: 'Live' } });
+    const res = await call(owner, 'PATCH', `/api/admin/posts/${created.id}`, { body: { post_type: 'post' } });
+    expect(res.status).toBe(400);
+    const { error } = await res.json();
+    expect(error.field).toBe('post_type');
+  });
+
+  it('allows a PATCH that repeats the post\'s own current post_type as a no-op', async () => {
+    await setCollectionsSetting([PROJECT_COLLECTION]);
+    const created = await createPost(owner, { title: 'Same type', post_type: 'project', type_fields: { status: 'Live' } });
+    const res = await call(owner, 'PATCH', `/api/admin/posts/${created.id}`, { body: { post_type: 'project', type_fields: { status: 'Archived' } } });
+    expect(res.status).toBe(200);
+  });
+
+  it('duplicate carries post_type/type_fields across', async () => {
+    await setCollectionsSetting([PROJECT_COLLECTION]);
+    const source = await createPost(owner, { title: 'Dup me', post_type: 'project', type_fields: { status: 'Live' } });
+    const res = await call(owner, 'POST', `/api/admin/posts/${source.id}/duplicate`);
+    expect(res.status).toBe(201);
+    const { data } = await res.json();
+    expect(data.post_type).toBe('project');
+    expect(data.type_fields).toEqual({ status: 'Live' });
+  });
+
+  it('?type= filters the list, defaulting to "post" so existing behaviour is unchanged', async () => {
+    await setCollectionsSetting([PROJECT_COLLECTION]);
+    await createPost(owner, { title: 'A project for listing', post_type: 'project', type_fields: { status: 'Live' } });
+
+    const defaultList = await (await call(owner, 'GET', '/api/admin/posts?status=all')).json();
+    expect(defaultList.data.length).toBeGreaterThan(0);
+    expect(defaultList.data.every((p) => p.post_type === 'post')).toBe(true);
+
+    const projectList = await (await call(owner, 'GET', '/api/admin/posts?status=all&type=project')).json();
+    expect(projectList.data.length).toBeGreaterThan(0);
+    expect(projectList.data.every((p) => p.post_type === 'project')).toBe(true);
+
+    const allList = await (await call(owner, 'GET', '/api/admin/posts?status=all&type=all')).json();
+    expect(allList.data.some((p) => p.post_type === 'post')).toBe(true);
+    expect(allList.data.some((p) => p.post_type === 'project')).toBe(true);
+  });
+});

@@ -46,6 +46,9 @@ import {
   handlePostPage,
   handleHomePage,
   handleAboutPage,
+  handleCollectionIndexPage,
+  handleCollectionItemPage,
+  handleLegacyCollectionRedirect,
   handleLegacyPostRedirect,
   handleWordpressFeedRedirect,
 } from './pages.js';
@@ -67,8 +70,23 @@ const DEFAULT_ADMIN_HOST = 'blog-admin.mysite.com';
 // would get that wrong.
 const ADMIN_ONLY_PREFIXES = ['/admin', '/api/admin', '/mcp'];
 
+function matchesPrefix(pathname, prefixes) {
+  return prefixes.some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`));
+}
+
 function isAdminOnlyPath(pathname) {
-  return ADMIN_ONLY_PREFIXES.some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`));
+  return matchesPrefix(pathname, ADMIN_ONLY_PREFIXES);
+}
+
+// /collection and /collection-item (src/pages.js) are template shells only —
+// real collection content is served at each collection's own base_path
+// (e.g. /portfolio/), never at these literal paths. Blocked unconditionally,
+// on every hostname, same reasoning as ADMIN_ONLY_PREFIXES: a raw,
+// unbranded, unpopulated shell must never be directly reachable.
+const SHELL_ONLY_PREFIXES = ['/collection', '/collection-item'];
+
+function isShellOnlyPath(pathname) {
+  return matchesPrefix(pathname, SHELL_ONLY_PREFIXES);
 }
 
 // The one external origin either surface loads script/style/fonts from:
@@ -203,7 +221,9 @@ export default {
     let response;
     let identity = null;
 
-    if (!admin && isAdminOnlyPath(url.pathname)) {
+    if (isShellOnlyPath(url.pathname)) {
+      response = notFound(requestId, admin);
+    } else if (!admin && isAdminOnlyPath(url.pathname)) {
       // The public host (or any hostname that isn't the recognised admin
       // host) never reaches anything else below for these paths — checked
       // before anything else, full stop, no exceptions carved out.
@@ -237,8 +257,11 @@ export default {
         response =
           redirectAdminRoot(url, admin) ||
           handleLegacyPostRedirect(url) ||
+          (await handleLegacyCollectionRedirect(request, url, env)) ||
           handleWordpressFeedRedirect(url) ||
           (await handlePostPage(request, url, env)) ||
+          (await handleCollectionItemPage(request, url, env)) ||
+          (await handleCollectionIndexPage(request, url, env)) ||
           (await handleHomePage(request, url, env, admin)) ||
           (await handleAboutPage(request, url, env)) ||
           (await handleAdminApi(request, url, { env, ctx, identity })) ||

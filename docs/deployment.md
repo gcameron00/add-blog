@@ -68,6 +68,7 @@ npx wrangler d1 execute gcameron-blog --file=./migrations/0004_mcp.sql --remote
 npx wrangler d1 execute gcameron-blog --file=./migrations/0005_audit_via_import.sql --remote
 npx wrangler d1 execute gcameron-blog --file=./migrations/0006_media_source_url.sql --remote
 npx wrangler d1 execute gcameron-blog --file=./migrations/0007_nav_config.sql --remote
+npx wrangler d1 execute gcameron-blog --file=./migrations/0008_collections.sql --remote
 ```
 
 **0003 is a rebuild, not a plain `ALTER TABLE ADD COLUMN` like 0002** — SQLite can't
@@ -86,6 +87,22 @@ there's no row-count check to make afterwards the way 0003 needed one.
 shows real defaults on first load. `resolveNavConfig` merges under its own defaults
 if this row is ever missing, so it's a nicety, not a hard dependency — but a
 brand-new site still needs it applied to get real values instead of the fallback.
+
+**0008 (collections — custom content types) is additive only** — two new columns on
+`posts` (`post_type`, `type_fields`), a new index, and one new `settings` row
+(`collections`, seeded to `'[]'`, meaning the feature is off until an owner adds one).
+**`post_type` deliberately has no `CHECK` constraint** — unlike 0003, which rebuilt
+`audit_log` from scratch specifically because SQLite cannot widen a `CHECK` in place,
+0008 never wants to widen one: the set of valid `post_type` values is meant to grow
+per-site, whenever an owner adds a new collection through the Settings UI, not
+per-migration. A `CHECK (post_type IN (...))` would need a full table rebuild (same
+shape as 0003) for every new collection any site ever adds — the opposite of what an
+owner-configurable feature should cost. `post_type` is validated in application code
+instead (`src/validate.js`'s `validatePostType`, checked against that site's own
+`collections` registry), the same place `slug`, `visibility` and every other
+"constrained but not `CHECK`-constrained" column in this schema is already validated.
+See [architecture.md](architecture.md) §3 and
+[vibecode-migration.md](vibecode-migration.md) for the full design rationale.
 
 This list is the full bootstrap sequence for a brand-new site; for a site that's
 already live (`gcameron`), only run the migration file(s) that haven't been applied

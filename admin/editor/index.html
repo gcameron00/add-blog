@@ -64,6 +64,22 @@
           </div>
 
           <aside class="editor-aside">
+            <div class="card" data-type-card>
+              <h3>Type</h3>
+              <div class="field">
+                <label class="visually-hidden" for="post_type">Type</label>
+                <select id="post_type" data-field="post_type">
+                  <option value="post">Post</option>
+                </select>
+              </div>
+              <p class="field__hint" data-type-hint>Pick Post, or a configured collection.</p>
+            </div>
+
+            <div class="card" data-custom-fields hidden>
+              <h3>Custom fields</h3>
+              <div data-custom-fields-body></div>
+            </div>
+
             <div class="card">
               <h3>Cover image</h3>
               <div data-cover-preview class="cover-preview"></div>

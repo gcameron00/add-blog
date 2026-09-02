@@ -296,13 +296,15 @@ export function me() {
   );
 }
 
-export function adminListPosts({ status = 'all', tag, q, sort = 'updated', limit = 50, offset = 0 } = {}) {
+export function adminListPosts({ status = 'all', tag, q, type = 'post', sort = 'updated', limit = 50, offset = 0 } = {}) {
   return withFallback(
-    () => call('/admin/posts', { query: { status, tag, q, sort, limit, offset } }),
+    () => call('/admin/posts', { query: { status, tag, q, type, sort, limit, offset } }),
     async () => {
       await delay();
+      // Demo posts have no post_type at all — they're all implicitly ordinary
+      // posts, so anything other than 'post'/'all' correctly yields nothing.
       const posts = getStore()
-        .posts.filter((p) => matches(p, { q, tag, status }))
+        .posts.filter((p) => matches(p, { q, tag, status }) && (type === 'all' || type === 'post'))
         .sort((a, b) => {
           if (sort === 'oldest') return byNewest(b, a);
           if (sort === 'title') return a.title.localeCompare(b.title);

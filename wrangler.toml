@@ -211,12 +211,13 @@ run_worker_first = true
 ADMIN_HOST = "blog-admin.allaboutthevibes.blog"
 PUBLIC_HOST = "blog.allaboutthevibes.blog"
 
-# ACCESS_TEAM_DOMAIN / ACCESS_AUD are added here once the Cloudflare Zero
-# Trust Access application for blog-admin.allaboutthevibes.blog exists —
-# that's a dashboard step (no API token scoped for it in this session), see
-# docs/vibecode-migration.md. Until then blog-admin.allaboutthevibes.blog is
-# unprotected at the Worker's own Access check, so do not treat this env as
-# safe to expose before that's set.
+# Access application created in the Cloudflare dashboard for
+# blog-admin.allaboutthevibes.blog (self-hosted, policy scoped to
+# me@gcameron.com, Managed OAuth enabled for /mcp with claude.ai's callback
+# allow-listed — docs/deployment.md §4). Same Zero Trust team as every other
+# site here.
+ACCESS_TEAM_DOMAIN = "grahamcameron.cloudflareaccess.com"
+ACCESS_AUD = "6e5d83fd39d4f40c30fe541c1f4e5ec61aa7dbee820be75064a58672505165a0"
 
 [env.allaboutthevibes.triggers]
 crons = ["*/5 * * * *"]

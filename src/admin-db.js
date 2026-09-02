@@ -19,6 +19,20 @@ function parseTags(json) {
   return JSON.parse(json).filter(Boolean);
 }
 
+// Defensive the same way parseTags would need to be if a hand-edited row
+// ever put non-JSON here — type_fields is app-validated on write
+// (src/validate.js's validateTypeFields), but a reader shouldn't 500 over a
+// column it doesn't control the history of.
+function parseTypeFields(json) {
+  if (!json) return null;
+  try {
+    const parsed = JSON.parse(json);
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
 function mapAdminPost(row) {
   return {
     id: row.id,
@@ -42,6 +56,10 @@ function mapAdminPost(row) {
     updated_at: row.updated_at,
     published_at: row.published_at,
     scheduled_for: row.scheduled_for,
+    // migrations/0008_collections.sql — 'post' with type_fields null for
+    // every ordinary blog post, unless a collection is in play.
+    post_type: row.post_type,
+    type_fields: parseTypeFields(row.type_fields),
   };
 }
 
@@ -118,13 +136,21 @@ export async function getDueScheduledPosts(db, nowIso) {
   return results.map(mapAdminPost);
 }
 
-export async function listAdminPosts(db, { status, tag, author, q, limit = 20, offset = 0, sort = 'updated' } = {}) {
+// Defaults to 'post' — every existing caller (the admin posts list, the
+// dashboard's counts via listAdminPosts's own callers) keeps seeing exactly
+// what it always has unless it explicitly asks for 'all' or a collection's
+// own type, per migrations/0008_collections.sql's additive-only contract.
+export async function listAdminPosts(db, { status, tag, author, q, type = 'post', limit = 20, offset = 0, sort = 'updated' } = {}) {
   const where = [];
   const params = [];
 
   if (status && status !== 'all') {
     where.push('p.status = ?');
     params.push(status);
+  }
+  if (type && type !== 'all') {
+    where.push('p.post_type = ?');
+    params.push(type);
   }
   if (author) {
     where.push('p.author_id = ?');
@@ -178,13 +204,17 @@ export async function listAdminPosts(db, { status, tag, author, q, limit = 20, o
  * rather than `<b>` — this has no HTML-rendering reader the way the public
  * site's search result list would.
  */
-export async function searchAdminPosts(db, { query, status, limit = 20 } = {}) {
+export async function searchAdminPosts(db, { query, status, type = 'post', limit = 20 } = {}) {
   const where = [`posts_fts MATCH ?`];
   const params = [query];
 
   if (status && status !== 'all') {
     where.push('p.status = ?');
     params.push(status);
+  }
+  if (type && type !== 'all') {
+    where.push('p.post_type = ?');
+    params.push(type);
   }
 
   const boundedLimit = Math.min(50, Math.max(1, Number(limit) || 20));
@@ -244,14 +274,18 @@ export async function insertPost(db, post) {
       INSERT INTO posts (
         id, slug, title, subtitle, excerpt, body_md, body_html, status, visibility,
         author_id, cover_key, cover_alt, canonical_url, word_count, reading_minutes,
-        created_at, updated_at, published_at, scheduled_for
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        created_at, updated_at, published_at, scheduled_for, post_type, type_fields
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `)
     .bind(
       post.id, post.slug, post.title, post.subtitle || null, post.excerpt, post.body_md, post.body_html,
       post.status, post.visibility, post.author_id, post.cover_key || null, post.cover_alt || null,
       post.canonical_url || null, post.word_count, post.reading_minutes,
-      post.created_at, post.updated_at, post.published_at || null, post.scheduled_for || null
+      post.created_at, post.updated_at, post.published_at || null, post.scheduled_for || null,
+      // post_type defaults to 'post' at the schema level too (migrations/
+      // 0008_collections.sql) — post.post_type is only ever undefined for
+      // callers written before collections existed, so this stays additive.
+      post.post_type || 'post', post.type_fields ? JSON.stringify(post.type_fields) : null
     )
     .run();
 }

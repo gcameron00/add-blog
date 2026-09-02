@@ -107,15 +107,18 @@ required.
 
 **`list_posts`** — Browse posts with filters.
 `status` (`draft`|`scheduled`|`published`|`archived`|`all`, default `all`), `tag`,
-`author`, `limit` (default 20, max 100), `offset`, `sort` (`newest`|`oldest`|`updated`).
-Returns metadata only — no bodies — so a listing does not flood the model's context.
+`author`, `type` (post_type — default `"post"`, `"all"` for every type, see
+`list_collections`), `limit` (default 20, max 100), `offset`, `sort`
+(`newest`|`oldest`|`updated`). Returns metadata only — no bodies — so a listing does
+not flood the model's context.
 
 **`get_post`** — Full post by `slug` or `id`. `include_html` (default `false`) and
 `include_revisions` (default `false`). Returns Markdown by default, which is what a
 model should be editing.
 
-**`search_posts`** — Full-text search. `query` (required), `status`, `limit`. Returns
-matches with a highlighted snippet and a relevance score.
+**`search_posts`** — Full-text search. `query` (required), `status`, `type` (default
+`"post"`, `"all"` for every type), `limit`. Returns matches with a highlighted
+snippet and a relevance score.
 
 **`list_tags`** — All tags with post counts.
 
@@ -126,17 +129,28 @@ instead of asking for a new upload.
 **`get_site_settings`** — Blog title, description, URL, timezone, posts per page.
 Useful context before drafting.
 
+**`list_collections`** — The site's collection registry (custom content types, e.g.
+`"project"` — migrations/0008_collections.sql, [architecture.md](architecture.md) §3),
+field specs included. Read-only, every role. Exists so a client can discover valid
+`post_type` values and each one's `type_fields` keys before calling `create_post`,
+rather than guessing or failing a call first to find out.
+
 ### Writing
 
 **`create_post`** *(author)* — `title` (required), `body_md`, `subtitle`, `excerpt`,
-`slug`, `tags[]`, `cover_key`, `status`. **`status` is forced to `draft`** regardless
-of what is passed; publishing is always a separate, explicit call. Returns the created
-post with its id and slug.
+`slug`, `tags[]`, `cover_key`, `status`, `post_type`, `type_fields`. **`status` is
+forced to `draft`** regardless of what is passed; publishing is always a separate,
+explicit call. `post_type` defaults to `"post"`; set to a configured collection's type
+(see `list_collections`) to create a collection item instead, with `type_fields`
+validated against that collection's declared fields. Returns the created post with its
+id and slug.
 
 **`update_post`** *(author for own posts, editor for any)* — `id` or `slug` required,
-plus any subset of the mutable fields. Supports `expected_updated_at` for optimistic
-concurrency: if the post changed since the model last read it, the call fails with a
-conflict rather than overwriting a human's edit.
+plus any subset of the mutable fields, including `type_fields`. Supports
+`expected_updated_at` for optimistic concurrency: if the post changed since the model
+last read it, the call fails with a conflict rather than overwriting a human's edit.
+**Cannot change `post_type`** — a post's type is fixed at creation (same reasoning as
+the REST API's `PATCH`, see [api.md](api.md)); delete and recreate instead.
 
 **`publish_post`** *(editor)* — `id` or `slug`, optional `scheduled_for` to schedule
 instead of publishing immediately. Returns the live URL.
@@ -181,6 +195,7 @@ read:
 | `list_tags` | ✓ | | | |
 | `list_media` | ✓ | | | |
 | `get_site_settings` | ✓ | | | |
+| `list_collections` | ✓ | | | |
 | `create_post` | | | | |
 | `update_post` | | | ✓ | |
 | `publish_post` | | | ✓ | |

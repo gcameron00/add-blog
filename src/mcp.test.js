@@ -167,6 +167,89 @@ describe('tools/call — writing', () => {
   });
 });
 
+/* --- Collections (migrations/0008_collections.sql) ------------------------- */
+
+const PROJECT_COLLECTION = {
+  type: 'project',
+  label: 'Project',
+  label_plural: 'Projects',
+  base_path: '/portfolio',
+  legacy_path: '/project',
+  index_title: 'Portfolio',
+  layout: 'grid',
+  in_feed: false,
+  in_sitemap: true,
+  nav: { header: true, footer: false },
+  fields: [{ key: 'status', label: 'Status', type: 'enum', options: ['Live', 'Archived'], display: 'badge' }],
+};
+
+async function setCollectionsSetting(collections) {
+  await env.DB.prepare(`UPDATE settings SET value = ? WHERE key = 'collections'`).bind(JSON.stringify(collections)).run();
+}
+
+describe('list_collections', () => {
+  it('is visible to every role, including read/author', async () => {
+    await setCollectionsSetting([PROJECT_COLLECTION]);
+    const { body } = await rpc(author, 'tools/list');
+    expect(body.result.tools.map((t) => t.name)).toContain('list_collections');
+  });
+
+  it('returns the site\'s collection registry, field specs included', async () => {
+    await setCollectionsSetting([PROJECT_COLLECTION]);
+    const { body } = await rpc(author, 'tools/call', { name: 'list_collections', arguments: {} });
+    expect(body.result.structuredContent).toEqual([PROJECT_COLLECTION]);
+  });
+
+  it('returns [] when no collections are configured', async () => {
+    await setCollectionsSetting([]);
+    const { body } = await rpc(author, 'tools/call', { name: 'list_collections', arguments: {} });
+    expect(body.result.structuredContent).toEqual([]);
+  });
+});
+
+describe('create_post / update_post — post_type and type_fields', () => {
+  it('create_post accepts a configured post_type and type_fields', async () => {
+    await setCollectionsSetting([PROJECT_COLLECTION]);
+    const { body } = await rpc(author, 'tools/call', {
+      name: 'create_post',
+      arguments: { title: 'MCP-created project', post_type: 'project', type_fields: { status: 'Live' } },
+    });
+    expect(body.result.isError).toBeFalsy();
+    expect(body.result.structuredContent.post_type).toBe('project');
+    expect(body.result.structuredContent.type_fields).toEqual({ status: 'Live' });
+  });
+
+  it('create_post rejects an unconfigured post_type', async () => {
+    await setCollectionsSetting([]);
+    const { body } = await rpc(author, 'tools/call', {
+      name: 'create_post', arguments: { title: 'Bad type', post_type: 'project' },
+    });
+    expect(body.result.isError).toBe(true);
+    expect(JSON.parse(body.result.content[0].text).error.field).toBe('post_type');
+  });
+
+  it('update_post can change type_fields but not post_type', async () => {
+    await setCollectionsSetting([PROJECT_COLLECTION]);
+    const { body: created } = await rpc(author, 'tools/call', {
+      name: 'create_post',
+      arguments: { title: 'MCP project to edit', post_type: 'project', type_fields: { status: 'Live' } },
+    });
+    const post = created.result.structuredContent;
+
+    const { body: updated } = await rpc(author, 'tools/call', {
+      name: 'update_post', arguments: { id: post.id, type_fields: { status: 'Archived' } },
+    });
+    expect(updated.result.isError).toBeFalsy();
+    expect(updated.result.structuredContent.type_fields).toEqual({ status: 'Archived' });
+
+    const { body: rejected } = await rpc(author, 'tools/call', {
+      name: 'update_post', arguments: { id: post.id, post_type: 'post' },
+    });
+    expect(rejected.result.isError).toBe(true);
+    expect(JSON.parse(rejected.result.content[0].text).error.field).toBe('post_type');
+  });
+});
+
 describe('resources', () => {
   it('resources/list only offers style-guide', async () => {
     const { body } = await rpc(owner, 'resources/list');

@@ -17,7 +17,7 @@ jobs:
         # One entry per [env.NAME] block in wrangler.toml — every site this
         # repo serves gets deployed on every push. Add a new site by adding
         # its name here and its [env.NAME] block in wrangler.toml.
-        site: [gcameron,laax-ski,caitlin-ski]
+        site: [gcameron,laax-ski,caitlin-ski,allaboutthevibes]
       fail-fast: false
     steps:
       # CF secrets are repo-level, shared by every site. Skip cleanly when

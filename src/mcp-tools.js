@@ -39,10 +39,21 @@ import { ALLOWED_TYPES, MAX_UPLOAD_BYTES, mapMedia } from './admin-media.js';
 import { KNOWN_KEYS, writeSettings } from './admin-settings.js';
 import { can } from './auth.js';
 import { purgePostUrls } from './cache-purge.js';
+import { findCollectionByType, resolveCollections } from './collections.js';
 import { getSettings } from './db.js';
 import { buildMediaKey, detectDimensions, sanitizeFilename, sha256Hex } from './media-parse.js';
 import { fetchMediaFromUrl } from './mcp-media-fetch.js';
-import { ValidationError, validateBodyMd, validateScheduledFor, validateSlug, validateTags, validateTitle, validateVisibility } from './validate.js';
+import {
+  ValidationError,
+  validateBodyMd,
+  validatePostType,
+  validateScheduledFor,
+  validateSlug,
+  validateTags,
+  validateTitle,
+  validateTypeFields,
+  validateVisibility,
+} from './validate.js';
 
 export class McpToolError extends Error {
   constructor(code, message, extra = {}) {
@@ -90,10 +101,24 @@ function requirePostWriteAccess(identity, post) {
   requirePerm(identity, post.author.id === identity.author.id ? 'post.editOwn' : 'post.editOthers');
 }
 
-function purgeIfNeeded(execCtx, env, { wasPublished, isPublished, slug, previousSlug, tags = [] }) {
+// Same reasoning as src/admin-posts.js's purgeIfPublic: postType defaults to
+// 'post', which makes purgePostUrls's own default basePath exactly right;
+// a collection item needs its own collection's base_path instead, resolved
+// inside the waitUntil'd promise so this stays fire-and-forget.
+function purgeIfNeeded(execCtx, env, { wasPublished, isPublished, slug, previousSlug, tags = [], postType = 'post' }) {
   if (!wasPublished && !isPublished) return;
   if (!env.PUBLIC_HOST) return;
-  execCtx.waitUntil(purgePostUrls(`https://${env.PUBLIC_HOST}`, { slug, previousSlug, tags }));
+  execCtx.waitUntil(
+    (async () => {
+      let basePath;
+      if (postType !== 'post') {
+        const settings = await getSettings(env.DB);
+        const collection = findCollectionByType(resolveCollections(settings), postType);
+        if (collection) basePath = collection.base_path;
+      }
+      await purgePostUrls(`https://${env.PUBLIC_HOST}`, { slug, previousSlug, tags, ...(basePath ? { basePath } : {}) });
+    })()
+  );
 }
 
 function postSummary(post) {
@@ -108,6 +133,7 @@ async function listPosts(args, { env }) {
     status: args.status || 'all',
     tag: args.tag || undefined,
     author: args.author || undefined,
+    type: args.type || undefined,
     sort: args.sort || 'updated',
     limit: args.limit,
     offset: args.offset,
@@ -127,7 +153,7 @@ async function searchPosts(args, { env }) {
   if (typeof args.query !== 'string' || !args.query.trim()) {
     fail('bad_request', 'query is required.', { field: 'query' });
   }
-  const data = await searchAdminPosts(env.DB, { query: args.query.trim(), status: args.status, limit: args.limit });
+  const data = await searchAdminPosts(env.DB, { query: args.query.trim(), status: args.status, type: args.type || undefined, limit: args.limit });
   return { data, audit: { action: 'mcp.search_posts', detail: { query: args.query } } };
 }
 
@@ -165,6 +191,22 @@ async function getSiteSettings(_args, { env }) {
 
 /* --- Writing ------------------------------------------------------------ */
 
+/**
+ * Same validation as src/admin-posts.js's own resolver — post_type checked
+ * against the site's collections registry, then type_fields against that
+ * specific collection's declared fields. Kept here rather than imported from
+ * admin-posts.js (which has no exports meant for reuse outside its own route
+ * dispatch) — same "thin adapter calling the same validators" shape as
+ * every other tool in this file already uses.
+ */
+async function resolvePostTypeAndFields(env, postType, typeFields) {
+  const settings = await getSettings(env.DB);
+  const type = validatePostType(postType ?? 'post', settings);
+  const collection = type === 'post' ? null : findCollectionByType(resolveCollections(settings), type);
+  const fields = validateTypeFields(typeFields, collection?.fields);
+  return { type, fields };
+}
+
 async function createPost(args, { env, identity }) {
   requirePerm(identity, 'post.editOwn');
 
@@ -175,6 +217,7 @@ async function createPost(args, { env, identity }) {
   const bodyMd = validateBodyMd(args.body_md || '');
   const tags = validateTags(args.tags);
   const visibility = validateVisibility(args.visibility);
+  const { type: postType, fields: typeFields } = await resolvePostTypeAndFields(env, args.post_type, args.type_fields);
   const { body_html, word_count, reading_minutes, excerpt } = computeContent(bodyMd, args.excerpt?.trim());
 
   const post = {
@@ -196,6 +239,8 @@ async function createPost(args, { env, identity }) {
     canonical_url: null,
     word_count,
     reading_minutes,
+    post_type: postType,
+    type_fields: postType === 'post' ? null : typeFields,
     created_at: nowIso(),
     updated_at: nowIso(),
     published_at: null,
@@ -220,6 +265,22 @@ async function updatePost(args, { env, ctx, identity }) {
 
   const fields = {};
   const previousSlug = post.slug;
+
+  // Same restriction as the REST API's PATCH (src/admin-posts.js): post_type
+  // is fixed at create time, since changing it would change the post's URL
+  // and its field contract out from under whatever's already stored.
+  if (args.post_type !== undefined && args.post_type !== post.post_type) {
+    fail('bad_request', 'post_type cannot be changed after creation — delete and recreate instead.', { field: 'post_type' });
+  }
+  if (args.type_fields !== undefined) {
+    if (post.post_type === 'post') {
+      fields.type_fields = null;
+    } else {
+      const settings = await getSettings(env.DB);
+      const collection = findCollectionByType(resolveCollections(settings), post.post_type);
+      fields.type_fields = JSON.stringify(validateTypeFields(args.type_fields, collection?.fields));
+    }
+  }
 
   if (args.title !== undefined) fields.title = validateTitle(args.title);
   if (args.slug !== undefined && args.slug !== post.slug) {
@@ -262,10 +323,23 @@ async function updatePost(args, { env, ctx, identity }) {
   const updated = await getAdminPostById(env.DB, post.id);
   purgeIfNeeded(ctx, env, {
     wasPublished: post.status === 'published', isPublished: updated.status === 'published',
-    slug: updated.slug, previousSlug, tags: updated.tags.map((t) => t.slug),
+    slug: updated.slug, previousSlug, tags: updated.tags.map((t) => t.slug), postType: updated.post_type,
   });
 
   return { data: updated, audit: { action: 'mcp.update_post', entity: 'post', entityId: post.id, detail: { fields: Object.keys(fields) } } };
+}
+
+/** A post_type's own public URL — `/posts/<slug>` for a real post, `<collection.base_path>/<slug>` for a collection item. */
+async function publicUrlFor(env, postType, slug) {
+  if (!env.PUBLIC_HOST) return null;
+  let basePath = '/posts';
+  if (postType !== 'post') {
+    const settings = await getSettings(env.DB);
+    const collection = findCollectionByType(resolveCollections(settings), postType);
+    if (!collection) return null;
+    basePath = collection.base_path;
+  }
+  return `https://${env.PUBLIC_HOST}${basePath}/${slug}`;
 }
 
 async function publishPost(args, { env, ctx, identity }) {
@@ -284,10 +358,11 @@ async function publishPost(args, { env, ctx, identity }) {
   const updated = await getAdminPostById(env.DB, post.id);
   purgeIfNeeded(ctx, env, {
     wasPublished: post.status === 'published', isPublished: updated.status === 'published',
-    slug: updated.slug, tags: updated.tags.map((t) => t.slug),
+    slug: updated.slug, tags: updated.tags.map((t) => t.slug), postType: updated.post_type,
   });
 
-  const data = { ...updated, url: updated.status === 'published' && env.PUBLIC_HOST ? `https://${env.PUBLIC_HOST}/posts/${updated.slug}` : null };
+  const url = updated.status === 'published' ? await publicUrlFor(env, updated.post_type, updated.slug) : null;
+  const data = { ...updated, url };
   return { data, audit: { action: 'mcp.publish_post', entity: 'post', entityId: post.id, detail: { scheduled_for: args.scheduled_for || null } } };
 }
 
@@ -298,7 +373,7 @@ async function unpublishPost(args, { env, ctx, identity }) {
   await updatePostRow(env.DB, post.id, { status: 'draft', scheduled_for: null, updated_at: nowIso() });
   const updated = await getAdminPostById(env.DB, post.id);
   purgeIfNeeded(ctx, env, {
-    wasPublished: post.status === 'published', isPublished: false, slug: updated.slug, tags: updated.tags.map((t) => t.slug),
+    wasPublished: post.status === 'published', isPublished: false, slug: updated.slug, tags: updated.tags.map((t) => t.slug), postType: updated.post_type,
   });
 
   return { data: updated, audit: { action: 'mcp.unpublish_post', entity: 'post', entityId: post.id } };
@@ -311,7 +386,7 @@ async function deletePost(args, { env, ctx, identity }) {
   // Soft delete only — hard deletion is not exposed over MCP at all (docs/mcp.md).
   await updatePostRow(env.DB, post.id, { status: 'archived', updated_at: nowIso() });
   purgeIfNeeded(ctx, env, {
-    wasPublished: post.status === 'published', isPublished: false, slug: post.slug, tags: post.tags.map((t) => t.slug),
+    wasPublished: post.status === 'published', isPublished: false, slug: post.slug, tags: post.tags.map((t) => t.slug), postType: post.post_type,
   });
 
   return { data: { id: post.id, status: 'archived' }, audit: { action: 'mcp.delete_post', entity: 'post', entityId: post.id, detail: { title: post.title, slug: post.slug } } };
@@ -360,6 +435,17 @@ async function updateSiteSettings(args, { env, identity }) {
   return { data, audit: { action: 'mcp.update_site_settings', entity: 'settings', detail: { keys: Object.keys(args || {}) } } };
 }
 
+/**
+ * Read-only — the site's collection registry, field specs included. Exists
+ * so a client can discover valid post_type values and each one's
+ * type_fields keys before calling create_post, rather than guessing or
+ * failing a call first to find out.
+ */
+async function listCollections(_args, { env }) {
+  const settings = await getSettings(env.DB);
+  return { data: resolveCollections(settings), audit: { action: 'mcp.list_collections' } };
+}
+
 /* --- Catalog ------------------------------------------------------------- */
 
 const str = (description) => ({ type: 'string', description });
@@ -377,6 +463,7 @@ export const TOOLS = [
         status: { ...str('Filter by status.'), enum: ['draft', 'scheduled', 'published', 'archived', 'all'] },
         tag: str('Filter by tag slug.'),
         author: str('Filter by author id.'),
+        type: str('Filter by post_type (default "post"; "all" for every type, including collection items). See list_collections for the site\'s configured types.'),
         limit: int('Max results (default 20, max 100).'),
         offset: int('Pagination offset.'),
         sort: { ...str('Sort order.'), enum: ['newest', 'oldest', 'updated'] },
@@ -410,6 +497,7 @@ export const TOOLS = [
       properties: {
         query: str('Search text (required).'),
         status: { ...str('Filter by status.'), enum: ['draft', 'scheduled', 'published', 'archived', 'all'] },
+        type: str('Filter by post_type (default "post"; "all" for every type).'),
         limit: int('Max results (default 20, max 50).'),
       },
       required: ['query'],
@@ -445,9 +533,17 @@ export const TOOLS = [
     handler: getSiteSettings,
   },
   {
+    name: 'list_collections',
+    minRole: 'read',
+    description: (site) => `${site}'s configured collections (custom content types, e.g. "project") — each one's type and field specs, so a valid post_type/type_fields can be built before calling create_post.`,
+    inputSchema: { type: 'object', properties: {} },
+    annotations: { readOnlyHint: true },
+    handler: listCollections,
+  },
+  {
     name: 'create_post',
     minRole: 'author',
-    description: (site) => `Create a new post on ${site}. Always created as a draft, regardless of any status passed — publishing is always a separate call.`,
+    description: (site) => `Create a new post (or collection item) on ${site}. Always created as a draft, regardless of any status passed — publishing is always a separate call.`,
     inputSchema: {
       type: 'object',
       properties: {
@@ -460,6 +556,8 @@ export const TOOLS = [
         cover_key: str('R2 key of an existing media item to use as the cover.'),
         cover_alt: str('Alt text for the cover.'),
         visibility: { ...str('public (default) or unlisted.'), enum: ['public', 'unlisted'] },
+        post_type: str('"post" (default) or one of the site\'s configured collection types — see list_collections.'),
+        type_fields: { type: 'object', description: 'Field values for a collection item, keyed by that collection\'s field keys (see list_collections). Ignored for post_type "post".' },
       },
       required: ['title'],
     },
@@ -469,7 +567,7 @@ export const TOOLS = [
   {
     name: 'update_post',
     minRole: 'author',
-    description: (site) => `Edit a post on ${site} by slug or id. Cannot change status — use publish_post/unpublish_post/delete_post for that. Pass expected_updated_at to fail with a conflict instead of overwriting a change made since you last read the post.`,
+    description: (site) => `Edit a post on ${site} by slug or id. Cannot change status (use publish_post/unpublish_post/delete_post) or post_type (delete and recreate instead). Pass expected_updated_at to fail with a conflict instead of overwriting a change made since you last read the post.`,
     inputSchema: {
       type: 'object',
       properties: {
@@ -484,6 +582,7 @@ export const TOOLS = [
         canonical_url: str('Canonical URL, when cross-posted from elsewhere.'),
         tags: { type: 'array', items: { type: 'string' }, description: 'Replaces the full tag set.' },
         visibility: { ...str('public or unlisted.'), enum: ['public', 'unlisted'] },
+        type_fields: { type: 'object', description: 'Replaces the collection item\'s field values (see list_collections). Ignored for post_type "post".' },
         expected_updated_at: str('The updated_at you last read — enables the conflict check.'),
       },
     },

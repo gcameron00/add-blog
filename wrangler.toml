@@ -175,3 +175,49 @@ ACCESS_AUD = "0c8f399218802f83ada746e3d6d17a961eec1caa6ad48b7de4bec01d3020f0a5"
 # Optional — only if you want scheduled posts to auto-publish on this site:
 [env.caitlin-ski.triggers]
 crons = ["*/5 * * * *"]
+
+# --- allaboutthevibes.blog -----------------------------------------------
+#
+# Staged onboarding (docs/vibecode-migration.md): routes deliberately point
+# at blog.allaboutthevibes.blog / blog-admin.allaboutthevibes.blog only, not
+# the apex — allaboutthevibes.blog itself stays on Cloudflare Pages (the
+# still-live static site being migrated) until content is imported and
+# verified on this staging subdomain. The apex route gets added as a second
+# entry here at cutover, per docs/vibecode-migration.md's checklist — not
+# before.
+
+[env.allaboutthevibes]
+name = "allaboutthevibes-blog"
+routes = [
+  { pattern = "blog.allaboutthevibes.blog",       custom_domain = true },
+  { pattern = "blog-admin.allaboutthevibes.blog", custom_domain = true },
+]
+
+[[env.allaboutthevibes.d1_databases]]
+binding = "DB"
+database_name = "allaboutthevibes-blog"
+database_id = "9de11ef4-e0ed-40a2-84e7-440b3136a7e3"
+
+[[env.allaboutthevibes.r2_buckets]]
+binding = "MEDIA"
+bucket_name = "allaboutthevibes-blog-media"
+
+[env.allaboutthevibes.assets]
+directory = "."
+binding = "ASSETS"
+run_worker_first = true
+
+[env.allaboutthevibes.vars]
+ADMIN_HOST = "blog-admin.allaboutthevibes.blog"
+PUBLIC_HOST = "blog.allaboutthevibes.blog"
+
+# Access application created in the Cloudflare dashboard for
+# blog-admin.allaboutthevibes.blog (self-hosted, policy scoped to
+# me@gcameron.com, Managed OAuth enabled for /mcp with claude.ai's callback
+# allow-listed — docs/deployment.md §4). Same Zero Trust team as every other
+# site here.
+ACCESS_TEAM_DOMAIN = "grahamcameron.cloudflareaccess.com"
+ACCESS_AUD = "6e5d83fd39d4f40c30fe541c1f4e5ec61aa7dbee820be75064a58672505165a0"
+
+[env.allaboutthevibes.triggers]
+crons = ["*/5 * * * *"]

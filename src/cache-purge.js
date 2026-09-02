@@ -10,7 +10,15 @@
  * have cached, so those still rely on their short max-age/s-maxage rather
  * than an active purge — see docs/architecture.md §5.
  */
-export async function purgePostUrls(publicOrigin, { slug, previousSlug, tags = [] } = {}) {
+/**
+ * `basePath` defaults to `/posts` — a post's own permalink prefix. A
+ * collection item (post_type != 'post') passes its collection's own
+ * base_path instead (e.g. `/portfolio`), so its purge hits `<base_path>/`
+ * and `<base_path>/<slug>` rather than the hardcoded posts path; the shared
+ * site-wide URLs (home, feeds, sitemap) are purged either way since a
+ * collection item can show up on the sitemap too (in_sitemap).
+ */
+export async function purgePostUrls(publicOrigin, { slug, previousSlug, tags = [], basePath = '/posts' } = {}) {
   const urls = new Set([
     `${publicOrigin}/`,
     `${publicOrigin}/api/posts`,
@@ -22,8 +30,8 @@ export async function purgePostUrls(publicOrigin, { slug, previousSlug, tags = [
   ]);
 
   for (const s of [slug, previousSlug].filter(Boolean)) {
-    urls.add(`${publicOrigin}/posts/${s}`);
-    urls.add(`${publicOrigin}/api/posts/${s}`);
+    urls.add(`${publicOrigin}${basePath}/${s}`);
+    if (basePath === '/posts') urls.add(`${publicOrigin}/api/posts/${s}`);
   }
   for (const tag of tags) {
     urls.add(`${publicOrigin}/api/posts?tag=${encodeURIComponent(tag)}`);

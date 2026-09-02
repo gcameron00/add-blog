@@ -43,6 +43,28 @@ describe('public host — admin paths are always 404', () => {
   });
 });
 
+describe('shell-only paths (/collection, /collection-item) are always 404', () => {
+  for (const path of ['/collection', '/collection/', '/collection-item', '/collection-item/', '/collection-item/foo']) {
+    it(`blocks ${path} on the public host`, async () => {
+      const res = await get(PUBLIC_HOST, path);
+      expect(res.status).toBe(404);
+    });
+
+    it(`blocks ${path} on the admin host too — these are template shells, not admin pages`, async () => {
+      const res = await get(ADMIN_HOST, path);
+      expect(res.status).toBe(404);
+    });
+  }
+
+  it('does not over-match /collections (plural) as a shell-only path', async () => {
+    const res = await get(PUBLIC_HOST, '/collections');
+    // Not blocked by the shell-only guard specifically — whatever it 404s
+    // as (no matching route), it must not be the shell-only guard's exact
+    // no-store response for a path that merely starts with the same letters.
+    expect(res.headers.get('Cache-Control')).not.toBe('no-store');
+  });
+});
+
 describe('admin host — admin paths are reachable', () => {
   it('serves the admin dashboard', async () => {
     const res = await get(ADMIN_HOST, '/admin/');

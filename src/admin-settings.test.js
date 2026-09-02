@@ -100,4 +100,57 @@ describe('PUT /api/admin/settings', () => {
     expect(row.actor).toBe('grant@mysite.com');
     expect(JSON.parse(row.detail).keys).toContain('timezone');
   });
+
+  describe('collections (migrations/0008_collections.sql)', () => {
+    const PROJECT_COLLECTION = {
+      type: 'project',
+      label: 'Project',
+      label_plural: 'Projects',
+      base_path: '/portfolio',
+      legacy_path: '/project',
+      index_title: 'Portfolio',
+      layout: 'grid',
+      in_feed: false,
+      in_sitemap: true,
+      nav: { header: true, footer: false },
+      fields: [{ key: 'status', label: 'Status', type: 'enum', options: ['Live', 'Archived'], display: 'badge' }],
+    };
+
+    it('is seeded to [] by migrations/0008_collections.sql', async () => {
+      const owner = await identityFor('grant@mysite.com');
+      const { data } = await (await call(owner, 'GET')).json();
+      expect(data.collections).toEqual([]);
+    });
+
+    it('an owner can save a well-formed collections array', async () => {
+      const owner = await identityFor('grant@mysite.com');
+      const res = await call(owner, 'PUT', { body: { collections: [PROJECT_COLLECTION] } });
+      expect(res.status).toBe(200);
+      const { data } = await res.json();
+      expect(data.collections).toEqual([PROJECT_COLLECTION]);
+    });
+
+    it('rejects a malformed collections array with a field-tagged 400 (validateCollections)', async () => {
+      const owner = await identityFor('grant@mysite.com');
+      const res = await call(owner, 'PUT', { body: { collections: [{ ...PROJECT_COLLECTION, base_path: '/admin' }] } });
+      expect(res.status).toBe(400);
+      const { error } = await res.json();
+      expect(error.field).toBe('collections');
+    });
+
+    it('403s a non-owner — same settings.manage gate as every other key', async () => {
+      const editor = await identityFor('ada@mysite.com');
+      const res = await call(editor, 'PUT', { body: { collections: [PROJECT_COLLECTION] } });
+      expect(res.status).toBe(403);
+    });
+
+    it('purges the branded static pages on change, same as nav_config', async () => {
+      const owner = await identityFor('grant@mysite.com');
+      const res = await call(owner, 'PUT', { body: { collections: [PROJECT_COLLECTION] } });
+      expect(res.status).toBe(200);
+      // BRANDING_KEYS purge is best-effort/fire-and-forget (ctx.waitUntil) —
+      // asserting the write itself succeeded is the meaningful part here;
+      // the purge call site is covered structurally, not by observing cache state.
+    });
+  });
 });

@@ -507,7 +507,7 @@ function postStatusActions(post, { compact, role, onChange }) {
   ];
 }
 
-function postsTable(posts, { compact = false, onChange, role } = {}) {
+function postsTable(posts, { compact = false, onChange, role, collectionsByType = {} } = {}) {
   const table = el('table', { class: 'table' }, [
     el('thead', {}, [
       el('tr', {}, [
@@ -527,7 +527,10 @@ function postsTable(posts, { compact = false, onChange, role } = {}) {
       el('tr', {}, [
         el('td', {}, [
           el('a', { class: 'table__title', href: editHref(post), text: post.title }),
-          el('div', { class: 'table__sub', text: `/${post.slug} · ${post.reading_minutes} min · ${post.word_count} words` }),
+          el('div', { class: 'table__sub', text: [
+            post.post_type && post.post_type !== 'post' ? (collectionsByType[post.post_type]?.label || post.post_type) : null,
+            `/${post.slug}`, `${post.reading_minutes} min`, `${post.word_count} words`,
+          ].filter(Boolean).join(' · ') }),
         ]),
         el('td', {}, [
           statusBadge(post.status),
@@ -581,10 +584,12 @@ async function initPosts() {
   const search = document.querySelector('[data-search]');
   const sort = document.querySelector('[data-sort]');
   const segmented = document.querySelector('[data-status-filter]');
+  const typeFilter = document.querySelector('[data-type-filter]');
 
   const params = new URLSearchParams(location.search);
   const state = {
     status: params.get('status') || 'all',
+    type: params.get('type') || 'post',
     q: '',
     sort: 'updated',
   };
@@ -593,6 +598,22 @@ async function initPosts() {
   try {
     role = (await api.me()).data.role;
   } catch { /* fall back to showing owner-only controls, same as the MCP tools table */ }
+
+  // Independent, non-blocking read — the type filter still works with just
+  // "Posts"/"All types" if this fails, same posture as the role fetch above.
+  let collectionsByType = {};
+  try {
+    const { data } = await api.getSettings();
+    for (const c of Array.isArray(data.collections) ? data.collections : []) collectionsByType[c.type] = c;
+  } catch { /* Posts/All types options still work */ }
+
+  if (typeFilter) {
+    for (const c of Object.values(collectionsByType)) {
+      typeFilter.append(el('option', { value: c.type, text: c.label_plural || c.label }));
+    }
+    typeFilter.value = state.type;
+    typeFilter.addEventListener('change', () => { state.type = typeFilter.value; load(); });
+  }
 
   function paintSegmented() {
     if (!segmented) return;
@@ -606,20 +627,21 @@ async function initPosts() {
     try {
       const { data, page } = await api.adminListPosts(state);
       clear(host);
+      const itemLabel = state.type === 'all' ? 'items' : (collectionsByType[state.type]?.label_plural?.toLowerCase() || (state.type === 'post' ? 'posts' : state.type));
       if (!data.length) {
         renderEmpty(host, {
-          title: state.q ? 'No posts match that search' : 'No posts with this status',
+          title: state.q ? `No ${itemLabel} match that search` : `No ${itemLabel} with this status`,
           body: state.q ? 'Try a different term or clear the filter.' : undefined,
           action: el('a', { class: 'btn btn--primary', href: '/admin/editor/', text: 'Write a post' }),
         });
         return;
       }
-      host.append(postsTable(data, { onChange: load, role }));
+      host.append(postsTable(data, { onChange: load, role, collectionsByType }));
       host.append(
         el('p', {
           class: 'small muted',
           style: 'padding:.75rem 1.25rem;margin:0',
-          text: `${page.total} post${page.total === 1 ? '' : 's'}`,
+          text: `${page.total} ${itemLabel}`,
         })
       );
     } catch (error) {
@@ -1245,6 +1267,160 @@ function renderNavCustomLinks(tbody, links, redraw) {
   });
 }
 
+/* --- Collections (migrations/0008_collections.sql) ------------------------
+ * A `collections` settings row, same key/value mechanism as nav_config above
+ * — loaded/serialized separately from the generic form loop for the same
+ * reason. FIELD_TYPES/FIELD_DISPLAYS/LAYOUTS mirror src/validate.js's and
+ * src/collections.js's registries; kept as local literals rather than
+ * imported since assets/js/ never imports from src/ (same posture as
+ * NAV_FEATURES above being a local copy, not an import of
+ * src/site-template.js's list).
+ * -------------------------------------------------------------------------- */
+
+const COLLECTION_FIELD_TYPES = ['text', 'enum', 'tags', 'url', 'date'];
+const COLLECTION_FIELD_DISPLAYS = ['badge', 'chips', 'link', 'text', 'date'];
+const COLLECTION_LAYOUTS = ['grid', 'list'];
+const SLUG_RE = /^[a-z0-9]+(-[a-z0-9]+)*$/;
+
+function blankCollection() {
+  return {
+    type: '', label: '', label_plural: '', base_path: '', legacy_path: '',
+    index_title: '', layout: 'grid', in_feed: false, in_sitemap: true,
+    nav: { header: false, footer: false }, fields: [],
+  };
+}
+
+function blankCollectionField() {
+  // `options` held as a plain comma-separated string while editing, split
+  // into an array only at submit time (enum fields only).
+  return { key: '', label: '', type: 'text', options: '', display: 'text' };
+}
+
+function renderCollectionFieldsTable(host, fields, redraw) {
+  clear(host);
+  const table = el('table', { class: 'table' }, [
+    el('thead', {}, [
+      el('tr', {}, [
+        el('th', { text: 'Key' }), el('th', { text: 'Label' }), el('th', { text: 'Type' }),
+        el('th', { text: 'Options' }), el('th', { text: 'Display' }),
+        el('th', {}, [el('span', { class: 'visually-hidden', text: 'Actions' })]),
+      ]),
+    ]),
+    el('tbody', {}, fields.map((field, index) => el('tr', {}, [
+      el('td', {}, [el('input', {
+        type: 'text', value: field.key, placeholder: 'key', 'aria-label': 'Field key',
+        onInput: (event) => { field.key = event.target.value; },
+      })]),
+      el('td', {}, [el('input', {
+        type: 'text', value: field.label, placeholder: 'Label', 'aria-label': 'Field label',
+        onInput: (event) => { field.label = event.target.value; },
+      })]),
+      el('td', {}, [el('select', {
+        'aria-label': 'Field type',
+        onChange: (event) => { field.type = event.target.value; redraw(); },
+      }, COLLECTION_FIELD_TYPES.map((type) => el('option', { value: type, selected: field.type === type ? '' : null, text: type })))]),
+      el('td', {}, [el('input', {
+        type: 'text', value: field.options, hidden: field.type === 'enum' ? null : '',
+        placeholder: 'Comma-separated, e.g. Live, In Progress, Archived', 'aria-label': 'Field options',
+        onInput: (event) => { field.options = event.target.value; },
+      })]),
+      el('td', {}, [el('select', {
+        'aria-label': 'Field display',
+        onChange: (event) => { field.display = event.target.value; },
+      }, COLLECTION_FIELD_DISPLAYS.map((display) => el('option', { value: display, selected: field.display === display ? '' : null, text: display })))]),
+      el('td', {}, [el('button', {
+        class: 'btn btn--sm btn--ghost btn--danger', type: 'button', text: 'Remove',
+        onClick: () => { fields.splice(index, 1); redraw(); },
+      })]),
+    ]))),
+  ]);
+  host.append(el('div', { style: 'overflow-x: auto' }, [table]));
+  host.append(el('button', {
+    class: 'btn btn--sm', type: 'button', text: 'Add field', style: 'margin-top: .5rem',
+    onClick: () => { fields.push(blankCollectionField()); redraw(); },
+  }));
+}
+
+function renderCollectionsList(host, collections, savedTypes, redraw) {
+  clear(host);
+  collections.forEach((collection, index) => {
+    const locked = savedTypes.has(collection.type);
+    const fieldsHost = el('div');
+    const redrawFields = () => renderCollectionFieldsTable(fieldsHost, collection.fields, redrawFields);
+    redrawFields();
+
+    host.append(
+      el('div', { class: 'card', style: 'margin-top: 1rem' }, [
+        el('div', { class: 'form-row' }, [
+          el('div', { class: 'field' }, [
+            el('label', { text: 'Type' }),
+            el('input', {
+              type: 'text', value: collection.type, placeholder: 'project', disabled: locked ? '' : null,
+              onInput: (event) => { collection.type = event.target.value; },
+            }),
+            locked ? el('p', { class: 'field__hint', text: "Can't be changed after this collection is saved — an in-use type could orphan existing items. Add a new collection instead." }) : null,
+          ]),
+          el('div', { class: 'field' }, [
+            el('label', { text: 'Label' }),
+            el('input', { type: 'text', value: collection.label, placeholder: 'Project', onInput: (event) => { collection.label = event.target.value; } }),
+          ]),
+          el('div', { class: 'field' }, [
+            el('label', { text: 'Label (plural)' }),
+            el('input', { type: 'text', value: collection.label_plural, placeholder: 'Projects', onInput: (event) => { collection.label_plural = event.target.value; } }),
+          ]),
+        ]),
+        el('div', { class: 'form-row' }, [
+          el('div', { class: 'field' }, [
+            el('label', { text: 'URL path' }),
+            el('input', { type: 'text', value: collection.base_path, placeholder: '/portfolio', onInput: (event) => { collection.base_path = event.target.value; } }),
+          ]),
+          el('div', { class: 'field' }, [
+            el('label', { text: 'Legacy URL path (optional)' }),
+            el('input', { type: 'text', value: collection.legacy_path, placeholder: '/project', onInput: (event) => { collection.legacy_path = event.target.value; } }),
+            el('p', { class: 'field__hint', text: 'Old links here 301 to the new URL path above.' }),
+          ]),
+        ]),
+        el('div', { class: 'field' }, [
+          el('label', { text: 'Index page title' }),
+          el('input', { type: 'text', value: collection.index_title, placeholder: 'Portfolio', onInput: (event) => { collection.index_title = event.target.value; } }),
+        ]),
+        el('div', { class: 'form-row' }, [
+          el('div', { class: 'field' }, [
+            el('label', { text: 'Layout' }),
+            el('select', {
+              onChange: (event) => { collection.layout = event.target.value; },
+            }, COLLECTION_LAYOUTS.map((layout) => el('option', { value: layout, selected: collection.layout === layout ? '' : null, text: layout }))),
+          ]),
+          el('label', { class: 'checkbox' }, [
+            el('input', { type: 'checkbox', checked: collection.in_feed ? '' : null, onChange: (event) => { collection.in_feed = event.target.checked; } }),
+            el('span', {}, [el('strong', { text: 'In RSS feed' })]),
+          ]),
+          el('label', { class: 'checkbox' }, [
+            el('input', { type: 'checkbox', checked: collection.in_sitemap ? '' : null, onChange: (event) => { collection.in_sitemap = event.target.checked; } }),
+            el('span', {}, [el('strong', { text: 'In sitemap' })]),
+          ]),
+          el('label', { class: 'checkbox' }, [
+            el('input', { type: 'checkbox', checked: collection.nav.header ? '' : null, onChange: (event) => { collection.nav.header = event.target.checked; } }),
+            el('span', {}, [el('strong', { text: 'In header nav' })]),
+          ]),
+          el('label', { class: 'checkbox' }, [
+            el('input', { type: 'checkbox', checked: collection.nav.footer ? '' : null, onChange: (event) => { collection.nav.footer = event.target.checked; } }),
+            el('span', {}, [el('strong', { text: 'In footer nav' })]),
+          ]),
+        ]),
+        el('div', { class: 'field' }, [
+          el('label', { text: 'Fields' }),
+          fieldsHost,
+        ]),
+        el('button', {
+          class: 'btn btn--sm btn--ghost btn--danger', type: 'button', text: 'Remove collection', style: 'margin-top: .75rem',
+          onClick: () => { collections.splice(index, 1); redraw(); },
+        }),
+      ])
+    );
+  });
+}
+
 async function initSettings() {
   const form = document.querySelector('[data-settings-form]');
   const reset = document.querySelector('[data-reset-demo]');
@@ -1326,6 +1502,28 @@ async function initSettings() {
     redrawLinks();
   });
 
+  // collections isn't a plain form field either — same split as nav_config.
+  // savedTypes is captured once, from what the page loaded with, so a type
+  // that already existed becomes locked; a freshly-added collection's type
+  // stays editable until the next full load (see renderCollectionsList).
+  const collectionsHost = form.querySelector('[data-collections-list]');
+  const addCollectionBtn = form.querySelector('[data-collections-add]');
+  const collections = Array.isArray(current.collections)
+    ? current.collections.map((c) => ({
+        ...c,
+        nav: { header: false, footer: false, ...c.nav },
+        fields: (c.fields || []).map((f) => ({ ...f, options: Array.isArray(f.options) ? f.options.join(', ') : (f.options || '') })),
+      }))
+    : [];
+  const savedTypes = new Set(collections.map((c) => c.type));
+  const redrawCollections = () => renderCollectionsList(collectionsHost, collections, savedTypes, redrawCollections);
+  if (collectionsHost) redrawCollections();
+
+  addCollectionBtn?.addEventListener('click', () => {
+    collections.push(blankCollection());
+    redrawCollections();
+  });
+
   form.addEventListener('submit', async (event) => {
     event.preventDefault();
     const values = {};
@@ -1346,6 +1544,41 @@ async function initSettings() {
         features: readNavFeaturesTable(navFeaturesBody),
         custom_links: customLinks.filter((link) => (link.name || '').trim() && (link.url || '').trim()),
       };
+    }
+    if (collectionsHost) {
+      // Light, high-value checks only — everything else (duplicate types,
+      // reserved-path collisions, the 10-collection/20-field caps) is left to
+      // the server's validateCollections; its error still surfaces via the
+      // catch below, so a rejected save is never silent.
+      for (const c of collections) {
+        if (!c.type.trim() || !SLUG_RE.test(c.type.trim())) { toast(`Collection type "${c.type}" must be lowercase letters, numbers and hyphens.`, 'error'); return; }
+        if (!c.label.trim()) { toast(`Collection "${c.type}" needs a label.`, 'error'); return; }
+        if (!c.base_path.trim().startsWith('/')) { toast(`Collection "${c.type}" needs a URL path starting with "/".`, 'error'); return; }
+        for (const f of c.fields) {
+          if (!f.key.trim() || !SLUG_RE.test(f.key.trim())) { toast(`A field in "${c.type}" needs a lowercase key (letters, numbers, hyphens).`, 'error'); return; }
+          if (!f.label.trim()) { toast(`A field in "${c.type}" needs a label.`, 'error'); return; }
+          if (f.type === 'enum' && !f.options.split(',').map((o) => o.trim()).filter(Boolean).length) { toast(`Field "${f.key}" in "${c.type}" needs at least one option.`, 'error'); return; }
+        }
+      }
+      values.collections = collections.map((c) => ({
+        type: c.type.trim(),
+        label: c.label.trim(),
+        label_plural: c.label_plural.trim() || undefined,
+        base_path: c.base_path.trim(),
+        legacy_path: c.legacy_path.trim() || undefined,
+        index_title: c.index_title.trim() || undefined,
+        layout: c.layout,
+        in_feed: Boolean(c.in_feed),
+        in_sitemap: Boolean(c.in_sitemap),
+        nav: { header: Boolean(c.nav.header), footer: Boolean(c.nav.footer) },
+        fields: c.fields.map((f) => ({
+          key: f.key.trim(),
+          label: f.label.trim(),
+          type: f.type,
+          ...(f.type === 'enum' ? { options: f.options.split(',').map((o) => o.trim()).filter(Boolean) } : {}),
+          display: f.display,
+        })),
+      }));
     }
     const submit = form.querySelector('[type="submit"]');
     submit.disabled = true;

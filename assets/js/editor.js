@@ -44,6 +44,10 @@ const dom = {
   coverAlt: document.querySelector('[data-field="cover_alt"]'),
   coverPick: document.querySelector('[data-cover-pick]'),
   coverRemove: document.querySelector('[data-cover-remove]'),
+  postType: document.querySelector('[data-field="post_type"]'),
+  typeHint: document.querySelector('[data-type-hint]'),
+  customFieldsCard: document.querySelector('[data-custom-fields]'),
+  customFieldsBody: document.querySelector('[data-custom-fields-body]'),
 };
 
 const state = {
@@ -54,6 +58,8 @@ const state = {
   dirty: false,
   saving: false,
   conflict: false,
+  collections: [], // populated in init() from settings.collections
+  typeFields: {},
   role: 'owner', // overwritten by init() — defaults to showing owner-only controls, same fallback admin.js's MCP tools table uses
   siteTitle: 'add-blog', // overwritten by init() — same fallback name admin.js's renderSidebar uses
 };
@@ -344,6 +350,130 @@ function addTag(raw) {
   markDirty();
 }
 
+/* --- Type & custom fields ----------------------------------------------------
+ * post_type/type_fields (migrations/0008_collections.sql). The Type select is
+ * only editable on a new post — src/admin-posts.js's patchHandler rejects
+ * changing post_type after creation (a different type means a different URL
+ * and field contract), so this locks the select the same way fill() below
+ * locks nothing else quite like it: disabled, not hidden, so an existing
+ * item's type is still visible.
+ * -------------------------------------------------------------------------- */
+
+/** Options come from state.collections (settings.collections, fetched in init()) — called once that resolves, and again from fill() in case the post loaded first. Idempotent either order. */
+function populateTypeSelect() {
+  for (const opt of [...dom.postType.options]) {
+    if (opt.value !== 'post') opt.remove();
+  }
+  for (const collection of state.collections) {
+    dom.postType.append(el('option', { value: collection.type, text: collection.label }));
+  }
+  const current = state.post?.post_type;
+  if (current && current !== 'post' && !state.collections.some((c) => c.type === current)) {
+    // The item's collection was deleted/renamed since it was created — show
+    // the raw type truthfully rather than silently reverting to "Post".
+    dom.postType.append(el('option', { value: current, text: current, disabled: '' }));
+  }
+  if (current) dom.postType.value = current;
+}
+
+function currentCollection() {
+  return state.collections.find((c) => c.type === dom.postType.value) || null;
+}
+
+function renderTypeLock() {
+  const locked = Boolean(state.post?.id);
+  dom.postType.disabled = locked;
+  dom.typeHint.textContent = locked
+    ? 'What kind of content this is. Fixed once you save — a different type has a different URL and its own set of fields.'
+    : 'Pick Post, or a configured collection.';
+}
+
+/**
+ * Generic chip/token input — same `.token-input`/`.token` markup and
+ * Enter/comma-to-add, Backspace-on-empty-to-pop, blur-commits interaction as
+ * renderTags above, minus the suggestion-pool listbox (there's no shared pool
+ * to suggest from for an arbitrary custom field). Rebuilds `host`'s children
+ * each call, same as renderTags rebuilding dom.tagHost.
+ */
+function renderTokenField(host, values, onChange) {
+  const input = el('input', {
+    type: 'text', placeholder: values.length ? 'Add…' : '', autocomplete: 'off',
+    onKeydown: (event) => {
+      if (event.key === 'Enter' || event.key === ',') {
+        event.preventDefault();
+        const value = event.target.value.trim().replace(/,$/, '');
+        event.target.value = '';
+        if (value && !values.includes(value)) { onChange([...values, value]); renderTokenField(host, [...values, value], onChange).focus(); }
+      } else if (event.key === 'Backspace' && !event.target.value && values.length) {
+        onChange(values.slice(0, -1));
+        renderTokenField(host, values.slice(0, -1), onChange).focus();
+      }
+    },
+    onBlur: (event) => {
+      const value = event.target.value.trim().replace(/,$/, '');
+      if (value && !values.includes(value)) onChange([...values, value]);
+      event.target.value = '';
+    },
+  });
+
+  clear(host).append(
+    ...values.map((value, index) =>
+      el('span', { class: 'token' }, [
+        value,
+        el('button', {
+          type: 'button', text: '×', 'aria-label': `Remove ${value}`,
+          onClick: () => onChange(values.filter((_, i) => i !== index)),
+        }),
+      ])
+    ),
+    input
+  );
+  return input;
+}
+
+function renderCustomFields() {
+  const collection = currentCollection();
+  dom.customFieldsCard.hidden = !collection;
+  clear(dom.customFieldsBody);
+  if (!collection) return;
+
+  for (const spec of collection.fields || []) {
+    const value = state.typeFields[spec.key];
+    let control;
+    if (spec.type === 'enum') {
+      control = el('select', {
+        onChange: (event) => { state.typeFields[spec.key] = event.target.value; markDirty(); },
+      }, [
+        el('option', { value: '', text: '— choose —', selected: !value ? '' : null }),
+        ...(spec.options || []).map((option) => el('option', { value: option, selected: value === option ? '' : null, text: option })),
+      ]);
+    } else if (spec.type === 'tags') {
+      // renderTokenField re-renders itself (see its own onKeydown/onBlur) on
+      // every add/remove, always with this same onChange closure — no
+      // external redraw wrapper needed, same self-contained shape as
+      // renderTags managing dom.tagHost.
+      const tokenHost = el('div', { class: 'token-input' });
+      renderTokenField(tokenHost, Array.isArray(value) ? value : [], (next) => {
+        state.typeFields[spec.key] = next;
+        markDirty();
+      });
+      control = tokenHost;
+    } else {
+      control = el('input', {
+        type: spec.type === 'url' ? 'url' : spec.type === 'date' ? 'date' : 'text',
+        value: value || '',
+        onInput: (event) => { state.typeFields[spec.key] = event.target.value; markDirty(); },
+      });
+    }
+    dom.customFieldsBody.append(
+      el('div', { class: 'field' }, [
+        el('label', { text: spec.label || spec.key }),
+        control,
+      ])
+    );
+  }
+}
+
 /* --- Cover image ------------------------------------------------------------
  * Browsing only — picking reuses the same library the media page uploads
  * into (openMediaPicker, in admin.js). `state.cover` tracks the key/url
@@ -391,6 +521,11 @@ function fill(post) {
 
   state.cover = { key: post.cover_key || null, url: post.cover?.url || null };
   renderCoverPreview();
+
+  state.typeFields = { ...(post.type_fields || {}) };
+  populateTypeSelect(); // idempotent — also runs from init()'s settings fetch, whichever lands second wins
+  renderTypeLock();
+  renderCustomFields();
 
   dom.heading.textContent = post.id ? 'Edit post' : 'New post';
   renderTags();
@@ -544,6 +679,15 @@ function collect() {
     tags: state.tags.map((t) => t.name),
     cover_key: state.cover.key || null,
     cover_alt: dom.coverAlt.value.trim() || null,
+    // Always sent — harmless on update since the server only errors when it
+    // *differs* from the stored value, and the select is disabled by then
+    // anyway. type_fields only for a non-post type, and only its non-empty
+    // entries, so an untouched optional field doesn't submit as "" and fail
+    // validateTypeFields's per-type shape check.
+    post_type: dom.postType.value,
+    ...(dom.postType.value !== 'post'
+      ? { type_fields: Object.fromEntries(Object.entries(state.typeFields).filter(([, v]) => v !== '' && v !== null && v !== undefined && !(Array.isArray(v) && v.length === 0))) }
+      : {}),
   };
 }
 
@@ -642,6 +786,12 @@ function wire() {
   dom.coverPick.addEventListener('click', () => openMediaPicker({ onSelect: setCover }));
   dom.coverRemove.addEventListener('click', clearCover);
 
+  dom.postType.addEventListener('change', () => {
+    state.typeFields = {}; // switching type invalidates whatever was filled in for the old one
+    renderCustomFields();
+    markDirty();
+  });
+
   document.querySelector('[data-schedule-button]')?.addEventListener('click', () => {
     const when = dom.schedule.value;
     if (!when) {
@@ -693,11 +843,15 @@ async function init() {
   // scratch each time sidesteps that race entirely — same fallback default
   // as admin.js's, and a second cheap settings read is a fine price for not
   // having two modules fight over one string.
-  const siteTitlePromise = api.getSettings().then(({ data }) => { state.siteTitle = data.site_title || state.siteTitle; }).catch(() => {});
+  const siteTitlePromise = api.getSettings().then(({ data }) => {
+    state.siteTitle = data.site_title || state.siteTitle;
+    state.collections = Array.isArray(data.collections) ? data.collections : [];
+    populateTypeSelect();
+  }).catch(() => {});
 
   if (!postId) {
     await Promise.all([rolePromise, siteTitlePromise]);
-    fill({ status: 'draft', tags: [], body_md: '', title: '' });
+    fill({ status: 'draft', tags: [], body_md: '', title: '', post_type: 'post' });
     dom.title.focus();
     return;
   }
@@ -707,7 +861,7 @@ async function init() {
     fill(data);
   } catch (error) {
     toast(error.message || 'Could not load that post.', 'error');
-    fill({ status: 'draft', tags: [], body_md: '', title: '' });
+    fill({ status: 'draft', tags: [], body_md: '', title: '', post_type: 'post' });
   }
 }
 

@@ -811,6 +811,22 @@ label { font-size: var(--text-sm); font-weight: 550; display: block; margin-bott
 .field-row__label { color: var(--text-faint); min-width: 5rem; }
 .field-row__value { color: var(--text); }
 
+/* Item detail page only (src/collections.js's renderCollectionItem) — cards
+   keep the plain, unboxed .field-panel above untouched. */
+.field-panel--boxed {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: var(--sp-4) var(--sp-5);
+  margin-bottom: var(--sp-6);
+}
+.field-panel--boxed .field-row__label {
+  font-size: var(--text-xs);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  min-width: 6rem;
+}
+
 .status-badge {
   display: inline-flex;
   align-items: center;

@@ -119,15 +119,32 @@ const FIELD_RENDERERS = {
   text: renderFieldText,
 };
 
+function formatDate(iso) {
+  if (!iso) return '';
+  return new Date(iso).toLocaleDateString('en-US', { day: 'numeric', month: 'long', year: 'numeric' });
+}
+
+/** One label/value row, same markup renderFieldRows produces — used for the Published/Updated rows renderCollectionItem prepends, which aren't part of type_fields. */
+function renderDateRow(label, iso) {
+  return `
+    <div class="field-row">
+      <span class="field-row__label">${escapeHtml(label)}</span>
+      <span class="field-row__value"><time datetime="${escapeHtml(iso)}">${formatDate(iso)}</time></span>
+    </div>`;
+}
+
 /**
  * `typeFields` is the item's parsed type_fields object; `fieldSpecs` is the
  * collection's `fields` array. Only fields both declared in the spec *and*
  * present (non-null, non-empty) on the item get a row — an item missing a
- * given key omits that row rather than rendering an empty one.
+ * given key omits that row rather than rendering an empty one. Returns just
+ * the `.field-row`s, unwrapped — renderFieldPanel (cards) and
+ * renderCollectionItem (detail page, which prepends Published/Updated rows
+ * of its own) each wrap this in their own `.field-panel`.
  */
-export function renderFieldPanel(typeFields, fieldSpecs) {
+function renderFieldRows(typeFields, fieldSpecs) {
   if (!typeFields || typeof typeFields !== 'object' || !Array.isArray(fieldSpecs) || !fieldSpecs.length) return '';
-  const rows = fieldSpecs
+  return fieldSpecs
     .filter((spec) => spec && typeof spec.key === 'string' && typeFields[spec.key] !== undefined && typeFields[spec.key] !== null && typeFields[spec.key] !== '')
     .map((spec) => {
       const render = FIELD_RENDERERS[spec.display] || renderFieldText;
@@ -138,6 +155,11 @@ export function renderFieldPanel(typeFields, fieldSpecs) {
         </div>`;
     })
     .join('');
+}
+
+/** Card/list-row version — just the declared type_fields, no dates. Unchanged behavior from before the Published/Updated split above. */
+export function renderFieldPanel(typeFields, fieldSpecs) {
+  const rows = renderFieldRows(typeFields, fieldSpecs);
   return rows ? `<div class="field-panel">${rows}</div>` : '';
 }
 
@@ -196,12 +218,26 @@ export function renderCollectionIndex(items, collection) {
   return render(items, collection);
 }
 
-/** Full detail view for one item — cover, title, field panel, body, back-link. Mirrors src/pages.js's renderArticle. */
+/**
+ * Full detail view for one item — cover, title, meta panel, body, back-link.
+ * Mirrors src/pages.js's renderArticle, but the meta panel is one boxed
+ * group (Published/Updated plus every declared type_fields row) rather than
+ * renderArticle's separate `.byline` — collection items don't have an
+ * author to show alongside the date, so a plain byline row would be mostly
+ * empty; folding the date into the same panel as status/tech/links reads
+ * as one "about this item" block instead of two half-empty ones.
+ */
 export function renderCollectionItem(item, collection) {
   const cover = item.cover
     ? `<img class="article-cover" src="${escapeHtml(item.cover.url)}" alt="${escapeHtml(item.cover.alt || '')}">`
     : '';
   const label = escapeHtml((collection.label_plural || collection.label || 'items').toLowerCase());
+
+  const dateRows =
+    (item.published_at ? renderDateRow('Published', item.published_at) : '') +
+    (item.updated_at && item.updated_at !== item.published_at ? renderDateRow('Updated', item.updated_at) : '');
+  const fieldRows = renderFieldRows(item.type_fields, collection.fields);
+  const metaPanel = dateRows || fieldRows ? `<div class="field-panel field-panel--boxed">${dateRows}${fieldRows}</div>` : '';
 
   return `
     <header class="article-header">
@@ -209,7 +245,7 @@ export function renderCollectionItem(item, collection) {
       ${item.subtitle ? `<p class="subtitle">${escapeHtml(item.subtitle)}</p>` : ''}
     </header>
     ${cover}
-    ${renderFieldPanel(item.type_fields, collection.fields)}
+    ${metaPanel}
     <div class="prose">${item.body_html || ''}</div>
     <footer class="article-footer">
       <p class="small muted" style="margin-top:1rem"><a href="${escapeHtml(trimTrailingSlash(collection.base_path))}/">← All ${label}</a></p>

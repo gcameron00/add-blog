@@ -457,6 +457,62 @@ const str = (description) => ({ type: 'string', description });
 const int = (description) => ({ type: 'integer', description });
 const bool = (description) => ({ type: 'boolean', description });
 
+/**
+ * Structured schema for the `collections` settings key — every other key in
+ * KNOWN_KEYS gets an empty `{}` schema below (fine for a plain string/number/
+ * boolean value), but `collections` is nested enough that a client has no
+ * way to construct a valid one from the tool's one-line description alone.
+ * Mirrors src/validate.js's validateCollections/validateFieldSpecs exactly
+ * (SLUG_RE, BASE_PATH_RE, the 10-collection/20-field caps, the enum
+ * values) — this is documentation, the validator is still the actual
+ * authority, so keep the two in sync if either changes.
+ */
+const SLUG_PATTERN = '^[a-z0-9]+(-[a-z0-9]+)*$';
+const BASE_PATH_PATTERN = '^/[a-z0-9]+(-[a-z0-9]+)*$';
+const COLLECTIONS_SCHEMA = {
+  type: 'array',
+  maxItems: 10,
+  description:
+    'The site\'s custom content types (e.g. "project"). Each becomes a post_type usable with create_post. ' +
+    'An enum field\'s "options" is required and must be non-empty.',
+  items: {
+    type: 'object',
+    required: ['type', 'label', 'base_path', 'layout', 'fields'],
+    properties: {
+      type: { type: 'string', pattern: SLUG_PATTERN, maxLength: 40, description: 'Slug-shaped, e.g. "project". Used as post_type. Immutable in practice — changing it orphans existing items.' },
+      label: { type: 'string', maxLength: 60, description: 'Singular display name, e.g. "Project".' },
+      label_plural: { type: 'string', maxLength: 60, description: 'Plural display name, e.g. "Projects". Defaults to label.' },
+      base_path: { type: 'string', pattern: BASE_PATH_PATTERN, description: 'URL prefix for the index and item pages, e.g. "/portfolio". Must not collide with a reserved path (/posts, /admin, /api, …).' },
+      legacy_path: { type: 'string', pattern: BASE_PATH_PATTERN, description: 'Optional old URL prefix that 301s to base_path, e.g. "/project".' },
+      index_title: { type: 'string', maxLength: 60, description: 'Heading on the index page. Defaults to label_plural.' },
+      layout: { type: 'string', enum: ['grid', 'list'], description: 'Index page layout.' },
+      in_feed: { type: 'boolean', description: 'Include items in RSS/Atom. Default false.' },
+      in_sitemap: { type: 'boolean', description: 'Include items in sitemap.xml. Default false.' },
+      nav: {
+        type: 'object',
+        properties: { header: { type: 'boolean' }, footer: { type: 'boolean' } },
+        description: 'Whether the index page gets a header/footer nav link.',
+      },
+      fields: {
+        type: 'array',
+        maxItems: 20,
+        description: 'The extra fields an item of this type has, beyond title/body/cover.',
+        items: {
+          type: 'object',
+          required: ['key', 'label', 'type', 'display'],
+          properties: {
+            key: { type: 'string', pattern: SLUG_PATTERN, maxLength: 40, description: 'type_fields key, e.g. "status".' },
+            label: { type: 'string', maxLength: 60, description: 'Field label shown in the UI.' },
+            type: { type: 'string', enum: ['text', 'enum', 'tags', 'url', 'date'], description: 'Value shape. "enum" requires non-empty "options".' },
+            options: { type: 'array', items: { type: 'string' }, description: 'Allowed values — required, non-empty, only for type "enum".' },
+            display: { type: 'string', enum: ['badge', 'chips', 'link', 'text', 'date'], description: 'How the value renders on the public site.' },
+          },
+        },
+      },
+    },
+  },
+};
+
 export const TOOLS = [
   {
     name: 'list_posts',
@@ -637,7 +693,10 @@ export const TOOLS = [
     name: 'update_site_settings',
     minRole: 'owner',
     description: (site) => `Partially update ${site}'s settings object (${[...KNOWN_KEYS].join(', ')}).`,
-    inputSchema: { type: 'object', properties: Object.fromEntries([...KNOWN_KEYS].map((key) => [key, {}])) },
+    inputSchema: {
+      type: 'object',
+      properties: Object.fromEntries([...KNOWN_KEYS].map((key) => [key, key === 'collections' ? COLLECTIONS_SCHEMA : {}])),
+    },
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true },
     handler: updateSiteSettings,
   },

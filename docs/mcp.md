@@ -166,7 +166,14 @@ size, stores in R2, and returns the key and public URL. Only `https` URLs, with
 redirects capped and private address ranges blocked, so this cannot be used to probe
 internal endpoints.
 
-**`update_site_settings`** *(owner)* — Partial update of the settings object.
+**`update_site_settings`** *(owner)* — Partial update of the settings object. Most keys
+are plain strings/numbers/booleans with no further schema, but `collections` — the
+site's custom-content-type registry (`migrations/0008_collections.sql`,
+[architecture.md](architecture.md) §3) — gets a real nested JSON Schema in the tool
+definition (type/label/base_path/layout/fields, each field's key/type/display, the
+enum values, the required keys), so a client can construct a new collection correctly
+from `tools/list` alone rather than reading this repo's source or guessing against
+validation errors.
 
 ### Design notes on the tool surface
 

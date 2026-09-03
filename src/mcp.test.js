@@ -218,6 +218,30 @@ describe('list_collections', () => {
   });
 });
 
+describe('update_site_settings — collections has a real schema, not {}', () => {
+  it("tools/list exposes a structured schema for the collections property", async () => {
+    const { body } = await rpc(owner, 'tools/list');
+    const tool = body.result.tools.find((t) => t.name === 'update_site_settings');
+    const schema = tool.inputSchema.properties.collections;
+    expect(schema.type).toBe('array');
+    expect(schema.items.required).toEqual(expect.arrayContaining(['type', 'label', 'base_path', 'layout', 'fields']));
+    expect(schema.items.properties.layout.enum).toEqual(['grid', 'list']);
+    expect(schema.items.properties.fields.items.properties.type.enum).toContain('enum');
+  });
+
+  it('a client can create a new collection through update_site_settings using only that schema', async () => {
+    await setCollectionsSetting([]);
+    const { body } = await rpc(owner, 'tools/call', {
+      name: 'update_site_settings',
+      arguments: { collections: [PROJECT_COLLECTION] },
+    });
+    expect(body.result.isError).toBeFalsy();
+
+    const { body: listed } = await rpc(owner, 'tools/call', { name: 'list_collections', arguments: {} });
+    expect(listed.result.structuredContent).toEqual({ data: [PROJECT_COLLECTION] });
+  });
+});
+
 describe('create_post / update_post — post_type and type_fields', () => {
   it('create_post accepts a configured post_type and type_fields', async () => {
     await setCollectionsSetting([PROJECT_COLLECTION]);

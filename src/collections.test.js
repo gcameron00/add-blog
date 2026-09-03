@@ -178,4 +178,34 @@ describe('XSS-safety — every renderer escapes rather than passing through', ()
     // src/pages.js's renderArticle) — passed through, not escaped.
     expect(html).toContain('<p>safe body</p>');
   });
+
+  it('renderCollectionItem shows a Published row (and Updated, only when it differs) in a boxed meta panel', () => {
+    const sameDate = renderCollectionItem(
+      { slug: 'x', title: 'X', type_fields: {}, body_html: '', published_at: '2026-04-19T00:00:00.000Z', updated_at: '2026-04-19T00:00:00.000Z' },
+      PROJECT_COLLECTION
+    );
+    expect(sameDate).toContain('field-panel--boxed');
+    expect(sameDate).toContain('Published');
+    expect(sameDate).toContain('April 19, 2026');
+    expect(sameDate).not.toContain('Updated');
+
+    const updated = renderCollectionItem(
+      { slug: 'x', title: 'X', type_fields: {}, body_html: '', published_at: '2026-04-19T00:00:00.000Z', updated_at: '2026-04-20T00:00:00.000Z' },
+      PROJECT_COLLECTION
+    );
+    expect(updated).toContain('Updated');
+    expect(updated).toContain('April 20, 2026');
+  });
+
+  it('renderCollectionItem renders no meta panel at all when there is neither a date nor any type_fields', () => {
+    const html = renderCollectionItem({ slug: 'x', title: 'X', type_fields: {}, body_html: '' }, PROJECT_COLLECTION);
+    expect(html).not.toContain('field-panel');
+  });
+
+  it('renderFieldPanel (cards/index) never gets the boxed treatment or a date row', () => {
+    const html = renderFieldPanel({ status: 'Live' }, PROJECT_COLLECTION.fields);
+    expect(html).toContain('field-panel"');
+    expect(html).not.toContain('field-panel--boxed');
+    expect(html).not.toContain('Published');
+  });
 });

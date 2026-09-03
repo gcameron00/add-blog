@@ -107,6 +107,13 @@ describe('tools/call — read tools', () => {
     expect(body.result.isError).toBe(true);
     expect(JSON.parse(body.result.content[0].text).error.code).toBe('bad_request');
   });
+
+  it('list_tags returns an object, not a bare array — structuredContent must be a JSON object per the MCP spec', async () => {
+    const { body } = await rpc(owner, 'tools/call', { name: 'list_tags', arguments: {} });
+    expect(body.result.isError).toBeFalsy();
+    expect(Array.isArray(body.result.structuredContent)).toBe(false);
+    expect(Array.isArray(body.result.structuredContent.data)).toBe(true);
+  });
 });
 
 describe('tools/call — permission enforced at call time, not just at listing time', () => {
@@ -197,13 +204,17 @@ describe('list_collections', () => {
   it('returns the site\'s collection registry, field specs included', async () => {
     await setCollectionsSetting([PROJECT_COLLECTION]);
     const { body } = await rpc(author, 'tools/call', { name: 'list_collections', arguments: {} });
-    expect(body.result.structuredContent).toEqual([PROJECT_COLLECTION]);
+    // structuredContent must be a JSON object per the MCP spec — a bare
+    // array fails schema validation client-side (confirmed against a real
+    // MCP client), so this is wrapped the same way every other list_* tool's
+    // array payload is.
+    expect(body.result.structuredContent).toEqual({ data: [PROJECT_COLLECTION] });
   });
 
-  it('returns [] when no collections are configured', async () => {
+  it('returns { data: [] } when no collections are configured', async () => {
     await setCollectionsSetting([]);
     const { body } = await rpc(author, 'tools/call', { name: 'list_collections', arguments: {} });
-    expect(body.result.structuredContent).toEqual([]);
+    expect(body.result.structuredContent).toEqual({ data: [] });
   });
 });
 

@@ -159,7 +159,10 @@ async function searchPosts(args, { env }) {
 
 async function listTags(_args, { env }) {
   const rows = await listAdminTags(env.DB);
-  const data = rows.map((row) => ({ slug: row.slug, name: row.name, post_count: row.post_count }));
+  // structuredContent (src/mcp.js's methodToolsCall) has to be a JSON object
+  // per the MCP spec — a bare array fails client-side schema validation, so
+  // this can't just be the array the way `data` reads elsewhere in this file.
+  const data = { data: rows.map((row) => ({ slug: row.slug, name: row.name, post_count: row.post_count })) };
   return { data, audit: { action: 'mcp.list_tags' } };
 }
 
@@ -443,7 +446,9 @@ async function updateSiteSettings(args, { env, identity }) {
  */
 async function listCollections(_args, { env }) {
   const settings = await getSettings(env.DB);
-  return { data: resolveCollections(settings), audit: { action: 'mcp.list_collections' } };
+  // Same reason as listTags above — resolveCollections returns a bare array,
+  // which structuredContent can't be directly.
+  return { data: { data: resolveCollections(settings) }, audit: { action: 'mcp.list_collections' } };
 }
 
 /* --- Catalog ------------------------------------------------------------- */

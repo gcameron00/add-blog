@@ -178,19 +178,12 @@ crons = ["*/5 * * * *"]
 
 # --- allaboutthevibes.blog -----------------------------------------------
 #
-# Staged onboarding (docs/vibecode-migration.md): routes deliberately point
-# at blog.allaboutthevibes.blog / blog-admin.allaboutthevibes.blog only, not
-# the apex — allaboutthevibes.blog itself stays on Cloudflare Pages (the
-# still-live static site being migrated) until content is imported and
-# verified on this staging subdomain. The apex route gets added as a second
-# entry here at cutover, per docs/vibecode-migration.md's checklist — not
-# before.
+# Live
 
 [env.allaboutthevibes]
 name = "allaboutthevibes-blog"
 routes = [
   { pattern = "allaboutthevibes.blog",            custom_domain = true },
-  { pattern = "blog.allaboutthevibes.blog",       custom_domain = true },
   { pattern = "blog-admin.allaboutthevibes.blog", custom_domain = true },
 ]
 
@@ -210,7 +203,7 @@ run_worker_first = true
 
 [env.allaboutthevibes.vars]
 ADMIN_HOST = "blog-admin.allaboutthevibes.blog"
-PUBLIC_HOST = "blog.allaboutthevibes.blog"
+PUBLIC_HOST = "allaboutthevibes.blog"
 
 # Access application created in the Cloudflare dashboard for
 # blog-admin.allaboutthevibes.blog (self-hosted, policy scoped to

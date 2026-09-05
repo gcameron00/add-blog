@@ -453,6 +453,18 @@ that same upload's manifest icon as `sizes: "any"` rather than claiming a
 admin shell was extended the same way (`querySelectorAll` over both `rel="icon"` links
 plus `apple-touch-icon`, not just the first icon link it used to grab).
 
+**Follow-up, same day:** a live check on a real site with a custom `site_icon_key`
+found `/favicon.ico` still showing the generic default checkmark. Root cause: unlike
+every `<link>` in the HTML shell, `favicon.ico` at the repo root is one static file
+shared across every site in this deployment (`wrangler.toml`'s one asset bundle per
+`[env.NAME]`) — nothing had ever made it tenant-aware. `handleFaviconIco`
+(`src/manifest.js`) closes this the same way `handleManifest` does for the web
+manifest: falls through to the static default when `site_icon_key` is unset, `302`s to
+`/media/:key` when it's set. A redirect rather than re-wrapping the upload as a real
+`.ico`, since the upload can be any accepted raster format and `src/media.js` already
+serves it with the correct `Content-Type` — browsers render a favicon by sniffed
+content type, not by the `.ico` in the URL.
+
 **5d — Tags as their own resource. Built, tested, and deployed for `gcameron` since
 2026-07-28 — not yet hands-on verified in production (`src/admin-tags.js`,
 `src/admin-db.js`):**

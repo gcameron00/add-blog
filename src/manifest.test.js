@@ -34,3 +34,19 @@ describe('GET /site.webmanifest', () => {
     expect(manifest.icons).toEqual([{ src: '/media/2026/08/abc123-icon.png', sizes: 'any' }]);
   });
 });
+
+describe('GET /favicon.ico', () => {
+  it('falls through to the static default file when site_icon_key is unset', async () => {
+    await setSetting('site_icon_key', '');
+    const res = await SELF.fetch(`https://${HOST}/favicon.ico`, { redirect: 'manual' });
+    expect(res.status).toBe(200);
+    expect(res.headers.get('Content-Type')).toContain('image/');
+  });
+
+  it('redirects to the real uploaded icon when settings.site_icon_key (#15) is set', async () => {
+    await setSetting('site_icon_key', '2026/08/abc123-icon.png');
+    const res = await SELF.fetch(`https://${HOST}/favicon.ico`, { redirect: 'manual' });
+    expect(res.status).toBe(302);
+    expect(res.headers.get('Location')).toBe(`https://${HOST}/media/2026/08/abc123-icon.png`);
+  });
+});

@@ -225,9 +225,10 @@ push. No per-site code changes, ever — that's the point of keeping the domain 
 Two smaller items that also live in `wrangler.toml`, shared across all sites:
 
 - `[assets] not_found_handling = "404-page"`, so `404.html` is actually served on an
-  unmatched path. Without it a bad URL gets a bare Workers 404. The file is already in
-  the repository and does nothing until this is set. Phase 2 makes this moot for paths
-  the Worker handles, but it still matters for unmatched static paths.
+  unmatched path, instead of a bare Workers 404. Set on the top-level `[assets]` block
+  and repeated on every `[env.NAME.assets]` block, same reasoning as `run_worker_first`
+  above — nothing here is inherited across environments. Phase 2 makes this moot for
+  paths the Worker handles, but it still matters for unmatched static paths.
 - `docs/` is not in `.assetsignore`, so the Markdown files in this repository are
   served publicly at e.g. `/docs/architecture.md`. That is harmless for a public repo
   and arguably useful, but worth knowing. Add `docs` to `.assetsignore` if the blog

@@ -34,6 +34,9 @@ workers_dev = true
 directory = "."
 binding = "ASSETS"
 run_worker_first = true
+# docs/deployment.md §3: without this, an unmatched path gets a bare Workers
+# 404 instead of the repo's own 404.html.
+not_found_handling = "404-page"
 
 # --- gcameron.com -------------------------------------------------------
 
@@ -68,6 +71,7 @@ bucket_name = "gcameron-blog-media"
 directory = "."
 binding = "ASSETS"
 run_worker_first = true
+not_found_handling = "404-page"
 
 [env.gcameron.vars]
 ADMIN_HOST = "blog-admin.gcameron.com"
@@ -122,6 +126,7 @@ bucket_name = "laax-ski-media"
 directory = "."
 binding = "ASSETS"
 run_worker_first = true
+not_found_handling = "404-page"
 
 [env.laax-ski.vars]
 ADMIN_HOST = "blog-admin.laax.ski"
@@ -165,6 +170,7 @@ bucket_name = "caitlin-ski-blog-media"
 directory = "."
 binding = "ASSETS"
 run_worker_first = true
+not_found_handling = "404-page"
 
 [env.caitlin-ski.vars]
 ADMIN_HOST = "blog-admin.caitlincameron.ski"
@@ -200,6 +206,7 @@ bucket_name = "allaboutthevibes-blog-media"
 directory = "."
 binding = "ASSETS"
 run_worker_first = true
+not_found_handling = "404-page"
 
 [env.allaboutthevibes.vars]
 ADMIN_HOST = "blog-admin.allaboutthevibes.blog"

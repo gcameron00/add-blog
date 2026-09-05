@@ -183,6 +183,7 @@ backs the whole archive page.
 | `GET /robots.txt` | Generated; references the sitemap |
 | `GET /media/:key` | R2 object, immutable cache headers |
 | `GET /site.webmanifest` | Web App Manifest for Android/Chrome/Edge "Add to Home Screen"/install — reflects `site_title`/`site_icon_key` (`src/manifest.js`) |
+| `GET /favicon.ico` | Static default checkmark icon, or a `302` to `/media/:key` when `site_icon_key` is set (`src/manifest.js`'s `handleFaviconIco`) — the static file is one shared asset across every site (`wrangler.toml`'s one bundle for every `[env.NAME]`), so a site with a custom icon needs this redirect or every site's `/favicon.ico` would show the same generic default regardless of branding |
 | `GET /feed/`, `/feed/rss/`, `/feed/rss2/`, `/feed/rdf/`, `/feed/atom/` | 301 to `/feed.xml` or `/atom.xml` — WordPress migration compatibility, see `src/pages.js`'s `handleWordpressFeedRedirect` |
 
 ---
@@ -354,8 +355,10 @@ favicon/apple-touch-icon/mark swap client-side for the admin shell, which isn't
 server-templated (see architecture.md §2's 2026-08-01 note). All fall back to the
 static default icons — `assets/favicon.svg` (with an `assets/favicon-32x32.png`
 fallback for browsers without SVG favicon support, e.g. Safari before 17),
-`assets/apple-touch-icon.png` and `assets/icon-192.png`/`assets/icon-512.png` — when
-unset. SVG uploads aren't accepted (see "Uploads" below), so a custom icon is
+`assets/apple-touch-icon.png`, `assets/icon-192.png`/`assets/icon-512.png`, and the
+static `favicon.ico` at the repo root — when unset. That last one is a `302` to
+`/media/:key` instead of a swap, since `favicon.ico` (unlike everything above) is one
+file shared by every site in this deployment — see the `/favicon.ico` row above. SVG uploads aren't accepted (see "Uploads" below), so a custom icon is
 raster-only in practice; it also isn't resized, so the manifest reports its size as
 `"any"` rather than claiming a fixed 192×192/512×512 that likely isn't true.
 Deleting a media item referenced by `site_icon_key` (or `social_image_key`) is guarded

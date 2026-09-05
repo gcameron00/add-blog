@@ -189,6 +189,7 @@ crons = ["*/5 * * * *"]
 [env.allaboutthevibes]
 name = "allaboutthevibes-blog"
 routes = [
+  { pattern = "allaboutthevibes.blog",            custom_domain = true },
   { pattern = "blog.allaboutthevibes.blog",       custom_domain = true },
   { pattern = "blog-admin.allaboutthevibes.blog", custom_domain = true },
 ]

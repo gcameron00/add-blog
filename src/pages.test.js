@@ -145,19 +145,28 @@ describe('site branding — settings.site_title/site_description reach the publi
     expect(html).toContain('<a href="/admin/">Admin</a>');
   });
 
-  it('swaps the favicon and header mark for settings.site_icon_key (#15)', async () => {
+  it('swaps the favicon, apple-touch-icon and header mark for settings.site_icon_key (#15)', async () => {
     await setSetting('site_icon_key', '2026/08/abc123-icon.png');
     const html = await (await get('/')).text();
     expect(html).toContain('<link rel="icon" href="/media/2026/08/abc123-icon.png" />');
+    expect(html).toContain('<link rel="apple-touch-icon" href="/media/2026/08/abc123-icon.png" />');
     expect(html).toContain('<img class="brand-mark" src="/media/2026/08/abc123-icon.png" alt="" width="32" height="32">');
     expect(html).not.toContain('/assets/favicon.svg');
+    expect(html).not.toContain('/assets/favicon-32x32.png');
+    expect(html).not.toContain('/assets/apple-touch-icon.png');
     expect(html).not.toMatch(/<svg viewBox="0 0 32 32"/);
+    // The manifest link stays static — site.webmanifest (src/manifest.js)
+    // reads the same settings key dynamically rather than being templated here.
+    expect(html).toContain('<link rel="manifest" href="/site.webmanifest" />');
   });
 
-  it('falls back to the default favicon and inline mark when site_icon_key is empty', async () => {
+  it('falls back to the default favicon, PNG fallback, apple-touch-icon and inline mark when site_icon_key is empty', async () => {
     await setSetting('site_icon_key', '');
     const html = await (await get('/')).text();
-    expect(html).toContain('<link rel="icon" href="/assets/favicon.svg" type="image/svg+xml" />');
+    expect(html).toContain('<link rel="icon" href="/assets/favicon.svg" type="image/svg+xml" sizes="any" />');
+    expect(html).toContain('<link rel="icon" href="/assets/favicon-32x32.png" sizes="32x32" type="image/png" />');
+    expect(html).toContain('<link rel="apple-touch-icon" href="/assets/apple-touch-icon.png" />');
+    expect(html).toContain('<link rel="manifest" href="/site.webmanifest" />');
     expect(html).toMatch(/<svg viewBox="0 0 32 32"/);
   });
 

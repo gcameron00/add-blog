@@ -83,8 +83,15 @@ async function renderSidebar() {
   // titled e.g. "My add-blog journey" must not get its own title mangled.
   document.title = document.title.replace(/ — add-blog admin$/, ` — ${siteTitle} admin`);
 
-  const faviconLink = document.querySelector('link[rel="icon"]');
-  if (iconUrl && faviconLink) faviconLink.href = iconUrl;
+  // Every admin page now ships two <link rel="icon"> tags (SVG + PNG
+  // fallback, see docs on icon compatibility) plus apple-touch-icon —
+  // all three need to move together, same as applySiteBranding does
+  // server-side for the public pages.
+  if (iconUrl) {
+    document.querySelectorAll('link[rel="icon"]').forEach((link) => { link.href = iconUrl; });
+    const appleTouchLink = document.querySelector('link[rel="apple-touch-icon"]');
+    if (appleTouchLink) appleTouchLink.href = iconUrl;
+  }
 
   const brand = el('a', { class: 'admin-brand', href: '/admin/', 'aria-label': `${siteTitle} admin` }, [
     iconUrl ? el('img', { src: iconUrl, alt: '' }) : icon('check'),

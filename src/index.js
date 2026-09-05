@@ -54,6 +54,7 @@ import {
 } from './pages.js';
 import { handleMedia } from './media.js';
 import { handleFeeds } from './feeds.js';
+import { handleManifest } from './manifest.js';
 import { verifyAccessIdentity } from './access.js';
 import { resolveAuthor } from './auth.js';
 import { handleAdminApi } from './admin-api.js';
@@ -269,6 +270,7 @@ export default {
           (await handlePublicApi(request, url, env)) ||
           (await handleMedia(request, url, env)) ||
           (await handleFeeds(request, url, env)) ||
+          (await handleManifest(request, url, env)) ||
           (await brandStaticAsset(await env.ASSETS.fetch(request), env, admin, url));
         response = withSharedHeaders(response, { requestId, admin });
       }

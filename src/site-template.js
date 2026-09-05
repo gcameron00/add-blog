@@ -105,15 +105,24 @@ export function applySiteBranding(html, settings) {
 
   // #15 — settings.site_icon_key is an R2 media key (admin/settings/index.html's
   // "Brand icon" field, same picker the editor's cover image uses), swapped
-  // into the favicon <link> and the header's inline checkmark mark. Left
-  // alone — exactly today's static favicon.svg and inline SVG — when unset,
-  // same non-regressive fallback every other settings-driven bit of
-  // branding here already uses.
+  // into the favicon <link>s, the apple-touch-icon (iOS/iPadOS home screen,
+  // macOS "Add to Dock"), and the header's inline checkmark mark. The default
+  // SVG icon plus its PNG fallback (for browsers without SVG favicon support)
+  // collapse to a single <link> since there's no resized PNG variant of an
+  // owner's arbitrary upload — same non-regressive fallback every other
+  // settings-driven bit of branding here already uses when unset.
+  // site.webmanifest (src/manifest.js) reads the same key for Android/Chrome
+  // home-screen install icons — this only covers what's inlined into HTML.
   if (settings.site_icon_key) {
     const iconUrl = `/media/${settings.site_icon_key}`;
     out = out.replace(
-      '<link rel="icon" href="/assets/favicon.svg" type="image/svg+xml" />',
+      '<link rel="icon" href="/assets/favicon.svg" type="image/svg+xml" sizes="any" />\n' +
+        '    <link rel="icon" href="/assets/favicon-32x32.png" sizes="32x32" type="image/png" />',
       `<link rel="icon" href="${escapeHtml(iconUrl)}" />`
+    );
+    out = out.replace(
+      '<link rel="apple-touch-icon" href="/assets/apple-touch-icon.png" />',
+      `<link rel="apple-touch-icon" href="${escapeHtml(iconUrl)}" />`
     );
     out = out.replace(
       /<svg viewBox="0 0 32 32" aria-hidden="true"[\s\S]*?<\/svg>/,

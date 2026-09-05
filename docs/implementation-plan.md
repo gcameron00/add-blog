@@ -422,6 +422,37 @@ posts. The media grid's "Used in N posts" label is now the more accurate generic
 use" — it could describe a settings reference, not only a post, once this landed.
 4 new tests. Not yet hands-on verified in production.
 
+**Icon cross-browser/OS compatibility, added 2026-09-05.** Audit found the site
+shipped exactly one icon signal — `assets/favicon.svg` via a single `<link rel="icon">`
+— with no `apple-touch-icon`, no Web App Manifest, and no legacy `favicon.ico`. That's
+enough for Chrome/Edge tabs and bookmarks on both desktop OSes, but leaves three real
+gaps: pre-Safari-17 tabs/bookmarks (no PNG fallback for browsers without SVG favicon
+support), iOS/iPadOS "Add to Home Screen" and macOS Safari "Add to Dock" (both read
+`apple-touch-icon`, not the favicon — without it, iOS falls back to a screenshot of the
+page), and Android/Chrome/Edge "Install"/"Add to Home Screen" (reads a manifest's
+`icons`, not the favicon — without one, the OS generates a low-quality substitute).
+Fixed by adding, generated from the same checkmark mark and brand palette
+(`--accent`/`--accent-subtle` in `assets/css/styles.css`) rather than a new design:
+`assets/favicon-32x32.png` (32×32, transparent, PNG fallback for the SVG `<link>`),
+`assets/apple-touch-icon.png` (180×180, opaque `--accent-subtle` background — iOS
+composites transparency to black, so the tile needs a real fill), `assets/icon-192.png`/
+`assets/icon-512.png` (same background, for the manifest), and `favicon.ico` (the
+32×32 PNG wrapped in an ICO container, at the repo root — the legacy convention some
+non-browser tools still check by default). Every HTML shell now carries all of
+`<link rel="icon" ... sizes="any">` (SVG) + the PNG fallback + `apple-touch-icon` +
+`<link rel="manifest" href="/site.webmanifest">` + a `theme-color` meta. New
+`src/manifest.js` serves `/site.webmanifest` dynamically (mirrors `src/feeds.js`'s
+`robots.txt`/`sitemap.xml` pattern) so it reflects `site_title`/`site_icon_key` per
+site rather than being a static file frozen at one owner's branding; a static
+`site.webmanifest` at the repo root is the fallback for a site with no D1 binding yet.
+`applySiteBranding`'s existing `site_icon_key` swap (#15, above) now also retargets
+`apple-touch-icon`, and collapses the SVG+PNG-fallback pair to the one custom `<link>`
+since there's no resized PNG variant of an owner's upload; `src/manifest.js` reports
+that same upload's manifest icon as `sizes: "any"` rather than claiming a
+192×192/512×512 that likely isn't true. `assets/js/admin.js`'s client-side swap for the
+admin shell was extended the same way (`querySelectorAll` over both `rel="icon"` links
+plus `apple-touch-icon`, not just the first icon link it used to grab).
+
 **5d — Tags as their own resource. Built, tested, and deployed for `gcameron` since
 2026-07-28 — not yet hands-on verified in production (`src/admin-tags.js`,
 `src/admin-db.js`):**

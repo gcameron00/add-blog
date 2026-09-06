@@ -21,7 +21,7 @@
  * pages stay in sync with one edit instead of six.
  */
 import { escapeHtml } from '../assets/js/markdown.js';
-import { resolveCollections } from './collections.js';
+import { collectionTitle, resolveCollections } from './collections.js';
 
 const DEFAULT_TITLE = 'The add-blog Journal';
 
@@ -74,7 +74,7 @@ function navLink(url, name) {
 // content, backed by their own index page) but still less "built-in" than
 // Posts/Archive/Tags/About/RSS, so they sit between the two in nav order.
 function collectionNavLinks(collections, placement) {
-  return collections.filter((c) => c.nav?.[placement]).map((c) => navLink(`${c.base_path}/`, c.label_plural || c.label));
+  return collections.filter((c) => c.nav?.[placement]).map((c) => navLink(`${c.base_path}/`, collectionTitle(c)));
 }
 
 function renderHeaderNav(nav, collections) {

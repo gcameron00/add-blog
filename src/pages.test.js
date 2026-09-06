@@ -240,13 +240,13 @@ describe('handleCollectionIndexPage / handleCollectionItemPage / handleLegacyCol
   it('src/site-template.js adds a header nav link for a collection with nav.header true', async () => {
     await setSetting('collections', [PROJECT_COLLECTION]);
     const html = await (await get('/')).text();
-    expect(html).toMatch(/<nav class="site-nav"[^>]*>[\s\S]*<a href="\/portfolio\/">Projects<\/a>[\s\S]*<\/nav>/);
+    expect(html).toMatch(/<nav class="site-nav"[^>]*>[\s\S]*<a href="\/portfolio\/">Portfolio<\/a>[\s\S]*<\/nav>/);
   });
 
   it('omits the collection nav link when nav.header is false', async () => {
     await setSetting('collections', [{ ...PROJECT_COLLECTION, nav: { header: false, footer: false } }]);
     const html = await (await get('/')).text();
-    expect(html).not.toContain('href="/portfolio/">Projects');
+    expect(html).not.toContain('href="/portfolio/">Portfolio');
   });
 
   it('handleCollectionItemPage returns null for the collection\'s own index path', async () => {

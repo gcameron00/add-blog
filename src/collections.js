@@ -193,9 +193,20 @@ function renderItemRow(item, collection) {
     </li>`;
 }
 
+/**
+ * The visitor-facing name of a collection — nav link text, index heading,
+ * empty-state and back-link wording all resolve through this one chain, so
+ * a site owner sets one field (`index_title`, labelled "Collection title"
+ * in the admin UI) rather than juggling separate nav/heading text that could
+ * silently drift apart. `label`/`label_plural` are admin-only bookkeeping
+ * (field-row fallbacks, the post-list type badge) once this is set.
+ */
+export function collectionTitle(collection, fallback = 'items') {
+  return collection.index_title || collection.label_plural || collection.label || fallback;
+}
+
 function emptyState(collection) {
-  const label = escapeHtml(collection.label_plural || collection.label || 'items');
-  return `<p class="muted">No ${label} yet.</p>`;
+  return `<p class="muted">No ${escapeHtml(collectionTitle(collection))} yet.</p>`;
 }
 
 export function renderCollectionGrid(items, collection) {
@@ -231,7 +242,7 @@ export function renderCollectionItem(item, collection) {
   const cover = item.cover
     ? `<img class="article-cover" src="${escapeHtml(item.cover.url)}" alt="${escapeHtml(item.cover.alt || '')}">`
     : '';
-  const label = escapeHtml((collection.label_plural || collection.label || 'items').toLowerCase());
+  const label = escapeHtml(collectionTitle(collection).toLowerCase());
 
   const dateRows =
     (item.published_at ? renderDateRow('Published', item.published_at) : '') +

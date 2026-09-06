@@ -484,7 +484,7 @@ const COLLECTIONS_SCHEMA = {
       label_plural: { type: 'string', maxLength: 60, description: 'Plural display name, e.g. "Projects". Defaults to label.' },
       base_path: { type: 'string', pattern: BASE_PATH_PATTERN, description: 'URL prefix for the index and item pages, e.g. "/portfolio". Must not collide with a reserved path (/posts, /admin, /api, …).' },
       legacy_path: { type: 'string', pattern: BASE_PATH_PATTERN, description: 'Optional old URL prefix that 301s to base_path, e.g. "/project".' },
-      index_title: { type: 'string', maxLength: 60, description: 'Heading on the index page. Defaults to label_plural.' },
+      index_title: { type: 'string', maxLength: 60, description: 'Collection title — used as the nav link text (when nav is enabled), the index page heading, and in "All ⟨title⟩" wording. Defaults to label_plural.' },
       layout: { type: 'string', enum: ['grid', 'list'], description: 'Index page layout.' },
       in_feed: { type: 'boolean', description: 'Include items in RSS/Atom. Default false.' },
       in_sitemap: { type: 'boolean', description: 'Include items in sitemap.xml. Default false.' },

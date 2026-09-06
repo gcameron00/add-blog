@@ -13,7 +13,7 @@
 import { getPublishedItemBySlug, getPublishedPostBySlug, getSettings, listPublishedItems } from './db.js';
 import { escapeHtml, renderMarkdown } from '../assets/js/markdown.js';
 import { applySiteBranding, applyHomeMeta, isFeatureEnabled } from './site-template.js';
-import { findCollectionByLegacyPath, findCollectionByPath, renderCollectionIndex, renderCollectionItem, resolveCollections } from './collections.js';
+import { collectionTitle, findCollectionByLegacyPath, findCollectionByPath, renderCollectionIndex, renderCollectionItem, resolveCollections } from './collections.js';
 
 function formatDate(iso) {
   if (!iso) return '';
@@ -144,7 +144,7 @@ export async function handleCollectionIndexPage(request, url, env) {
   const shellResponse = await env.ASSETS.fetch(shellRequest);
   let html = applySiteBranding(await shellResponse.text(), settings);
 
-  const indexTitle = collection.index_title || collection.label_plural || collection.label || 'Collection';
+  const indexTitle = collectionTitle(collection, 'Collection');
   const canonical = `${url.origin}${base}/`;
 
   html = html

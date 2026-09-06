@@ -1388,8 +1388,9 @@ function renderCollectionsList(host, collections, savedTypes, redraw) {
           ]),
         ]),
         el('div', { class: 'field' }, [
-          el('label', { text: 'Index page title' }),
+          el('label', { text: 'Collection title' }),
           el('input', { type: 'text', value: collection.index_title, placeholder: 'Portfolio', onInput: (event) => { collection.index_title = event.target.value; } }),
+          el('p', { class: 'field__hint', text: 'Shown as the nav link (when enabled below) and as the index page heading. Defaults to Label (plural).' }),
         ]),
         el('div', { class: 'form-row' }, [
           el('div', { class: 'field' }, [

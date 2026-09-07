@@ -40,6 +40,7 @@ const NAV = [
       { href: '/admin/mcp/', label: 'MCP access', icon: 'plug' },
       { href: '/admin/authors/', label: 'Authors', icon: 'users' },
       { href: '/admin/import/', label: 'Import', icon: 'inbox' },
+      { href: '/admin/collections/', label: 'Collections', icon: 'layers' },
       { href: '/admin/settings/', label: 'Settings', icon: 'gear' },
     ],
   },
@@ -1429,6 +1430,95 @@ function renderCollectionsList(host, collections, savedTypes, redraw) {
   });
 }
 
+// collections lives on the settings row (migrations/0008_collections.sql) but
+// gets its own admin page, split out from Settings because it was the
+// heaviest thing on it — a whole nested form per collection. It still reads
+// and writes through api.getSettings()/saveSettings() like every other
+// settings field; the PUT is deliberately partial (see docs/api.md), so
+// saving here touches only the `collections` key.
+async function initCollections() {
+  const form = document.querySelector('[data-collections-form]');
+  if (!form) return;
+
+  let current = {};
+  try {
+    current = (await api.getSettings()).data;
+  } catch (error) {
+    renderError(form, error, initCollections);
+    return;
+  }
+
+  const collectionsHost = form.querySelector('[data-collections-list]');
+  const addCollectionBtn = form.querySelector('[data-collections-add]');
+  // savedTypes is captured once, from what the page loaded with, so a type
+  // that already existed becomes locked; a freshly-added collection's type
+  // stays editable until the next full load (see renderCollectionsList).
+  const collections = Array.isArray(current.collections)
+    ? current.collections.map((c) => ({
+        ...c,
+        nav: { header: false, footer: false, ...c.nav },
+        fields: (c.fields || []).map((f) => ({ ...f, options: Array.isArray(f.options) ? f.options.join(', ') : (f.options || '') })),
+      }))
+    : [];
+  const savedTypes = new Set(collections.map((c) => c.type));
+  const redrawCollections = () => renderCollectionsList(collectionsHost, collections, savedTypes, redrawCollections);
+  redrawCollections();
+
+  addCollectionBtn?.addEventListener('click', () => {
+    collections.push(blankCollection());
+    redrawCollections();
+  });
+
+  form.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    // Light, high-value checks only — everything else (duplicate types,
+    // reserved-path collisions, the 10-collection/20-field caps) is left to
+    // the server's validateCollections; its error still surfaces via the
+    // catch below, so a rejected save is never silent.
+    for (const c of collections) {
+      if (!c.type.trim() || !SLUG_RE.test(c.type.trim())) { toast(`Collection type "${c.type}" must be lowercase letters, numbers and hyphens.`, 'error'); return; }
+      if (!c.label.trim()) { toast(`Collection "${c.type}" needs a label.`, 'error'); return; }
+      if (!c.base_path.trim().startsWith('/')) { toast(`Collection "${c.type}" needs a URL path starting with "/".`, 'error'); return; }
+      for (const f of c.fields) {
+        if (!f.key.trim() || !SLUG_RE.test(f.key.trim())) { toast(`A field in "${c.type}" needs a lowercase key (letters, numbers, hyphens).`, 'error'); return; }
+        if (!f.label.trim()) { toast(`A field in "${c.type}" needs a label.`, 'error'); return; }
+        if (f.type === 'enum' && !f.options.split(',').map((o) => o.trim()).filter(Boolean).length) { toast(`Field "${f.key}" in "${c.type}" needs at least one option.`, 'error'); return; }
+      }
+    }
+    const values = {
+      collections: collections.map((c) => ({
+        type: c.type.trim(),
+        label: c.label.trim(),
+        label_plural: c.label_plural.trim() || undefined,
+        base_path: c.base_path.trim(),
+        legacy_path: c.legacy_path.trim() || undefined,
+        index_title: c.index_title.trim() || undefined,
+        layout: c.layout,
+        in_feed: Boolean(c.in_feed),
+        in_sitemap: Boolean(c.in_sitemap),
+        nav: { header: Boolean(c.nav.header), footer: Boolean(c.nav.footer) },
+        fields: c.fields.map((f) => ({
+          key: f.key.trim(),
+          label: f.label.trim(),
+          type: f.type,
+          ...(f.type === 'enum' ? { options: f.options.split(',').map((o) => o.trim()).filter(Boolean) } : {}),
+          display: f.display,
+        })),
+      })),
+    };
+    const submit = form.querySelector('[type="submit"]');
+    submit.disabled = true;
+    try {
+      await api.saveSettings(values);
+      toast('Collections saved');
+    } catch (error) {
+      toast(error.message || 'Could not save collections', 'error');
+    } finally {
+      submit.disabled = false;
+    }
+  });
+}
+
 async function initSettings() {
   const form = document.querySelector('[data-settings-form]');
   const reset = document.querySelector('[data-reset-demo]');
@@ -1510,28 +1600,6 @@ async function initSettings() {
     redrawLinks();
   });
 
-  // collections isn't a plain form field either — same split as nav_config.
-  // savedTypes is captured once, from what the page loaded with, so a type
-  // that already existed becomes locked; a freshly-added collection's type
-  // stays editable until the next full load (see renderCollectionsList).
-  const collectionsHost = form.querySelector('[data-collections-list]');
-  const addCollectionBtn = form.querySelector('[data-collections-add]');
-  const collections = Array.isArray(current.collections)
-    ? current.collections.map((c) => ({
-        ...c,
-        nav: { header: false, footer: false, ...c.nav },
-        fields: (c.fields || []).map((f) => ({ ...f, options: Array.isArray(f.options) ? f.options.join(', ') : (f.options || '') })),
-      }))
-    : [];
-  const savedTypes = new Set(collections.map((c) => c.type));
-  const redrawCollections = () => renderCollectionsList(collectionsHost, collections, savedTypes, redrawCollections);
-  if (collectionsHost) redrawCollections();
-
-  addCollectionBtn?.addEventListener('click', () => {
-    collections.push(blankCollection());
-    redrawCollections();
-  });
-
   form.addEventListener('submit', async (event) => {
     event.preventDefault();
     const values = {};
@@ -1552,41 +1620,6 @@ async function initSettings() {
         features: readNavFeaturesTable(navFeaturesBody),
         custom_links: customLinks.filter((link) => (link.name || '').trim() && (link.url || '').trim()),
       };
-    }
-    if (collectionsHost) {
-      // Light, high-value checks only — everything else (duplicate types,
-      // reserved-path collisions, the 10-collection/20-field caps) is left to
-      // the server's validateCollections; its error still surfaces via the
-      // catch below, so a rejected save is never silent.
-      for (const c of collections) {
-        if (!c.type.trim() || !SLUG_RE.test(c.type.trim())) { toast(`Collection type "${c.type}" must be lowercase letters, numbers and hyphens.`, 'error'); return; }
-        if (!c.label.trim()) { toast(`Collection "${c.type}" needs a label.`, 'error'); return; }
-        if (!c.base_path.trim().startsWith('/')) { toast(`Collection "${c.type}" needs a URL path starting with "/".`, 'error'); return; }
-        for (const f of c.fields) {
-          if (!f.key.trim() || !SLUG_RE.test(f.key.trim())) { toast(`A field in "${c.type}" needs a lowercase key (letters, numbers, hyphens).`, 'error'); return; }
-          if (!f.label.trim()) { toast(`A field in "${c.type}" needs a label.`, 'error'); return; }
-          if (f.type === 'enum' && !f.options.split(',').map((o) => o.trim()).filter(Boolean).length) { toast(`Field "${f.key}" in "${c.type}" needs at least one option.`, 'error'); return; }
-        }
-      }
-      values.collections = collections.map((c) => ({
-        type: c.type.trim(),
-        label: c.label.trim(),
-        label_plural: c.label_plural.trim() || undefined,
-        base_path: c.base_path.trim(),
-        legacy_path: c.legacy_path.trim() || undefined,
-        index_title: c.index_title.trim() || undefined,
-        layout: c.layout,
-        in_feed: Boolean(c.in_feed),
-        in_sitemap: Boolean(c.in_sitemap),
-        nav: { header: Boolean(c.nav.header), footer: Boolean(c.nav.footer) },
-        fields: c.fields.map((f) => ({
-          key: f.key.trim(),
-          label: f.label.trim(),
-          type: f.type,
-          ...(f.type === 'enum' ? { options: f.options.split(',').map((o) => o.trim()).filter(Boolean) } : {}),
-          display: f.display,
-        })),
-      }));
     }
     const submit = form.querySelector('[type="submit"]');
     submit.disabled = true;
@@ -1851,6 +1884,7 @@ const PAGES = {
   mcp: initMcp,
   authors: initAuthors,
   import: initImport,
+  collections: initCollections,
   settings: initSettings,
 };
 

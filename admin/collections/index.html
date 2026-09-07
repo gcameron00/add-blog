@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light dark" />
+    <script src="/assets/js/theme-init.js"></script>
+    <meta name="robots" content="noindex, nofollow" />
+    <title>Collections — add-blog admin</title>
+    <link rel="icon" href="/assets/favicon.svg" type="image/svg+xml" sizes="any" />
+    <link rel="icon" href="/assets/favicon-32x32.png" sizes="32x32" type="image/png" />
+    <link rel="apple-touch-icon" href="/assets/apple-touch-icon.png" />
+    <link rel="manifest" href="/site.webmanifest" />
+    <meta name="theme-color" content="#2563eb" />
+    <link rel="stylesheet" href="/assets/css/styles.css" />
+    <link rel="stylesheet" href="/assets/css/admin.css" />
+    <script type="module" src="/assets/js/admin.js"></script>
+  </head>
+  <body class="admin" data-page="collections">
+    <a class="skip-link" href="#main">Skip to content</a>
+
+    <div class="admin-layout">
+      <aside class="admin-sidebar" data-sidebar></aside>
+
+      <main class="admin-main" id="main" data-demo-slot>
+        <div class="admin-header">
+          <div>
+            <h1>Collections</h1>
+            <p>
+              Custom content types alongside your blog posts — a portfolio, talks,
+              whatever your site needs. Each one gets its own URL prefix, index page,
+              and set of extra fields.
+            </p>
+          </div>
+          <div class="admin-header__actions">
+            <button class="btn" type="button" data-theme-toggle aria-label="Toggle theme"></button>
+          </div>
+        </div>
+
+        <form data-collections-form>
+          <div data-collections-list></div>
+          <button class="btn" type="button" data-collections-add style="margin-top: .75rem">Add collection</button>
+
+          <div style="display: flex; gap: .75rem; align-items: center; margin-top: 1.5rem">
+            <button class="btn btn--primary" type="submit">Save collections</button>
+            <span class="small muted">Changes apply to the public site on the next cache purge.</span>
+          </div>
+        </form>
+      </main>
+    </div>
+  </body>
+</html>

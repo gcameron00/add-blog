@@ -34,8 +34,8 @@
         </div>
 
         <form data-settings-form>
-          <div class="card">
-            <div class="card__header"><h2>Identity</h2></div>
+          <details class="card card--collapsible" open>
+            <summary class="card__header"><h2>Identity</h2></summary>
 
             <div class="field">
               <label for="site_title">Blog title</label>
@@ -74,10 +74,10 @@
                 <p class="field__hint">Also where <code>/mcp</code> is served.</p>
               </div>
             </div>
-          </div>
+          </details>
 
-          <div class="card">
-            <div class="card__header"><h2>Behaviour</h2></div>
+          <details class="card card--collapsible">
+            <summary class="card__header"><h2>Behaviour</h2></summary>
 
             <div class="form-row">
               <div class="field">
@@ -119,10 +119,10 @@
                 </span>
               </label>
             </div>
-          </div>
+          </details>
 
-          <div class="card">
-            <div class="card__header"><h2>Navigation</h2></div>
+          <details class="card card--collapsible">
+            <summary class="card__header"><h2>Navigation</h2></summary>
             <p class="field__hint" style="margin-top: 0">
               Choose which pages exist and where each is linked from. Turning a page off
               also makes its URL 404, not just unlinked.
@@ -159,10 +159,10 @@
               </div>
               <button class="btn" type="button" data-nav-add-link style="margin-top: .75rem">Add link</button>
             </div>
-          </div>
+          </details>
 
-          <div class="card">
-            <div class="card__header"><h2>About page</h2></div>
+          <details class="card card--collapsible">
+            <summary class="card__header"><h2>About page</h2></summary>
             <div class="field">
               <label for="about_content">Content (Markdown)</label>
               <textarea id="about_content" name="about_content" rows="12"></textarea>
@@ -171,10 +171,10 @@
                 placeholder copy.
               </p>
             </div>
-          </div>
+          </details>
 
-          <div class="card">
-            <div class="card__header"><h2>Base path</h2></div>
+          <details class="card card--collapsible">
+            <summary class="card__header"><h2>Base path</h2></summary>
             <div class="field">
               <label for="base_path">Path prefix</label>
               <input type="text" id="base_path" name="base_path" placeholder="/" />
@@ -184,7 +184,7 @@
                 (open question 2 in the implementation plan).
               </p>
             </div>
-          </div>
+          </details>
 
           <div style="display: flex; gap: .75rem; align-items: center">
             <button class="btn btn--primary" type="submit">Save settings</button>

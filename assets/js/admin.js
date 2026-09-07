@@ -1295,6 +1295,11 @@ function blankCollection() {
     type: '', label: '', label_plural: '', base_path: '', legacy_path: '',
     index_title: '', layout: 'grid', in_feed: false, in_sitemap: true,
     nav: { header: false, footer: false }, fields: [],
+    // Open by default — a collection you just added is one you're about to
+    // fill in. Existing ones start closed (see initCollections); either way
+    // this rides along with the collection object so a full redraw (adding
+    // or removing a sibling) doesn't reset what the user already had open.
+    _open: true,
   };
 }
 
@@ -1357,20 +1362,35 @@ function renderCollectionsList(host, collections, savedTypes, redraw) {
     const redrawFields = () => renderCollectionFieldsTable(fieldsHost, collection.fields, redrawFields);
     redrawFields();
 
+    // The summary line has to stay legible with the card collapsed, so it
+    // tracks the type/label inputs live rather than only reflecting what the
+    // collection looked like at the last full redraw.
+    const summaryTitle = el('h2', { text: collection.label || collection.type || 'New collection' });
+    const summaryPath = el('span', { class: 'small muted', text: collection.base_path || '' });
+    const updateSummary = () => {
+      summaryTitle.textContent = collection.label || collection.type || 'New collection';
+      summaryPath.textContent = collection.base_path || '';
+    };
+
     host.append(
-      el('div', { class: 'card', style: 'margin-top: 1rem' }, [
+      el('details', {
+        class: 'card card--collapsible', style: 'margin-top: 1rem',
+        open: collection._open ? '' : null,
+        onToggle: (event) => { collection._open = event.target.open; },
+      }, [
+        el('summary', { class: 'card__header' }, [summaryTitle, summaryPath]),
         el('div', { class: 'form-row' }, [
           el('div', { class: 'field' }, [
             el('label', { text: 'Type' }),
             el('input', {
               type: 'text', value: collection.type, placeholder: 'project', disabled: locked ? '' : null,
-              onInput: (event) => { collection.type = event.target.value; },
+              onInput: (event) => { collection.type = event.target.value; updateSummary(); },
             }),
             locked ? el('p', { class: 'field__hint', text: "Can't be changed after this collection is saved — an in-use type could orphan existing items. Add a new collection instead." }) : null,
           ]),
           el('div', { class: 'field' }, [
             el('label', { text: 'Label' }),
-            el('input', { type: 'text', value: collection.label, placeholder: 'Project', onInput: (event) => { collection.label = event.target.value; } }),
+            el('input', { type: 'text', value: collection.label, placeholder: 'Project', onInput: (event) => { collection.label = event.target.value; updateSummary(); } }),
           ]),
           el('div', { class: 'field' }, [
             el('label', { text: 'Label (plural)' }),
@@ -1380,7 +1400,7 @@ function renderCollectionsList(host, collections, savedTypes, redraw) {
         el('div', { class: 'form-row' }, [
           el('div', { class: 'field' }, [
             el('label', { text: 'URL path' }),
-            el('input', { type: 'text', value: collection.base_path, placeholder: '/portfolio', onInput: (event) => { collection.base_path = event.target.value; } }),
+            el('input', { type: 'text', value: collection.base_path, placeholder: '/portfolio', onInput: (event) => { collection.base_path = event.target.value; updateSummary(); } }),
           ]),
           el('div', { class: 'field' }, [
             el('label', { text: 'Legacy URL path (optional)' }),
@@ -1458,6 +1478,10 @@ async function initCollections() {
         ...c,
         nav: { header: false, footer: false, ...c.nav },
         fields: (c.fields || []).map((f) => ({ ...f, options: Array.isArray(f.options) ? f.options.join(', ') : (f.options || '') })),
+        // Closed by default (unlike blankCollection()'s freshly-added ones)
+        // — with more than a couple of collections saved, starting them all
+        // open would be exactly the wall of fields this page exists to avoid.
+        _open: false,
       }))
     : [];
   const savedTypes = new Set(collections.map((c) => c.type));

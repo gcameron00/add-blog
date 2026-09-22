@@ -41,6 +41,7 @@
  * changes here; it just needed a handler to dispatch to.
  */
 
+import { embedFrameSrcOrigins } from '../assets/js/markdown.js';
 import { handlePublicApi } from './public-api.js';
 import {
   handlePostPage,
@@ -99,6 +100,12 @@ function isShellOnlyPath(pathname) {
 const CDN_ORIGIN = 'https://cdn.jsdelivr.net';
 
 function contentSecurityPolicy() {
+  // Without frame-src, a browser falls back to default-src 'self' for
+  // iframes too — the embed shortcode's iframe (assets/js/markdown.js) would
+  // render with its reserved height but never load its cross-origin src.
+  // Sourced from the same provider table the renderer uses, so a new
+  // provider's origin is allowed here without a second thing to remember.
+  const frameSrc = embedFrameSrcOrigins();
   return [
     "default-src 'self'",
     `script-src 'self' ${CDN_ORIGIN}`,
@@ -106,6 +113,7 @@ function contentSecurityPolicy() {
     "img-src 'self' data:",
     `font-src 'self' data: ${CDN_ORIGIN}`,
     "connect-src 'self'",
+    `frame-src ${frameSrc.length ? frameSrc.join(' ') : "'none'"}`,
     "object-src 'none'",
     "base-uri 'none'",
     "frame-ancestors 'none'",

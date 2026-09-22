@@ -16,7 +16,7 @@
  * failure either way.
  */
 
-import { excerptFrom, readingMinutes, renderMarkdown, slugify, wordCount } from '../assets/js/markdown.js';
+import { embedShortcodeReference, excerptFrom, readingMinutes, renderMarkdown, slugify, wordCount } from '../assets/js/markdown.js';
 import {
   getAdminPostById,
   getAdminPostBySlug,
@@ -457,6 +457,11 @@ const str = (description) => ({ type: 'string', description });
 const int = (description) => ({ type: 'integer', description });
 const bool = (description) => ({ type: 'boolean', description });
 
+// Shared with src/mcp.js's server `instructions` — both are derived from
+// assets/js/markdown.js's provider table, so a new provider there is
+// advertised everywhere without touching either call site.
+const SHORTCODE_HINT = `Embed shortcodes, one per line: ${embedShortcodeReference()}.`;
+
 /**
  * Structured schema for the `collections` settings key — every other key in
  * KNOWN_KEYS gets an empty `{}` schema below (fine for a plain string/number/
@@ -609,7 +614,7 @@ export const TOOLS = [
       type: 'object',
       properties: {
         title: str('Post title (required).'),
-        body_md: str('Body in Markdown.'),
+        body_md: str(`Body in Markdown. ${SHORTCODE_HINT}`),
         subtitle: str('Subtitle.'),
         excerpt: str('Excerpt — generated from the body if omitted.'),
         slug: str('Slug — derived from the title if omitted.'),
@@ -635,7 +640,7 @@ export const TOOLS = [
         slug: str('Post slug.'),
         id: str('Post id.'),
         title: str('New title.'),
-        body_md: str('New body in Markdown.'),
+        body_md: str(`New body in Markdown. ${SHORTCODE_HINT}`),
         subtitle: str('New subtitle.'),
         excerpt: str('New excerpt.'),
         cover_key: str('New cover R2 key.'),

@@ -145,6 +145,17 @@ explicit call. `post_type` defaults to `"post"`; set to a configured collection'
 validated against that collection's declared fields. Returns the created post with its
 id and slug.
 
+`body_md` supports a small, extensible embed-shortcode syntax — a bare
+`{{provider: <url>}}` on its own line resolves to a sandboxed iframe at render time
+(currently `apple-music`, rewriting a `music.apple.com`/`open.music.apple.com` share
+link to its `embed.music.apple.com` form; see `EMBED_PROVIDERS` in
+`assets/js/markdown.js`). It's a pure string transform — no external API call, no
+credentials — which is what keeps it safe to resolve at render time; nothing else
+about raw HTML in `body_md` changes; it is still always escaped. The `create_post`/
+`update_post` tool descriptions and this server's `initialize` `instructions` all list
+the current provider set, generated from that same table, so adding a provider never
+requires updating hand-written prose in more than one place.
+
 **`update_post`** *(author for own posts, editor for any)* — `id` or `slug` required,
 plus any subset of the mutable fields, including `type_fields`. Supports
 `expected_updated_at` for optimistic concurrency: if the post changed since the model

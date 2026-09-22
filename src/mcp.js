@@ -21,6 +21,7 @@
  * session id that was never issued, or that belongs to a different email.
  */
 
+import { embedShortcodeReference } from '../assets/js/markdown.js';
 import { writeAuditLog } from './audit.js';
 import { getSettings } from './db.js';
 import { callTool, isWriteTool, McpToolError, toolsForRole } from './mcp-tools.js';
@@ -111,7 +112,8 @@ async function methodInitialize(params, { env, identity }, siteTitle) {
       serverInfo: { name: `add-blog — ${siteTitle}`, version: '1.0.0' },
       instructions:
         `An agent authenticated as ${identity.email} can do what a "${identity.author.role}" can do on ${siteTitle}, ` +
-        `and no more — every tool call is checked against that role and logged.`,
+        `and no more — every tool call is checked against that role and logged. ` +
+        `body_md supports embed shortcodes, one per line: ${embedShortcodeReference()}.`,
     },
   };
 }

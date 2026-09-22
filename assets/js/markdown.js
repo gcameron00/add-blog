@@ -41,6 +41,50 @@ function safeUrl(url) {
   return '#';
 }
 
+/**
+ * Embed shortcodes — a bare `{{provider: <url>}}` on its own line in
+ * `body_md`. Each provider is a pure string transform on a known-shape share
+ * URL into an iframe `src` — no external API call, no credentials, so this
+ * stays safe to resolve at render time (unlike e.g. a Strava map, which
+ * needs an authenticated API call and belongs at post-save time instead).
+ *
+ * This table is the one place raw HTML enters rendered output — everything
+ * it produces is built by this file, never passed through from the source —
+ * and the one place a new provider gets added. `embedShortcodeReference()`
+ * (used by src/mcp-tools.js's tool descriptions and src/mcp.js's server
+ * `instructions`) is derived from it, so advertising a new provider to MCP
+ * clients never needs separate, hand-maintained prose.
+ */
+const EMBED_PROVIDERS = {
+  'apple-music': {
+    example: 'https://music.apple.com/us/album/some-album/1440921045',
+    // https:// only, and no share link ever needs quotes/angle brackets/whitespace —
+    // rejecting them here means toEmbedSrc's output can never break out of the
+    // src="" attribute it's placed into below.
+    urlPattern: /^https:\/\/(?:open\.)?music\.apple\.com\/[^\s"'<>]+$/i,
+    toEmbedSrc: (url) => url.replace(/^https:\/\/(?:open\.)?music\.apple\.com\//i, 'https://embed.music.apple.com/'),
+  },
+};
+
+const SHORTCODE_RE = /^\{\{\s*([a-z0-9-]+)\s*:\s*(.+?)\s*\}\}$/i;
+
+/** Renders a line as an embed shortcode, or returns null if it isn't a recognised one — in which case the caller falls through to ordinary paragraph handling, unchanged. */
+function renderEmbedShortcode(line) {
+  const match = line.trim().match(SHORTCODE_RE);
+  if (!match) return null;
+  const provider = EMBED_PROVIDERS[match[1].toLowerCase()];
+  if (!provider || !provider.urlPattern.test(match[2])) return null;
+  const src = escapeHtml(provider.toEmbedSrc(match[2]));
+  return `<iframe allow="autoplay *; encrypted-media *; fullscreen *; clipboard-write" frameborder="0" height="450" style="width:100%;max-width:660px;overflow:hidden;border-radius:10px;" sandbox="allow-forms allow-popups allow-same-origin allow-scripts allow-storage-access-by-user-activation allow-top-navigation-by-user-activation" src="${src}"></iframe>`;
+}
+
+/** One-line-per-provider reference of supported shortcodes, for MCP tool descriptions/instructions. */
+export function embedShortcodeReference() {
+  return Object.entries(EMBED_PROVIDERS)
+    .map(([name, { example }]) => `{{${name}: <url>}} (e.g. {{${name}: ${example}}})`)
+    .join('; ');
+}
+
 // NUL can never survive escapeHtml's output, which makes it a safe sentinel for
 // parking code spans while the other inline rules run.
 const SENTINEL = String.fromCharCode(0);
@@ -110,6 +154,10 @@ export function renderMarkdown(source) {
 
     // Blank
     if (!line.trim()) { i++; continue; }
+
+    // Embed shortcode — a bare {{provider: value}} token on its own line.
+    const embed = renderEmbedShortcode(line);
+    if (embed) { html.push(embed); i++; continue; }
 
     // Fenced code
     const fence = line.match(/^\s*(`{3,}|~{3,})\s*([\w+-]*)\s*$/);

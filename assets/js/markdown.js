@@ -63,6 +63,10 @@ const EMBED_PROVIDERS = {
     // src="" attribute it's placed into below.
     urlPattern: /^https:\/\/(?:open\.)?music\.apple\.com\/[^\s"'<>]+$/i,
     toEmbedSrc: (url) => url.replace(/^https:\/\/(?:open\.)?music\.apple\.com\//i, 'https://embed.music.apple.com/'),
+    // The iframe's own origin, once rewritten — src/index.js's CSP needs this
+    // in frame-src, or a browser blocks the embed from ever loading (default-src
+    // 'self' otherwise applies, since there's no frame-src fallback without it).
+    embedOrigin: 'https://embed.music.apple.com',
   },
 };
 
@@ -83,6 +87,11 @@ export function embedShortcodeReference() {
   return Object.entries(EMBED_PROVIDERS)
     .map(([name, { example }]) => `{{${name}: <url>}} (e.g. {{${name}: ${example}}})`)
     .join('; ');
+}
+
+/** Every origin an embed shortcode can render an iframe into — for src/index.js's CSP `frame-src`. */
+export function embedFrameSrcOrigins() {
+  return [...new Set(Object.values(EMBED_PROVIDERS).map((provider) => provider.embedOrigin))];
 }
 
 // NUL can never survive escapeHtml's output, which makes it a safe sentinel for

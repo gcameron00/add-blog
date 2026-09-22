@@ -121,6 +121,11 @@ describe('headers', () => {
     const res = await get(ADMIN_HOST, '/admin/editor/');
     expect(res.headers.get('Content-Security-Policy')).toContain('https://cdn.jsdelivr.net');
   });
+
+  it('allows framing embed shortcode origins, so their iframes actually load', async () => {
+    const res = await get(PUBLIC_HOST, '/');
+    expect(res.headers.get('Content-Security-Policy')).toContain('frame-src https://embed.music.apple.com');
+  });
 });
 
 describe('/health', () => {

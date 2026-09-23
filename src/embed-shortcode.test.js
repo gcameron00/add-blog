@@ -53,6 +53,27 @@ describe('embed shortcodes', () => {
     expect(ref).toContain('music.apple.com');
   });
 
+  it("advertises apple-music's single-track ?i= links and automatic theming", () => {
+    const ref = embedShortcodeReference();
+    expect(ref).toContain('?i=<trackId>');
+    expect(ref).toContain('/song/');
+    expect(ref).toMatch(/theme is handled automatically/i);
+    expect(ref).toContain('do not add theme=');
+  });
+
+  it('formats a provider without notes exactly as before', () => {
+    const ref = embedShortcodeReference({ demo: { example: 'https://example.com/x' } });
+    expect(ref).toBe('{{demo: <url>}} (e.g. {{demo: https://example.com/x}})');
+  });
+
+  it('appends notes after the example, and joins providers with "; "', () => {
+    const ref = embedShortcodeReference({
+      a: { example: 'https://a.example/1', notes: 'note a' },
+      b: { example: 'https://b.example/2' },
+    });
+    expect(ref).toBe('{{a: <url>}} (e.g. {{a: https://a.example/1}}) — note a; {{b: <url>}} (e.g. {{b: https://b.example/2}})');
+  });
+
   it('sizes an album embed at 450px', () => {
     const html = renderMarkdown('{{apple-music: https://music.apple.com/us/album/some-album/1440921045}}');
     expect(html).toContain('height="450"');

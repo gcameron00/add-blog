@@ -58,6 +58,11 @@ function safeUrl(url) {
 const EMBED_PROVIDERS = {
   'apple-music': {
     example: 'https://music.apple.com/us/album/some-album/1440921045',
+    // Appended to embedShortcodeReference(), so MCP clients learn what the
+    // height/themeParam behaviour below means for the URLs they write.
+    notes: 'paste any Apple Music share link. Add ?i=<trackId> to an album link (or use a /song/ link) '
+      + 'to embed a single track in the compact player; albums and playlists get the full player. '
+      + 'Theme is handled automatically to match the site, so do not add theme= to the URL',
     // https:// only, and no share link ever needs quotes/angle brackets/whitespace —
     // rejecting them here means toEmbedSrc's output can never break out of the
     // src="" attribute it's placed into below.
@@ -97,10 +102,14 @@ function renderEmbedShortcode(line) {
   return `<iframe${themeAttr} allow="autoplay *; encrypted-media *; fullscreen *; clipboard-write" frameborder="0" height="${height}" style="width:100%;max-width:660px;overflow:hidden;border-radius:10px;" sandbox="allow-forms allow-popups allow-same-origin allow-scripts allow-storage-access-by-user-activation allow-top-navigation-by-user-activation" src="${src}"></iframe>`;
 }
 
-/** One-line-per-provider reference of supported shortcodes, for MCP tool descriptions/instructions. */
-export function embedShortcodeReference() {
-  return Object.entries(EMBED_PROVIDERS)
-    .map(([name, { example }]) => `{{${name}: <url>}} (e.g. {{${name}: ${example}}})`)
+/**
+ * One-line-per-provider reference of supported shortcodes, for MCP tool
+ * descriptions/instructions. A provider's optional `notes` follow its example.
+ * `providers` defaults to the real table; it's a parameter only for tests.
+ */
+export function embedShortcodeReference(providers = EMBED_PROVIDERS) {
+  return Object.entries(providers)
+    .map(([name, { example, notes }]) => `{{${name}: <url>}} (e.g. {{${name}: ${example}}})${notes ? ` — ${notes}` : ''}`)
     .join('; ');
 }
 

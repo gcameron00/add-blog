@@ -9,6 +9,7 @@ import { createExecutionContext, env, waitOnExecutionContext } from 'cloudflare:
 import { beforeAll, describe, expect, it } from 'vitest';
 import { handleMcp } from './mcp.js';
 import { resolveAuthor } from './auth.js';
+import { embedShortcodeReference } from '../assets/js/markdown.js';
 
 const ADMIN_HOST = 'blog-admin.mysite.com';
 let rpcId = 0;
@@ -60,6 +61,13 @@ describe('initialize', () => {
     expect(body.result.serverInfo.name).toContain('add-blog');
     expect(body.result.serverInfo.name).not.toBe('add-blog');
   });
+
+  it('instructions advertise Apple Music single-track links and automatic theming', async () => {
+    const { body } = await initialize(owner);
+    expect(body.result.instructions).toContain(embedShortcodeReference());
+    expect(body.result.instructions).toContain('?i=<trackId>');
+    expect(body.result.instructions).toContain('do not add theme=');
+  });
 });
 
 describe('tools/list — filtered by role', () => {
@@ -84,6 +92,16 @@ describe('tools/list — filtered by role', () => {
     const { body } = await rpc(owner, 'tools/list');
     for (const tool of body.result.tools) {
       expect(tool.description).toContain('The add-blog Journal'); // seed.sql's site_title
+    }
+  });
+
+  it("create_post/update_post body_md descriptions carry the shortcode reference, notes included", async () => {
+    const { body } = await rpc(owner, 'tools/list');
+    for (const name of ['create_post', 'update_post']) {
+      const desc = body.result.tools.find((t) => t.name === name).inputSchema.properties.body_md.description;
+      expect(desc).toContain(embedShortcodeReference());
+      expect(desc).toContain('?i=<trackId>');
+      expect(desc).toContain('do not add theme=');
     }
   });
 });

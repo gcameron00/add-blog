@@ -67,8 +67,21 @@ const EMBED_PROVIDERS = {
     // in frame-src, or a browser blocks the embed from ever loading (default-src
     // 'self' otherwise applies, since there's no frame-src fallback without it).
     embedOrigin: 'https://embed.music.apple.com',
+    // A single track (an album link with ?i=<trackId>, or a /song/ link) gets
+    // Apple's compact ~175px player; albums and playlists get the full 450px
+    // one. The iframe has to match, or the difference shows as empty space.
+    height: (url) => {
+      const u = new URL(url);
+      return u.searchParams.has('i') || u.pathname.includes('/song/') ? 175 : 450;
+    },
+    // The player reads ?theme=light|dark (default: follow the device). main.js's
+    // syncEmbedThemes() sets it to the site's resolved theme, which can differ
+    // from the device's when the visitor has used the theme toggle.
+    themeParam: 'theme',
   },
 };
+
+const DEFAULT_EMBED_HEIGHT = 450;
 
 const SHORTCODE_RE = /^\{\{\s*([a-z0-9-]+)\s*:\s*(.+?)\s*\}\}$/i;
 
@@ -79,7 +92,9 @@ function renderEmbedShortcode(line) {
   const provider = EMBED_PROVIDERS[match[1].toLowerCase()];
   if (!provider || !provider.urlPattern.test(match[2])) return null;
   const src = escapeHtml(provider.toEmbedSrc(match[2]));
-  return `<iframe allow="autoplay *; encrypted-media *; fullscreen *; clipboard-write" frameborder="0" height="450" style="width:100%;max-width:660px;overflow:hidden;border-radius:10px;" sandbox="allow-forms allow-popups allow-same-origin allow-scripts allow-storage-access-by-user-activation allow-top-navigation-by-user-activation" src="${src}"></iframe>`;
+  const height = provider.height ? provider.height(match[2]) : DEFAULT_EMBED_HEIGHT;
+  const themeAttr = provider.themeParam ? ` data-embed-theme-param="${escapeHtml(provider.themeParam)}"` : '';
+  return `<iframe${themeAttr} allow="autoplay *; encrypted-media *; fullscreen *; clipboard-write" frameborder="0" height="${height}" style="width:100%;max-width:660px;overflow:hidden;border-radius:10px;" sandbox="allow-forms allow-popups allow-same-origin allow-scripts allow-storage-access-by-user-activation allow-top-navigation-by-user-activation" src="${src}"></iframe>`;
 }
 
 /** One-line-per-provider reference of supported shortcodes, for MCP tool descriptions/instructions. */
@@ -87,6 +102,19 @@ export function embedShortcodeReference() {
   return Object.entries(EMBED_PROVIDERS)
     .map(([name, { example }]) => `{{${name}: <url>}} (e.g. {{${name}: ${example}}})`)
     .join('; ');
+}
+
+/**
+ * `src` with its theme parameter set to `theme`, or null if it already is (or
+ * isn't a parseable URL) — null meaning "leave the iframe alone", since
+ * rewriting `src` reloads it. Used by main.js's syncEmbedThemes().
+ */
+export function embedSrcWithTheme(src, param, theme) {
+  let url;
+  try { url = new URL(src); } catch { return null; }
+  if (url.searchParams.get(param) === theme) return null;
+  url.searchParams.set(param, theme);
+  return url.href;
 }
 
 /** Every origin an embed shortcode can render an iframe into — for src/index.js's CSP `frame-src`. */

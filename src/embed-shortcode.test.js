@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { embedShortcodeReference, renderMarkdown } from '../assets/js/markdown.js';
+import { embedShortcodeReference, embedSrcWithTheme, renderMarkdown } from '../assets/js/markdown.js';
 
 describe('embed shortcodes', () => {
   it('renders {{apple-music: <url>}} as a sandboxed embed iframe', () => {
@@ -51,5 +51,46 @@ describe('embed shortcodes', () => {
     const ref = embedShortcodeReference();
     expect(ref).toContain('{{apple-music: <url>}}');
     expect(ref).toContain('music.apple.com');
+  });
+
+  it('sizes an album embed at 450px', () => {
+    const html = renderMarkdown('{{apple-music: https://music.apple.com/us/album/some-album/1440921045}}');
+    expect(html).toContain('height="450"');
+  });
+
+  it('sizes a single-track (?i=) embed at 175px, keeping the query string', () => {
+    const html = renderMarkdown('{{apple-music: https://music.apple.com/ch/album/prayer-in-c-robin-schulz-radio-edit/907493575?i=907493609&l=en-GB}}');
+    expect(html).toContain('height="175"');
+    expect(html).toContain('src="https://embed.music.apple.com/ch/album/prayer-in-c-robin-schulz-radio-edit/907493575?i=907493609&amp;l=en-GB"');
+  });
+
+  it('sizes a /song/ embed at 175px', () => {
+    const html = renderMarkdown('{{apple-music: https://music.apple.com/us/song/some-song/907493609}}');
+    expect(html).toContain('height="175"');
+  });
+
+  it('marks the Apple Music iframe as themable via its theme parameter', () => {
+    const html = renderMarkdown('{{apple-music: https://music.apple.com/us/album/x/1}}');
+    expect(html).toContain('data-embed-theme-param="theme"');
+  });
+});
+
+describe('embedSrcWithTheme', () => {
+  it('adds the theme parameter', () => {
+    expect(embedSrcWithTheme('https://embed.music.apple.com/us/album/x/1', 'theme', 'dark'))
+      .toBe('https://embed.music.apple.com/us/album/x/1?theme=dark');
+  });
+
+  it('replaces an existing theme and preserves other parameters', () => {
+    expect(embedSrcWithTheme('https://embed.music.apple.com/ch/album/x/1?i=2&l=en-GB&theme=light', 'theme', 'dark'))
+      .toBe('https://embed.music.apple.com/ch/album/x/1?i=2&l=en-GB&theme=dark');
+  });
+
+  it('returns null when the theme already matches, so the iframe is not reloaded', () => {
+    expect(embedSrcWithTheme('https://embed.music.apple.com/us/album/x/1?theme=dark', 'theme', 'dark')).toBeNull();
+  });
+
+  it('returns null for an unparseable src', () => {
+    expect(embedSrcWithTheme('not a url', 'theme', 'dark')).toBeNull();
   });
 });

@@ -21,7 +21,7 @@
 
 import * as api from './api.js';
 import { openMediaPicker, toast, statusBadge } from './admin.js';
-import { el, clear, append, icon, formatDateTime } from './main.js';
+import { el, clear, append, icon, formatDateTime, syncEmbedThemes } from './main.js';
 import { renderMarkdown, slugify, wordCount, readingMinutes } from './markdown.js';
 
 const params = new URLSearchParams(location.search);
@@ -149,7 +149,10 @@ function createEditor() {
     ],
     previewRender(markdown, previewEl) {
       previewEl.classList.add('prose');
-      return renderMarkdown(markdown);
+      // Theme embeds before EasyMDE inserts the HTML, as post.js does.
+      const rendered = el('div', { html: renderMarkdown(markdown) });
+      syncEmbedThemes(rendered);
+      return rendered.innerHTML;
     },
   });
 

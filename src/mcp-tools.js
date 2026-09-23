@@ -16,7 +16,7 @@
  * failure either way.
  */
 
-import { embedShortcodeReference, excerptFrom, readingMinutes, renderMarkdown, slugify, wordCount } from '../assets/js/markdown.js';
+import { embedShortcodeReference, excerptFrom, readingMinutes, slugify, wordCount } from '../assets/js/markdown.js';
 import {
   getAdminPostById,
   getAdminPostBySlug,
@@ -35,7 +35,7 @@ import {
   uniqueSlug,
   updatePostRow,
 } from './admin-db.js';
-import { ALLOWED_TYPES, MAX_UPLOAD_BYTES, mapMedia } from './admin-media.js';
+import { ALLOWED_TYPES, GPX_DECLARED_TYPES, MAX_UPLOAD_BYTES, mapMedia, uploadContentType } from './admin-media.js';
 import { KNOWN_KEYS, writeSettings } from './admin-settings.js';
 import { can } from './auth.js';
 import { purgePostUrls } from './cache-purge.js';
@@ -43,6 +43,7 @@ import { findCollectionByType, resolveCollections } from './collections.js';
 import { getSettings } from './db.js';
 import { buildMediaKey, detectDimensions, sanitizeFilename, sha256Hex } from './media-parse.js';
 import { fetchMediaFromUrl } from './mcp-media-fetch.js';
+import { renderPostBody } from './track.js';
 import {
   ValidationError,
   validateBodyMd,
@@ -81,9 +82,9 @@ function nowIso() {
   return new Date().toISOString();
 }
 
-function computeContent(bodyMd, explicitExcerpt) {
+async function computeContent(env, bodyMd, explicitExcerpt) {
   return {
-    body_html: renderMarkdown(bodyMd),
+    body_html: await renderPostBody(bodyMd, env),
     word_count: wordCount(bodyMd),
     reading_minutes: readingMinutes(bodyMd),
     excerpt: explicitExcerpt || excerptFrom(bodyMd, 190),
@@ -221,7 +222,7 @@ async function createPost(args, { env, identity }) {
   const tags = validateTags(args.tags);
   const visibility = validateVisibility(args.visibility);
   const { type: postType, fields: typeFields } = await resolvePostTypeAndFields(env, args.post_type, args.type_fields);
-  const { body_html, word_count, reading_minutes, excerpt } = computeContent(bodyMd, args.excerpt?.trim());
+  const { body_html, word_count, reading_minutes, excerpt } = await computeContent(env, bodyMd, args.excerpt?.trim());
 
   const post = {
     id: crypto.randomUUID(),
@@ -302,7 +303,7 @@ async function updatePost(args, { env, ctx, identity }) {
   let contentChanged = false;
   if (args.body_md !== undefined) {
     const bodyMd = validateBodyMd(args.body_md);
-    Object.assign(fields, computeContent(bodyMd, args.excerpt?.trim()), { body_md: bodyMd });
+    Object.assign(fields, await computeContent(env, bodyMd, args.excerpt?.trim()), { body_md: bodyMd });
     contentChanged = true;
   } else if (args.excerpt !== undefined) {
     fields.excerpt = args.excerpt.trim() || excerptFrom(post.body_md, 190);
@@ -395,6 +396,8 @@ async function deletePost(args, { env, ctx, identity }) {
   return { data: { id: post.id, status: 'archived' }, audit: { action: 'mcp.delete_post', entity: 'post', entityId: post.id, detail: { title: post.title, slug: post.slug } } };
 }
 
+const FETCHABLE_TYPES = new Set([...ALLOWED_TYPES, ...GPX_DECLARED_TYPES]);
+
 async function uploadMediaFromUrl(args, { env, identity }) {
   requirePerm(identity, 'media.upload');
 
@@ -406,10 +409,17 @@ async function uploadMediaFromUrl(args, { env, identity }) {
   let bytes;
   let contentType;
   try {
-    ({ bytes, contentType } = await fetchMediaFromUrl(args.url, { allowedTypes: ALLOWED_TYPES, maxBytes: MAX_UPLOAD_BYTES }));
+    // The fetch also lets through the generic labels a .gpx file tends to
+    // be served under; uploadContentType below then only keeps one of those
+    // if the name and content really are GPX.
+    ({ bytes, contentType } = await fetchMediaFromUrl(args.url, { allowedTypes: FETCHABLE_TYPES, maxBytes: MAX_UPLOAD_BYTES }));
   } catch (err) {
     fail(err.code || 'fetch_failed', err.message, { field: 'url' });
   }
+
+  const filename = sanitizeFilename(args.filename || new URL(args.url).pathname.split('/').pop() || 'upload');
+  contentType = uploadContentType(contentType, filename, bytes);
+  if (!contentType) fail('unsupported_media_type', 'Not an allowed upload type (a GPX file needs a .gpx filename — pass "filename" if the URL has none).', { field: 'url' });
 
   const checksum = await sha256Hex(bytes);
   const existing = await getMediaByChecksum(env.DB, checksum);
@@ -417,7 +427,6 @@ async function uploadMediaFromUrl(args, { env, identity }) {
     return { data: await mapMedia(env.DB, existing), audit: { action: 'mcp.upload_media_from_url', entity: 'media', entityId: existing.key, detail: { deduped: true } } };
   }
 
-  const filename = sanitizeFilename(args.filename || new URL(args.url).pathname.split('/').pop() || 'upload');
   const key = buildMediaKey(new Date(), checksum, filename);
   const dimensions = detectDimensions(bytes, contentType) || {};
 
@@ -685,7 +694,7 @@ export const TOOLS = [
   {
     name: 'upload_media_from_url',
     minRole: 'author',
-    description: (site) => `Fetch an image from a URL and store it in ${site}'s media library. alt text is required. Only https URLs are fetched.`,
+    description: (site) => `Fetch an image, PDF or GPX track from a URL and store it in ${site}'s media library. alt text is required. Only https URLs are fetched. A GPX file is then embedded in a post with the {{gpx: <media url path>}} shortcode.`,
     inputSchema: {
       type: 'object',
       properties: { url: str('https:// URL to fetch (required).'), alt: str('Alt text (required).'), filename: str('Filename — derived from the URL if omitted.') },

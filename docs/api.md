@@ -298,7 +298,11 @@ real schema work that wasn't warranted to make tag management usable.
 | `GET` | `/media/:key/usage` | Posts referencing this object |
 
 Uploads are capped at 25 MB and allow-listed to `image/jpeg`, `image/png`,
-`image/webp`, `image/avif`, `image/gif`, `application/pdf`.
+`image/webp`, `image/avif`, `image/gif`, `application/pdf`, plus GPX tracks for the
+`{{gpx: …}}` shortcode. A GPX file is recognised by its `.gpx` extension plus a `<gpx>`
+root element, whatever type the browser declared, and stored as `application/gpx+xml`.
+The public `GET /media/:key` route returns `404` for GPX, because the raw file still
+has the untrimmed start and end of the track (see docs/mcp.md).
 
 **`image/svg+xml` is not accepted.** SVG is an executable format, and an unsanitised
 SVG served from the blog's own origin is a stored XSS — this was always going to need

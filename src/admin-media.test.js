@@ -122,6 +122,24 @@ describe('POST /api/admin/media', () => {
     expect(res.status).toBe(415);
   });
 
+  it('accepts a .gpx file whatever the browser labels it, stored as application/gpx+xml', async () => {
+    const gpx = '<?xml version="1.0"?><gpx version="1.1"><trk><trkseg><trkpt lat="46.8" lon="9.26"/></trkseg></trk></gpx>';
+    for (const [i, type] of ['', 'application/octet-stream', 'application/gpx+xml'].entries()) {
+      const file = new File([`${gpx}<!-- ${i} -->`], `ride-${i}.gpx`, { type });
+      const res = await upload(owner, { file });
+      expect(res.status).toBe(201);
+      const { data } = await res.json();
+      expect(data.content_type).toBe('application/gpx+xml');
+      expect(data.key).toMatch(/\.gpx$/);
+    }
+  });
+
+  it('rejects a .gpx file that is not actually GPX (415)', async () => {
+    const file = new File(['<svg onload="alert(1)"></svg>'], 'fake.gpx', { type: '' });
+    const res = await upload(owner, { file });
+    expect(res.status).toBe(415);
+  });
+
   it('rejects an oversized file (413)', async () => {
     const big = new File([new Uint8Array(26 * 1024 * 1024)], 'big.png', { type: 'image/png' });
     const res = await upload(owner, { file: big });
@@ -207,6 +225,34 @@ describe('GET /api/admin/media', () => {
 
     const listed = await (await callMedia(owner, jsonReq('GET', '/api/admin/media'))).json();
     expect(listed.data.find((m) => m.key === key).used_by).toBe(1);
+  });
+
+  it('a post embedding a GPX track stores the resolved map, and still counts as using the file', async () => {
+    const points = Array.from({ length: 300 }, (_, i) => `<trkpt lat="${46.8 + i * 0.0001}" lon="9.26"/>`).join('');
+    const file = new File([`<gpx><trk><trkseg>${points}</trkseg></trk></gpx>`], 'laax.gpx', { type: '' });
+    const { data: media } = await (await upload(owner, { file })).json();
+
+    const postRes = await callPosts(owner, jsonReq('POST', '/api/admin/posts', {
+      body: { title: 'Post with a route', body_md: `{{gpx: ${media.url} | trim=100}}` },
+    }));
+    expect(postRes.status).toBe(201);
+    const { data: post } = await postRes.json();
+    const row = await env.DB.prepare('SELECT body_html FROM posts WHERE id = ?').bind(post.id).first();
+    expect(row.body_html).toContain('data-track="');
+    expect(row.body_html).toContain('data-publisher="swisstopo"');
+    expect(row.body_html).not.toContain(media.key);
+
+    const usage = await (await callMedia(owner, jsonReq('GET', `/api/admin/media/${encodeURIComponent(media.key)}/usage`))).json();
+    expect(usage.data.some((p) => p.title === 'Post with a route')).toBe(true);
+  });
+
+  it('the preview endpoint resolves a GPX track the same way a save does', async () => {
+    const file = new File(['<gpx><trk><trkseg><trkpt lat="46.8" lon="9.26"/><trkpt lat="46.81" lon="9.26"/></trkseg></trk></gpx>'], 'preview.gpx', { type: '' });
+    const { data: media } = await (await upload(owner, { file })).json();
+    const res = await callPosts(owner, jsonReq('POST', '/api/admin/preview', { body: { body_md: `{{gpx: ${media.url}}}` } }));
+    const { data } = await res.json();
+    expect(data.body_html).toContain('data-track="');
+    expect(data.body_html).not.toContain('data-track-src');
   });
 });
 

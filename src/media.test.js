@@ -12,6 +12,16 @@ beforeAll(async () => {
 });
 
 describe('GET /media/:key', () => {
+  it('never serves a raw GPX track, which still has its untrimmed ends', async () => {
+    const key = '2026/09/0123456789abcdef-home.gpx';
+    await env.MEDIA.put(key, '<gpx><trk><trkseg><trkpt lat="47.5" lon="7.6"/></trkseg></trk></gpx>', {
+      httpMetadata: { contentType: 'application/gpx+xml' },
+    });
+    const res = await SELF.fetch(`https://${HOST}/media/${key}`);
+    expect(res.status).toBe(404);
+    expect(await res.text()).not.toContain('trkpt');
+  });
+
   it('streams the object with immutable caching', async () => {
     const res = await SELF.fetch(`https://${HOST}${URL_PATH}`);
     expect(res.status).toBe(200);

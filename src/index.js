@@ -42,6 +42,7 @@
  */
 
 import { embedFrameSrcOrigins } from '../assets/js/markdown.js';
+import { tileOrigins } from '../assets/js/track-publishers.js';
 import { handlePublicApi } from './public-api.js';
 import {
   handlePostPage,
@@ -106,11 +107,15 @@ function contentSecurityPolicy() {
   // Sourced from the same provider table the renderer uses, so a new
   // provider's origin is allowed here without a second thing to remember.
   const frameSrc = embedFrameSrcOrigins();
+  // Map tiles for the `{{gpx: …}}` shortcode — Leaflet (assets/js/track-map.js)
+  // loads them as plain <img> elements. Same idea: sourced from the publisher
+  // table itself, so a new publisher's tiles are allowed without a second edit.
+  const tileSrc = tileOrigins();
   return [
     "default-src 'self'",
     `script-src 'self' ${CDN_ORIGIN}`,
     `style-src 'self' 'unsafe-inline' ${CDN_ORIGIN}`,
-    "img-src 'self' data:",
+    `img-src 'self' data: ${tileSrc.join(' ')}`,
     `font-src 'self' data: ${CDN_ORIGIN}`,
     "connect-src 'self'",
     `frame-src ${frameSrc.length ? frameSrc.join(' ') : "'none'"}`,

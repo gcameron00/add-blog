@@ -12,6 +12,8 @@
  * module powers the editor's live preview and the demo-data fallback.
  */
 
+import { DEFAULT_TRIM_METRES, FALLBACK_PUBLISHER, MAX_TRIM_METRES, TRACK_PUBLISHERS } from './track-publishers.js';
+
 const ESCAPES = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
 
 export function escapeHtml(str) {
@@ -59,39 +61,118 @@ const EMBED_PROVIDERS = {
   'apple-music': {
     example: 'https://music.apple.com/us/album/some-album/1440921045',
     // https:// only, and no share link ever needs quotes/angle brackets/whitespace —
-    // rejecting them here means toEmbedSrc's output can never break out of the
+    // rejecting them here means render's output can never break out of the
     // src="" attribute it's placed into below.
     urlPattern: /^https:\/\/(?:open\.)?music\.apple\.com\/[^\s"'<>]+$/i,
-    toEmbedSrc: (url) => url.replace(/^https:\/\/(?:open\.)?music\.apple\.com\//i, 'https://embed.music.apple.com/'),
+    render: (url) => {
+      const src = escapeHtml(url.replace(/^https:\/\/(?:open\.)?music\.apple\.com\//i, 'https://embed.music.apple.com/'));
+      return `<iframe allow="autoplay *; encrypted-media *; fullscreen *; clipboard-write" frameborder="0" height="450" style="width:100%;max-width:660px;overflow:hidden;border-radius:10px;" sandbox="allow-forms allow-popups allow-same-origin allow-scripts allow-storage-access-by-user-activation allow-top-navigation-by-user-activation" src="${src}"></iframe>`;
+    },
     // The iframe's own origin, once rewritten — src/index.js's CSP needs this
     // in frame-src, or a browser blocks the embed from ever loading (default-src
     // 'self' otherwise applies, since there's no frame-src fallback without it).
     embedOrigin: 'https://embed.music.apple.com',
   },
+  // A GPX track from the media library, drawn on a map. Unlike an iframe
+  // embed, this renders only a *placeholder*: the GPX has to be read,
+  // privacy-trimmed and simplified first, which needs R2 — so src/track.js's
+  // resolveTrackEmbeds() swaps each placeholder for the finished map element
+  // at save time. The raw GPX path never reaches published HTML.
+  gpx: {
+    example: '/media/2026/09/0123456789abcdef-ride.gpx',
+    valueLabel: 'path',
+    // Same-site media paths only: no scheme, no quotes, and no segment may
+    // start with a dot (so no `..`).
+    urlPattern: /^\/media\/(?:[a-z0-9_-][a-z0-9._-]*\/)*[a-z0-9_-][a-z0-9._-]*\.gpx$/i,
+    optionsReference: () => [
+      `publisher=auto|${Object.keys(TRACK_PUBLISHERS).join('|')} (default auto: swisstopo inside Switzerland, else ${FALLBACK_PUBLISHER})`,
+      `style=${Object.entries(TRACK_PUBLISHERS).map(([name, { styles }]) => `${Object.keys(styles).join('|')} (${name})`).join(' or ')}`,
+      `trim=<metres hidden at each end, 0-${MAX_TRIM_METRES}, default ${DEFAULT_TRIM_METRES}>`,
+    ],
+    parseOptions: parseTrackOptions,
+    render: (path, { publisher, style, trim }) =>
+      `<figure class="track-map" data-track-src="${escapeHtml(path)}" data-publisher="${publisher}" data-style="${style}" data-trim="${trim}">` +
+      '<p class="track-map__fallback">Route map — open this post on the website to see it.</p></figure>',
+  },
 };
 
+/**
+ * Validates a `{{gpx: …}}` shortcode's options. Returns null — "not a
+ * shortcode, leave the line as text" — for an unknown key, an unknown
+ * publisher or a bad trim, so a typo is visible in the preview rather than
+ * silently ignored. An unknown *style* is kept as written: whether it's
+ * valid depends on the publisher, which for `auto` isn't known until the
+ * track is read, so src/track.js falls back to the publisher's default then.
+ */
+function parseTrackOptions(options) {
+  const out = { publisher: 'auto', style: '', trim: DEFAULT_TRIM_METRES };
+  for (const [key, value] of Object.entries(options)) {
+    if (key === 'publisher') {
+      if (value !== 'auto' && !Object.hasOwn(TRACK_PUBLISHERS, value)) return null;
+      out.publisher = value;
+    } else if (key === 'style') {
+      if (!/^[a-z0-9-]{1,32}$/.test(value)) return null;
+      out.style = value;
+    } else if (key === 'trim') {
+      if (!/^\d{1,4}$/.test(value) || Number(value) > MAX_TRIM_METRES) return null;
+      out.trim = Number(value);
+    } else {
+      return null;
+    }
+  }
+  return out;
+}
+
 const SHORTCODE_RE = /^\{\{\s*([a-z0-9-]+)\s*:\s*(.+?)\s*\}\}$/i;
+
+/** `value | key=value | key=value` → { value, options }, or null if an option isn't key=value or repeats a key. */
+function splitShortcodeOptions(raw) {
+  const [value, ...pairs] = raw.split('|').map((part) => part.trim());
+  const options = {};
+  for (const pair of pairs) {
+    const match = pair.match(/^([a-z]+)\s*=\s*(\S+)$/i);
+    if (!match) return null;
+    const key = match[1].toLowerCase();
+    if (Object.hasOwn(options, key)) return null;
+    options[key] = match[2].toLowerCase();
+  }
+  return { value, options };
+}
 
 /** Renders a line as an embed shortcode, or returns null if it isn't a recognised one — in which case the caller falls through to ordinary paragraph handling, unchanged. */
 function renderEmbedShortcode(line) {
   const match = line.trim().match(SHORTCODE_RE);
   if (!match) return null;
   const provider = EMBED_PROVIDERS[match[1].toLowerCase()];
-  if (!provider || !provider.urlPattern.test(match[2])) return null;
-  const src = escapeHtml(provider.toEmbedSrc(match[2]));
-  return `<iframe allow="autoplay *; encrypted-media *; fullscreen *; clipboard-write" frameborder="0" height="450" style="width:100%;max-width:660px;overflow:hidden;border-radius:10px;" sandbox="allow-forms allow-popups allow-same-origin allow-scripts allow-storage-access-by-user-activation allow-top-navigation-by-user-activation" src="${src}"></iframe>`;
+  if (!provider) return null;
+  // Only a provider that declares options splits on `|` — for the others
+  // (Apple Music), the whole value is the URL, exactly as before.
+  let value = match[2];
+  let options = {};
+  if (provider.parseOptions) {
+    const split = splitShortcodeOptions(match[2]);
+    if (!split) return null;
+    value = split.value;
+    options = provider.parseOptions(split.options);
+    if (!options) return null;
+  }
+  if (!provider.urlPattern.test(value)) return null;
+  return provider.render(value, options);
 }
 
 /** One-line-per-provider reference of supported shortcodes, for MCP tool descriptions/instructions. */
 export function embedShortcodeReference() {
   return Object.entries(EMBED_PROVIDERS)
-    .map(([name, { example }]) => `{{${name}: <url>}} (e.g. {{${name}: ${example}}})`)
+    .map(([name, { example, valueLabel = 'url', optionsReference }]) => {
+      const options = optionsReference ? `, with optional " | key=value" options: ${optionsReference().join('; ')}` : '';
+      return `{{${name}: <${valueLabel}>}} (e.g. {{${name}: ${example}}}${options})`;
+    })
     .join('; ');
 }
 
 /** Every origin an embed shortcode can render an iframe into — for src/index.js's CSP `frame-src`. */
 export function embedFrameSrcOrigins() {
-  return [...new Set(Object.values(EMBED_PROVIDERS).map((provider) => provider.embedOrigin))];
+  return [...new Set(Object.values(EMBED_PROVIDERS).map((provider) => provider.embedOrigin).filter(Boolean))];
 }
 
 // NUL can never survive escapeHtml's output, which makes it a safe sentinel for

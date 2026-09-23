@@ -12,6 +12,7 @@
 import * as api from './api.js';
 import { el, clear, append, icon, timeEl, renderError } from './main.js';
 import { tagChip } from './blog.js';
+import { hydrateTrackMaps } from './track-map.js';
 
 const article = document.querySelector('[data-article]');
 const pathSlug = location.pathname.match(/^\/posts\/([^/]+)\/?$/);
@@ -102,6 +103,8 @@ function renderPost(post) {
         ])
       : null
   );
+  // After the append: Leaflet needs the map's container in the document to size it.
+  hydrateTrackMaps(body);
 }
 
 async function load() {

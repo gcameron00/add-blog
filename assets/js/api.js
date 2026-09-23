@@ -946,6 +946,20 @@ export function getAudit({ actor, action, via, limit = 20, offset = 0 } = {}) {
   );
 }
 
+/**
+ * The server's own render of `bodyMd` (POST /api/admin/preview) — used by
+ * the editor preview only for what the browser can't do itself: resolving a
+ * `{{gpx: …}}` placeholder, which needs the GPX file from R2. In demo mode
+ * there's no server, so the placeholder comes back unresolved and its
+ * fallback text shows.
+ */
+export function renderOnServer(bodyMd) {
+  return withFallback(
+    () => call('/admin/preview', { method: 'POST', body: { body_md: bodyMd } }),
+    async () => ({ data: { body_html: renderMarkdown(bodyMd) } })
+  );
+}
+
 export function previewMarkdown(bodyMd) {
   // Rendered locally on purpose: the preview must stay responsive per keystroke.
   // Phase 5 adds POST /api/admin/preview for a server-authoritative render on save.

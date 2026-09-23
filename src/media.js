@@ -4,6 +4,8 @@
  * readable; this route is the only path to it.
  */
 
+import { GPX_CONTENT_TYPE } from './track.js';
+
 const CACHE_CONTROL = 'public, max-age=31536000, immutable';
 
 export async function handleMedia(request, url, env) {
@@ -17,6 +19,10 @@ export async function handleMedia(request, url, env) {
 
   const object = await env.MEDIA.get(key, { onlyIf: request.headers });
   if (!object) return new Response('Not found', { status: 404 });
+  // A raw GPX track still has its untrimmed start and end (often someone's
+  // home) — published posts only ever carry the trimmed copy src/track.js
+  // derives from it at save time, so the original is never served publicly.
+  if (object.httpMetadata?.contentType === GPX_CONTENT_TYPE) return new Response('Not found', { status: 404 });
 
   const headers = new Headers();
   object.writeHttpMetadata(headers);

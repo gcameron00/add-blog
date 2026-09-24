@@ -41,6 +41,32 @@ describe('GET /posts/:slug', () => {
     expect(html).toContain(`<link rel="canonical" href="https://${HOST}/posts/${SLUG}" />`);
   });
 
+  it('adds an absolute og:image and large twitter card from the post cover', async () => {
+    await env.DB.prepare(`UPDATE posts SET cover_key = ?, cover_alt = ? WHERE slug = ?`)
+      .bind('2026/09/abc123-hike.jpg', 'Peaks above Cassons', SLUG)
+      .run();
+    const html = await (await get(`/posts/${SLUG}`)).text();
+    expect(html).toContain(`<meta property="og:image" content="https://${HOST}/media/2026/09/abc123-hike.jpg" />`);
+    expect(html).toContain('<meta property="og:image:alt" content="Peaks above Cassons" />');
+    expect(html).toContain('<meta name="twitter:card" content="summary_large_image" />');
+  });
+
+  it('falls back to the brand icon for og:image when the post has no cover', async () => {
+    await env.DB.prepare(`UPDATE posts SET cover_key = NULL WHERE slug = ?`).bind(SLUG).run();
+    await setSetting('site_icon_key', '2026/08/abc123-icon.png');
+    const html = await (await get(`/posts/${SLUG}`)).text();
+    expect(html).toContain(`<meta property="og:image" content="https://${HOST}/media/2026/08/abc123-icon.png" />`);
+    expect(html).toContain('<meta name="twitter:card" content="summary" />');
+  });
+
+  it('omits og:image when there is neither a cover nor a brand icon', async () => {
+    await env.DB.prepare(`UPDATE posts SET cover_key = NULL WHERE slug = ?`).bind(SLUG).run();
+    await setSetting('site_icon_key', '');
+    const html = await (await get(`/posts/${SLUG}`)).text();
+    expect(html).not.toContain('og:image');
+    expect(html).not.toContain('twitter:card');
+  });
+
   it('inlines the rendered article body — works with JS disabled', async () => {
     const html = await (await get(`/posts/${SLUG}`)).text();
     expect(html).toMatch(/<article data-article>[\s\S]*<h1>Shipping a blog on Cloudflare Workers<\/h1>/);

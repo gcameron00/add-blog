@@ -8,6 +8,20 @@
 
 import { embedSrcWithTheme } from './markdown.js';
 
+/* --- Site title ----------------------------------------------------------- */
+
+/**
+ * The owner's configured site name, for suffixing a client-set document.title.
+ * Read from the shell's <meta name="application-name">, which the Worker
+ * brands along with every other occurrence of the default title
+ * (src/site-template.js's applySiteBranding) — so no extra settings fetch.
+ * Falls back to the default for a local no-Worker preview.
+ */
+export function siteTitle() {
+  const meta = document.head.querySelector('meta[name="application-name"]');
+  return meta?.getAttribute('content') || 'The add-blog Journal';
+}
+
 /* --- Theme ---------------------------------------------------------------- */
 
 const THEME_KEY = 'addblog.theme';

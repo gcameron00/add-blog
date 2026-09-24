@@ -6,7 +6,7 @@
  */
 
 import * as api from './api.js';
-import { el, clear, timeEl, skeletonList, renderError, renderEmpty } from './main.js';
+import { el, clear, timeEl, skeletonList, renderError, renderEmpty, siteTitle } from './main.js';
 
 const PAGE_SIZE = 6;
 
@@ -190,7 +190,7 @@ async function initTags() {
   }
 
   heading.textContent = `Tagged “${active}”`;
-  document.title = `Tagged “${active}” — The add-blog Journal`;
+  document.title = `Tagged “${active}” — ${siteTitle()}`;
   skeletonList(results, 2);
 
   try {

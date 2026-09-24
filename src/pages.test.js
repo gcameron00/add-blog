@@ -180,6 +180,16 @@ describe('site branding — settings.site_title/site_description reach the publi
     const html = await (await get(`/posts/${SLUG}`)).text();
     expect(html).toContain('Shipping a blog on Cloudflare Workers — Caitlin Ski</title>');
     expect(html).toContain('<span>Caitlin Ski</span>');
+    // post.js re-sets document.title client-side from this meta tag.
+    expect(html).toContain('<meta name="application-name" content="Caitlin Ski" />');
+  });
+
+  it('brands the application-name meta the client-side titles read (post and tags pages)', async () => {
+    await setSetting('site_title', "Graham's");
+    for (const path of [`/posts/${SLUG}`, '/tags/']) {
+      const html = await (await get(path)).text();
+      expect(html).toContain('<meta name="application-name" content="Graham&#39;s" />');
+    }
   });
 
   it('brands the archive/tags/about pages without altering their own hero copy or meta description', async () => {

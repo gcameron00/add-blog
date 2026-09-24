@@ -10,7 +10,7 @@
  */
 
 import * as api from './api.js';
-import { el, clear, append, icon, timeEl, renderError, syncEmbedThemes } from './main.js';
+import { el, clear, append, icon, timeEl, renderError, syncEmbedThemes, siteTitle } from './main.js';
 import { tagChip } from './blog.js';
 import { hydrateTrackMaps } from './track-map.js';
 
@@ -19,7 +19,7 @@ const pathSlug = location.pathname.match(/^\/posts\/([^/]+)\/?$/);
 const slug = pathSlug ? decodeURIComponent(pathSlug[1]) : new URLSearchParams(location.search).get('slug');
 
 function setMeta(post) {
-  document.title = `${post.title} — The add-blog Journal`;
+  document.title = `${post.title} — ${siteTitle()}`;
 
   const set = (selector, attr, value) => {
     const node = document.head.querySelector(selector);

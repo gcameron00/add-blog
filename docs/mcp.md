@@ -149,7 +149,11 @@ id and slug.
 `{{provider: <url>}}` on its own line resolves to a sandboxed iframe at render time
 (currently `apple-music`, rewriting a `music.apple.com`/`open.music.apple.com` share
 link to its `embed.music.apple.com` form; see `EMBED_PROVIDERS` in
-`assets/js/markdown.js`). It's a pure string transform — no external API call, no
+`assets/js/markdown.js`). An album link with `?i=<trackId>` (or a `/song/` link)
+embeds a single track in Apple's compact 175px player; albums and playlists get the
+full 450px one. The player's theme is set automatically to match the site (the front
+end sets `?theme=light|dark`, overriding any `theme=` already in the URL), so clients
+shouldn't add it. It's a pure string transform — no external API call, no
 credentials — which is what keeps it safe to resolve at render time; nothing else
 about raw HTML in `body_md` changes; it is still always escaped. The `create_post`/
 `update_post` tool descriptions and this server's `initialize` `instructions` all list

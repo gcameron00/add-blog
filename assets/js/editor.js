@@ -21,7 +21,7 @@
 
 import * as api from './api.js';
 import { openMediaPicker, toast, statusBadge } from './admin.js';
-import { el, clear, append, icon, formatDateTime } from './main.js';
+import { el, clear, append, icon, formatDateTime, syncEmbedThemes } from './main.js';
 import { renderMarkdown, slugify, wordCount, readingMinutes } from './markdown.js';
 import { hydrateTrackMaps } from './track-map.js';
 
@@ -150,10 +150,13 @@ function createEditor() {
     ],
     previewRender(markdown, previewEl) {
       previewEl.classList.add('prose');
+      // Theme embeds before EasyMDE inserts the HTML, as post.js does.
+      const rendered = el('div', { html: renderMarkdown(markdown) });
+      syncEmbedThemes(rendered);
       // EasyMDE sets the returned HTML synchronously, so a macrotask later
-      // the placeholders are in the preview's DOM.
+      // the route-map placeholders are in the preview's DOM.
       setTimeout(() => previewTrackMaps(previewEl));
-      return renderMarkdown(markdown);
+      return rendered.innerHTML;
     },
   });
 

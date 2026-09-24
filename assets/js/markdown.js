@@ -60,18 +60,34 @@ function safeUrl(url) {
 const EMBED_PROVIDERS = {
   'apple-music': {
     example: 'https://music.apple.com/us/album/some-album/1440921045',
+    // Appended to embedShortcodeReference(), so MCP clients learn what the
+    // height/themeParam behaviour below means for the URLs they write.
+    notes: 'paste any Apple Music share link. Add ?i=<trackId> to an album link (or use a /song/ link) '
+      + 'to embed a single track in the compact player; albums and playlists get the full player. '
+      + 'Theme is handled automatically to match the site, so do not add theme= to the URL',
     // https:// only, and no share link ever needs quotes/angle brackets/whitespace —
     // rejecting them here means render's output can never break out of the
     // src="" attribute it's placed into below.
     urlPattern: /^https:\/\/(?:open\.)?music\.apple\.com\/[^\s"'<>]+$/i,
-    render: (url) => {
+    render(url) {
       const src = escapeHtml(url.replace(/^https:\/\/(?:open\.)?music\.apple\.com\//i, 'https://embed.music.apple.com/'));
-      return `<iframe allow="autoplay *; encrypted-media *; fullscreen *; clipboard-write" frameborder="0" height="450" style="width:100%;max-width:660px;overflow:hidden;border-radius:10px;" sandbox="allow-forms allow-popups allow-same-origin allow-scripts allow-storage-access-by-user-activation allow-top-navigation-by-user-activation" src="${src}"></iframe>`;
+      return renderIframe(src, { height: this.height(url), themeParam: this.themeParam });
     },
     // The iframe's own origin, once rewritten — src/index.js's CSP needs this
     // in frame-src, or a browser blocks the embed from ever loading (default-src
     // 'self' otherwise applies, since there's no frame-src fallback without it).
     embedOrigin: 'https://embed.music.apple.com',
+    // A single track (an album link with ?i=<trackId>, or a /song/ link) gets
+    // Apple's compact ~175px player; albums and playlists get the full 450px
+    // one. The iframe has to match, or the difference shows as empty space.
+    height: (url) => {
+      const u = new URL(url);
+      return u.searchParams.has('i') || u.pathname.includes('/song/') ? 175 : 450;
+    },
+    // The player reads ?theme=light|dark (default: follow the device). main.js's
+    // syncEmbedThemes() sets it to the site's resolved theme, which can differ
+    // from the device's when the visitor has used the theme toggle.
+    themeParam: 'theme',
   },
   // A GPX track from the media library, drawn on a map. Unlike an iframe
   // embed, this renders only a *placeholder*: the GPX has to be read,
@@ -95,6 +111,14 @@ const EMBED_PROVIDERS = {
       '<p class="track-map__fallback">Route map — open this post on the website to see it.</p></figure>',
   },
 };
+
+const DEFAULT_EMBED_HEIGHT = 450;
+
+/** The iframe an embed provider renders into. `src` must already be escaped. */
+function renderIframe(src, { height = DEFAULT_EMBED_HEIGHT, themeParam } = {}) {
+  const themeAttr = themeParam ? ` data-embed-theme-param="${escapeHtml(themeParam)}"` : '';
+  return `<iframe${themeAttr} allow="autoplay *; encrypted-media *; fullscreen *; clipboard-write" frameborder="0" height="${height}" style="width:100%;max-width:660px;overflow:hidden;border-radius:10px;" sandbox="allow-forms allow-popups allow-same-origin allow-scripts allow-storage-access-by-user-activation allow-top-navigation-by-user-activation" src="${src}"></iframe>`;
+}
 
 /**
  * Validates a `{{gpx: …}}` shortcode's options. Returns null — "not a
@@ -160,14 +184,32 @@ function renderEmbedShortcode(line) {
   return provider.render(value, options);
 }
 
-/** One-line-per-provider reference of supported shortcodes, for MCP tool descriptions/instructions. */
-export function embedShortcodeReference() {
-  return Object.entries(EMBED_PROVIDERS)
-    .map(([name, { example, valueLabel = 'url', optionsReference }]) => {
+/**
+ * One-line-per-provider reference of supported shortcodes, for MCP tool
+ * descriptions/instructions. A provider's optional `optionsReference` and
+ * `notes` follow its example.
+ * `providers` defaults to the real table; it's a parameter only for tests.
+ */
+export function embedShortcodeReference(providers = EMBED_PROVIDERS) {
+  return Object.entries(providers)
+    .map(([name, { example, valueLabel = 'url', optionsReference, notes }]) => {
       const options = optionsReference ? `, with optional " | key=value" options: ${optionsReference().join('; ')}` : '';
-      return `{{${name}: <${valueLabel}>}} (e.g. {{${name}: ${example}}}${options})`;
+      return `{{${name}: <${valueLabel}>}} (e.g. {{${name}: ${example}}}${options})${notes ? ` — ${notes}` : ''}`;
     })
     .join('; ');
+}
+
+/**
+ * `src` with its theme parameter set to `theme`, or null if it already is (or
+ * isn't a parseable URL) — null meaning "leave the iframe alone", since
+ * rewriting `src` reloads it. Used by main.js's syncEmbedThemes().
+ */
+export function embedSrcWithTheme(src, param, theme) {
+  let url;
+  try { url = new URL(src); } catch { return null; }
+  if (url.searchParams.get(param) === theme) return null;
+  url.searchParams.set(param, theme);
+  return url.href;
 }
 
 /** Every origin an embed shortcode can render an iframe into — for src/index.js's CSP `frame-src`. */

@@ -10,7 +10,7 @@
  */
 
 import * as api from './api.js';
-import { el, clear, append, icon, timeEl, renderError } from './main.js';
+import { el, clear, append, icon, timeEl, renderError, syncEmbedThemes } from './main.js';
 import { tagChip } from './blog.js';
 import { hydrateTrackMaps } from './track-map.js';
 
@@ -77,6 +77,8 @@ function renderPost(post) {
   // server-side render stored in D1 (Phase 3+) — never from raw user input.
   const body = el('div', { class: 'prose', html: post.body_html || '' });
   addHeadingLinks(body);
+  // Still detached, so embeds load in the site's theme first time, not twice.
+  syncEmbedThemes(body);
 
   const footer = el('footer', { class: 'article-footer' }, [
     el('div', { class: 'tag-list' }, (post.tags || []).map((t) => tagChip(t))),

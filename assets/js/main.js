@@ -6,6 +6,8 @@
  * from here to render its static content — this is enhancement, not scaffolding.
  */
 
+import { embedSrcWithTheme } from './markdown.js';
+
 /* --- Theme ---------------------------------------------------------------- */
 
 const THEME_KEY = 'addblog.theme';
@@ -43,19 +45,40 @@ function paintToggles() {
   }
 }
 
+/**
+ * Points every themable embed under `root` (see markdown.js's EMBED_PROVIDERS
+ * `themeParam`) at the site's resolved theme, so e.g. the Apple Music player
+ * doesn't render light on a dark page. Call it on a detached subtree before
+ * inserting it and the iframe loads in the right theme first time; on live
+ * iframes, `src` is only touched when the theme actually differs, since
+ * changing it reloads the player and stops anything playing.
+ */
+export function syncEmbedThemes(root = document) {
+  const theme = currentTheme();
+  for (const frame of root.querySelectorAll('iframe[data-embed-theme-param]')) {
+    const src = embedSrcWithTheme(frame.getAttribute('src'), frame.getAttribute('data-embed-theme-param'), theme);
+    if (src) frame.setAttribute('src', src);
+  }
+}
+
 function initTheme() {
   applyTheme(storedTheme());
   for (const button of document.querySelectorAll('[data-theme-toggle]')) {
     button.addEventListener('click', () => {
       applyTheme(currentTheme() === 'dark' ? 'light' : 'dark');
       paintToggles();
+      syncEmbedThemes();
     });
   }
   // Track the OS preference while no explicit choice has been made.
   window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
-    if (!storedTheme()) paintToggles();
+    if (!storedTheme()) {
+      paintToggles();
+      syncEmbedThemes();
+    }
   });
   paintToggles();
+  syncEmbedThemes();
 }
 
 /* --- Sidebar collapse ------------------------------------------------------

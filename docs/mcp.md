@@ -160,6 +160,31 @@ about raw HTML in `body_md` changes; it is still always escaped. The `create_pos
 the current provider set, generated from that same table, so adding a provider never
 requires updating hand-written prose in more than one place.
 
+The `gpx` shortcode is the one exception to "resolved at render time": it draws a GPX
+track from the media library on a map —
+
+```
+{{gpx: /media/2026/09/0123456789abcdef-ride.gpx | publisher=swisstopo | style=winter | trim=300}}
+```
+
+Every option is optional. `publisher` is `auto` (the default: swisstopo when ≥ 90% of
+the track is inside Switzerland, otherwise OpenTopoMap), `swisstopo` or `opentopomap`.
+`style` is `colour`/`winter`/`grey`/`aerial` for swisstopo or `standard` for
+OpenTopoMap, and quietly falls back to the publisher's first style if it doesn't match
+the publisher. `trim` (metres, 0–2000, default 200) hides that much of each end of the
+track, so it doesn't show where a ride starts or finishes, such as someone's home. An
+unknown option, publisher or out-of-range `trim` leaves the line as plain text, like
+any other malformed shortcode. The publishers and styles live in
+`assets/js/track-publishers.js`.
+
+`renderMarkdown` only emits a placeholder for it. At save time (and in the editor's
+server-side preview) `src/track.js` reads the GPX from R2, trims it, simplifies it to
+≤ 1,500 points and stores it inline in `body_html` as an encoded polyline. The raw GPX
+path never reaches published HTML, and `/media/` refuses to serve GPX files at all, so
+the untrimmed original can't be downloaded. `assets/js/track-map.js` draws the stored
+track with Leaflet, loaded from jsdelivr only on pages that have a map. Changing a
+post's trim or a GPX file's contents takes effect on the post's next save.
+
 **`update_post`** *(author for own posts, editor for any)* — `id` or `slug` required,
 plus any subset of the mutable fields, including `type_fields`. Supports
 `expected_updated_at` for optimistic concurrency: if the post changed since the model
@@ -177,7 +202,9 @@ over MCP at all; it stays a deliberate human action in the admin UI.
 
 **`upload_media_from_url`** *(author)* — `url`, `alt` (required — an upload with no alt
 text is rejected), optional `filename`. The Worker fetches, validates content type and
-size, stores in R2, and returns the key and public URL. Only `https` URLs, with
+size, stores in R2, and returns the key and public URL. It accepts images, PDFs and GPX
+tracks. A GPX file is recognised by a `.gpx` filename plus GPX content, since servers
+label it inconsistently; pass `filename` if the URL doesn't end in `.gpx`. Only `https` URLs, with
 redirects capped and private address ranges blocked, so this cannot be used to probe
 internal endpoints.
 

@@ -23,6 +23,7 @@ import * as api from './api.js';
 import { openMediaPicker, toast, statusBadge } from './admin.js';
 import { el, clear, append, icon, formatDateTime, syncEmbedThemes } from './main.js';
 import { renderMarkdown, slugify, wordCount, readingMinutes } from './markdown.js';
+import { hydrateTrackMaps } from './track-map.js';
 
 const params = new URLSearchParams(location.search);
 const postId = params.get('id');
@@ -152,6 +153,9 @@ function createEditor() {
       // Theme embeds before EasyMDE inserts the HTML, as post.js does.
       const rendered = el('div', { html: renderMarkdown(markdown) });
       syncEmbedThemes(rendered);
+      // EasyMDE sets the returned HTML synchronously, so a macrotask later
+      // the route-map placeholders are in the preview's DOM.
+      setTimeout(() => previewTrackMaps(previewEl));
       return rendered.innerHTML;
     },
   });
@@ -160,6 +164,46 @@ function createEditor() {
     refreshCounts();
     markDirty();
   });
+}
+
+/* --- Route maps in the preview ---------------------------------------------
+ * A `{{gpx: …}}` shortcode renders as a placeholder until the server has
+ * read, trimmed and simplified the GPX (src/track.js) — the same work a save
+ * does, via POST /api/admin/preview, so what's previewed is exactly what gets
+ * published. EasyMDE rebuilds the preview on every keystroke, so each
+ * distinct shortcode is resolved once and its drawn map is cached and moved
+ * into each fresh preview, rather than refetched and redrawn per keystroke.
+ * ---------------------------------------------------------------------- */
+
+const previewTracks = new Map(); // shortcode key → Promise<figure element | null>
+
+async function resolvePreviewTrack({ trackSrc, publisher, style, trim }) {
+  const shortcode = `{{gpx: ${trackSrc} | publisher=${publisher} | trim=${trim}${style ? ` | style=${style}` : ''}}}`;
+  const { data } = await api.renderOnServer(shortcode);
+  const template = document.createElement('template');
+  template.innerHTML = data.body_html;
+  return template.content.querySelector('figure.track-map');
+}
+
+function previewTrackMaps(previewEl) {
+  for (const placeholder of previewEl.querySelectorAll('figure.track-map[data-track-src]')) {
+    const { trackSrc, publisher, style, trim } = placeholder.dataset;
+    const key = [trackSrc, publisher, style, trim].join('|');
+    if (!previewTracks.has(key)) {
+      previewTracks.set(key, resolvePreviewTrack(placeholder.dataset).catch(() => {
+        previewTracks.delete(key); // retry on a later keystroke
+        return null;
+      }));
+    }
+    previewTracks.get(key).then((figure) => {
+      // The same shortcode twice in one post: the cached map can only be in
+      // one place, so a second copy keeps its placeholder text.
+      if (!figure || !placeholder.isConnected || previewEl.contains(figure)) return;
+      placeholder.replaceWith(figure);
+      if (figure.trackMap) figure.trackMap.invalidateSize();
+      else hydrateTrackMaps(figure);
+    });
+  }
 }
 
 function refreshCounts() {

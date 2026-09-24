@@ -338,10 +338,20 @@ export function skeletonList(container, count = 3) {
 
 document.addEventListener('addblog:demo-mode', showDemoBanner);
 
+// Route maps from the `{{gpx: …}}` shortcode in server-rendered HTML (e.g. a
+// collection item). Loaded only when a page has one. The post page is the
+// exception: post.js re-renders the article itself and draws its maps after.
+function initTrackMaps() {
+  if (document.body.dataset.page === 'post') return;
+  if (!document.querySelector('figure.track-map[data-track]')) return;
+  import('./track-map.js').then(({ hydrateTrackMaps }) => hydrateTrackMaps());
+}
+
 function init() {
   initTheme();
   initSidebarCollapse();
   markCurrentNav();
+  initTrackMaps();
   const year = document.querySelector('[data-year]');
   if (year) year.textContent = String(new Date().getFullYear());
 }

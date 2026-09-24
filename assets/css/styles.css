@@ -555,6 +555,27 @@ a.tag:hover {
 }
 .prose th { font-weight: 650; background: var(--bg-subtle); }
 .prose figure { margin: var(--sp-5) 0; }
+
+/* Route maps — the `{{gpx: …}}` shortcode (assets/js/track-map.js). */
+.track-map {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+  background: var(--bg-inset);
+}
+.track-map__canvas { height: 420px; }
+@media (max-width: 40rem) {
+  .track-map__canvas { height: 320px; }
+}
+/* Undo .prose img for Leaflet's tiles, or every tile gets its own border. */
+.prose .track-map img { border: 0; border-radius: 0; max-width: none; }
+.track-map__fallback {
+  margin: 0;
+  padding: var(--sp-4);
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+}
+.track-map--error .track-map__fallback { color: var(--danger); }
 .prose figcaption {
   font-size: var(--text-sm);
   color: var(--text-muted);

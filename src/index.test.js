@@ -126,6 +126,13 @@ describe('headers', () => {
     const res = await get(PUBLIC_HOST, '/');
     expect(res.headers.get('Content-Security-Policy')).toContain('frame-src https://embed.music.apple.com');
   });
+
+  it('allows map tiles for the gpx shortcode in img-src', async () => {
+    const res = await get(PUBLIC_HOST, '/');
+    const imgSrc = res.headers.get('Content-Security-Policy').split('; ').find((d) => d.startsWith('img-src'));
+    expect(imgSrc).toContain('https://wmts.geo.admin.ch');
+    expect(imgSrc).toContain('https://a.tile.opentopomap.org');
+  });
 });
 
 describe('/health', () => {

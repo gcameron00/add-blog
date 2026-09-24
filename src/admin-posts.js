@@ -5,7 +5,7 @@
  * `identity` this module receives is never null when a route handler runs.
  */
 
-import { excerptFrom, readingMinutes, renderMarkdown, slugify, wordCount } from '../assets/js/markdown.js';
+import { excerptFrom, readingMinutes, slugify, wordCount } from '../assets/js/markdown.js';
 import {
   deletePostRow,
   etagFor,
@@ -36,6 +36,7 @@ import {
   validateTypeFields,
   validateVisibility,
 } from './validate.js';
+import { renderPostBody } from './track.js';
 
 function requirePostWriteAccess(identity, post) {
   requirePermission(identity, post.author.id === identity.author.id ? 'post.editOwn' : 'post.editOthers');
@@ -55,9 +56,9 @@ async function validatePostTypeAndFields(env, postType, typeFields) {
   return { type, fields };
 }
 
-function computeContent(bodyMd, explicitExcerpt) {
+async function computeContent(env, bodyMd, explicitExcerpt) {
   return {
-    body_html: renderMarkdown(bodyMd),
+    body_html: await renderPostBody(bodyMd, env),
     word_count: wordCount(bodyMd),
     reading_minutes: readingMinutes(bodyMd),
     excerpt: explicitExcerpt || excerptFrom(bodyMd, 190),
@@ -116,7 +117,7 @@ async function createHandler(request, env, identity) {
   const tags = validateTags(input.tags);
   const visibility = validateVisibility(input.visibility);
   const { type: postType, fields: typeFields } = await validatePostTypeAndFields(env, input.post_type, input.type_fields);
-  const { body_html, word_count, reading_minutes, excerpt } = computeContent(bodyMd, input.excerpt?.trim());
+  const { body_html, word_count, reading_minutes, excerpt } = await computeContent(env, bodyMd, input.excerpt?.trim());
 
   const post = {
     id: crypto.randomUUID(),
@@ -216,7 +217,7 @@ async function patchHandler(request, env, identity, id) {
   let contentChanged = false;
   if (input.body_md !== undefined) {
     const bodyMd = validateBodyMd(input.body_md);
-    Object.assign(fields, computeContent(bodyMd, input.excerpt?.trim()), { body_md: bodyMd });
+    Object.assign(fields, await computeContent(env, bodyMd, input.excerpt?.trim()), { body_md: bodyMd });
     contentChanged = true;
   } else if (input.excerpt !== undefined) {
     fields.excerpt = input.excerpt.trim() || excerptFrom(post.body_md, 190);
@@ -414,7 +415,7 @@ async function restoreHandler(env, identity, id, revisionId) {
   // Snapshot current state before overwriting it, per docs/api.md.
   await insertRevision(env.DB, { postId: id, title: post.title, bodyMd: post.body_md, authorId: identity.author.id, note: 'pre-restore' });
 
-  const { body_html, word_count, reading_minutes, excerpt } = computeContent(revision.body_md);
+  const { body_html, word_count, reading_minutes, excerpt } = await computeContent(env, revision.body_md);
   await updatePostRow(env.DB, id, {
     title: revision.title, body_md: revision.body_md, body_html, word_count, reading_minutes, excerpt, updated_at: nowIso(),
   });
@@ -428,10 +429,10 @@ async function restoreHandler(env, identity, id, revisionId) {
   return { updated, wasPublished: post.status === 'published' };
 }
 
-async function previewHandler(request) {
+async function previewHandler(request, env) {
   const input = await readJsonBody(request);
   const bodyMd = validateBodyMd(input.body_md || '');
-  return Response.json({ data: { body_html: renderMarkdown(bodyMd) } });
+  return Response.json({ data: { body_html: await renderPostBody(bodyMd, env) } });
 }
 
 /* --- Dispatch ---------------------------------------------------------------
@@ -452,7 +453,7 @@ export async function handlePostsApi(request, url, ctxBundle) {
 
     if (isPreview) {
       if (request.method !== 'POST') return null;
-      return previewHandler(request);
+      return previewHandler(request, env);
     }
 
     const rest = url.pathname.slice('/api/admin/posts'.length);

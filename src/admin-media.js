@@ -32,6 +32,7 @@ import {
 import { apiError, readJsonBody, requirePermission, requireSameOrigin, withErrors } from './admin-http.js';
 import { writeAuditLog } from './audit.js';
 import { buildMediaKey, detectDimensions, sanitizeFilename, sha256Hex } from './media-parse.js';
+import { GPX_CONTENT_TYPE, looksLikeGpx } from './track.js';
 
 // Exported so src/mcp-tools.js's `upload_media_from_url` validates a fetched
 // URL's response against the exact same allow-list and size cap a direct
@@ -45,6 +46,22 @@ export const ALLOWED_TYPES = new Set([
   'image/gif',
   'application/pdf',
 ]);
+
+// GPX tracks (for the `{{gpx: …}}` shortcode, src/track.js) are kept out of
+// ALLOWED_TYPES on purpose: browsers and web servers label a .gpx file
+// inconsistently — application/gpx+xml, a generic XML or binary type, or
+// nothing at all — so one is recognised by its extension plus its content
+// instead, and stored under the one canonical type. ALLOWED_TYPES itself
+// stays exactly the set of types trusted on their label alone.
+export const GPX_DECLARED_TYPES = new Set(['application/gpx+xml', 'application/xml', 'text/xml', 'application/octet-stream']);
+
+/** The content type to store an upload under, or null if it isn't an allowed upload. Shared with src/mcp-tools.js's upload_media_from_url. */
+export function uploadContentType(declaredType, filename, bytes) {
+  if (ALLOWED_TYPES.has(declaredType)) return declaredType;
+  const gpxLabel = !declaredType || GPX_DECLARED_TYPES.has(declaredType);
+  if (gpxLabel && /\.gpx$/i.test(filename || '') && looksLikeGpx(bytes)) return GPX_CONTENT_TYPE;
+  return null;
+}
 
 // Exported for src/mcp-tools.js's `list_media` and `upload_media_from_url` —
 // same shape a human sees in the admin media library, so an agent and an
@@ -89,16 +106,16 @@ async function uploadHandler(request, env, identity) {
   }
   const alt = formData.get('alt');
 
-  const fileType = file.type || '';
-  if (!ALLOWED_TYPES.has(fileType)) {
-    return apiError(415, 'unsupported_media_type', `"${fileType || 'unknown'}" is not an allowed upload type.`);
-  }
   if (file.size > MAX_UPLOAD_BYTES) {
     return apiError(413, 'payload_too_large', `Uploads are capped at ${MAX_UPLOAD_BYTES / (1024 * 1024)} MB.`);
   }
 
   const buffer = await file.arrayBuffer();
   const bytes = new Uint8Array(buffer);
+  const fileType = uploadContentType(file.type || '', file.name, bytes);
+  if (!fileType) {
+    return apiError(415, 'unsupported_media_type', `"${file.type || 'unknown'}" is not an allowed upload type.`);
+  }
   const checksum = await sha256Hex(bytes);
 
   // Content-addressed uploads are idempotent — the same bytes uploaded

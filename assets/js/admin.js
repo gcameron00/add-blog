@@ -681,7 +681,8 @@ async function initPosts() {
 
 /* --- Media page ----------------------------------------------------------- */
 
-const TYPE_LABEL = (contentType) => (contentType.split('/')[1] || 'file').toUpperCase();
+const GPX_TYPE = 'application/gpx+xml';
+const TYPE_LABEL = (contentType) => (contentType === GPX_TYPE ? 'GPX' : (contentType.split('/')[1] || 'file').toUpperCase());
 
 async function initMedia() {
   const host = document.querySelector('[data-media]');
@@ -700,6 +701,7 @@ async function initMedia() {
       const grid = el('div', { class: 'media-grid' });
       for (const item of data) {
         const isImage = item.content_type.startsWith('image/');
+        const isGpx = item.content_type === GPX_TYPE;
         grid.append(
           el('figure', { class: 'media-item', style: 'margin:0' }, [
             el('div', { class: 'media-item__thumb' }, [
@@ -716,10 +718,18 @@ async function initMedia() {
               // and "N posts" would misdescribe a file that's only the site icon.
               el('div', { class: 'media-item__meta', text: item.used_by ? 'In use' : 'Unused' }),
               el('div', { class: 'media-item__actions' }, [
-                el('button', {
-                  class: 'btn btn--sm btn--ghost', type: 'button', text: 'Copy URL',
-                  onClick: () => copyToClipboard(item.url, 'URL copied'),
-                }),
+                // A GPX file is only ever used through its shortcode — and its
+                // /media/ URL isn't publicly served (src/media.js) — so offer
+                // the ready-to-paste shortcode instead of the bare URL.
+                isGpx
+                  ? el('button', {
+                      class: 'btn btn--sm btn--ghost', type: 'button', text: 'Copy map shortcode',
+                      onClick: () => copyToClipboard(`{{gpx: ${item.url}}}`, 'Shortcode copied'),
+                    })
+                  : el('button', {
+                      class: 'btn btn--sm btn--ghost', type: 'button', text: 'Copy URL',
+                      onClick: () => copyToClipboard(item.url, 'URL copied'),
+                    }),
                 el('button', {
                   class: 'btn btn--sm btn--ghost', type: 'button', text: 'Edit alt',
                   onClick: () => {
@@ -736,7 +746,7 @@ async function initMedia() {
                   },
                 }),
               ]),
-              !item.alt ? el('div', { class: 'field__error', text: 'Missing alt text' }) : null,
+              !item.alt && !isGpx ? el('div', { class: 'field__error', text: 'Missing alt text' }) : null,
             ]),
           ])
         );

@@ -1,12 +1,14 @@
 /**
  * Admin dashboard reads (Phase 5b) — docs/api.md's `GET /stats` and
  * `GET /audit`. `assets/js/admin.js`'s dashboard page has called both since
- * Phase 1; no "views" figure is included since nothing in this Worker
- * collects page views yet regardless of the `analytics_enabled` setting —
- * that setting is stored, not acted on.
+ * Phase 1. `views` comes from src/views.js's post_views counts (#18) — posts
+ * and collection items together — and is null rather than a 500 if a site
+ * hasn't applied migrations/0009_post_views.sql yet, so the rest of the
+ * dashboard keeps working in between deploying the Worker and the migration.
  */
 
 import { withErrors } from './admin-http.js';
+import { viewTotals } from './views.js';
 
 async function countPostsByStatus(db, status) {
   const row = await db.prepare(`SELECT COUNT(*) AS n FROM posts WHERE status = ?`).bind(status).first();
@@ -23,6 +25,7 @@ async function statsHandler(env) {
   const nextScheduled = await db
     .prepare(`SELECT title, scheduled_for FROM posts WHERE status = 'scheduled' ORDER BY scheduled_for ASC LIMIT 1`)
     .first();
+  const views = await viewTotals(db).catch(() => null);
 
   return Response.json({
     data: {
@@ -33,6 +36,7 @@ async function statsHandler(env) {
       words: wordsRow?.total || 0,
       media: mediaRow?.n || 0,
       next_scheduled: nextScheduled || null,
+      views,
     },
   });
 }

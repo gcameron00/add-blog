@@ -361,11 +361,27 @@ function initTrackMaps() {
   import('./track-map.js').then(({ hydrateTrackMaps }) => hydrateTrackMaps());
 }
 
+// View counts (#18, src/views.js). The Worker marks a published post or
+// collection item page with data-view="<slug>"; nothing else carries it, so
+// this is a no-op everywhere else. One fire-and-forget, same-origin beacon —
+// no cookies, no identifier, and it never delays the page. The server decides
+// whether counting is on, so a cached page can't send a stale answer.
+function sendViewBeacon() {
+  const slug = document.querySelector('[data-view]')?.dataset.view;
+  if (!slug || typeof navigator.sendBeacon !== 'function') return;
+  try {
+    navigator.sendBeacon('/api/track', JSON.stringify({ slug }));
+  } catch {
+    // A refused beacon is a lost count, never a broken page.
+  }
+}
+
 function init() {
   initTheme();
   initSidebarCollapse();
   markCurrentNav();
   initTrackMaps();
+  sendViewBeacon();
   const year = document.querySelector('[data-year]');
   if (year) year.textContent = String(new Date().getFullYear());
 }

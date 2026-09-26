@@ -90,7 +90,7 @@ describe('GET /posts/:slug', () => {
 
   it('inlines the rendered article body — works with JS disabled', async () => {
     const html = await (await get(`/posts/${SLUG}`)).text();
-    expect(html).toMatch(/<article data-article data-ssr>[\s\S]*<h1>Shipping a blog on Cloudflare Workers<\/h1>/);
+    expect(html).toMatch(/<article data-article data-ssr data-view="shipping-a-blog-on-cloudflare-workers">[\s\S]*<h1>Shipping a blog on Cloudflare Workers<\/h1>/);
     expect(html).toContain('class="prose"');
     // Not still showing the static template's loading placeholder.
     expect(html).not.toContain('Loading post…');
@@ -351,6 +351,28 @@ describe('handleCollectionIndexPage / handleCollectionItemPage / handleLegacyCol
     expect(html).toContain(`<meta property="og:image" content="https://${HOST}/media/2026/09/abc123-item.jpg" />`);
     expect(html).toContain('<meta property="og:image:alt" content="The finished thing" />');
     expect(html).not.toContain('abc123-share.jpg');
+  });
+
+  it('marks an item page for a view beacon (#18), but not the collection index', async () => {
+    await setSetting('collections', [PROJECT_COLLECTION]);
+    const now = new Date().toISOString();
+    await env.DB
+      .prepare(`
+        INSERT OR IGNORE INTO posts (
+          id, slug, title, excerpt, body_md, body_html, status, visibility, author_id,
+          created_at, updated_at, published_at, post_type, type_fields
+        ) VALUES ('view-proj', 'view-project', 'View Project', 'An item.', 'Body', '<p>Body</p>',
+          'published', 'public', 'a1', ?, ?, ?, 'project', '{}')
+      `)
+      .bind(now, now, now)
+      .run();
+    const itemUrl = new URL(`https://${HOST}/portfolio/view-project`);
+    const itemHtml = await (await handleCollectionItemPage(new Request(itemUrl), itemUrl, env)).text();
+    expect(itemHtml).toContain('<article data-collection-item data-view="view-project">');
+
+    const indexUrl = new URL(`https://${HOST}/portfolio/`);
+    const indexHtml = await (await handleCollectionIndexPage(new Request(indexUrl), indexUrl, env)).text();
+    expect(indexHtml).not.toContain('data-view=');
   });
 
   it('src/site-template.js adds a header nav link for a collection with nav.header true', async () => {

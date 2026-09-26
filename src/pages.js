@@ -90,6 +90,15 @@ function robotsMeta(entry) {
   return entry.visibility === 'unlisted' ? '\n    <meta name="robots" content="noindex" />' : '';
 }
 
+/**
+ * `data-view="<slug>"` — marks a published post or collection item page as
+ * one assets/js/main.js counts (#18, src/views.js). Only these two handlers
+ * add it, so index, tag, archive, 404 and admin pages never send a beacon.
+ */
+function viewAttr(entry) {
+  return ` data-view="${escapeHtml(entry.slug)}"`;
+}
+
 /** GET /posts/:slug. Returns null for anything else, so the caller can fall through. */
 export async function handlePostPage(request, url, env) {
   const match = url.pathname.match(/^\/posts\/([^/]+)\/?$/);
@@ -126,7 +135,9 @@ export async function handlePostPage(request, url, env) {
     // data-ssr tells assets/js/post.js the article is already here, so it
     // enhances it in place instead of refetching and rebuilding it — which
     // would reload every embed and delay the route maps.
-    .replace(/<article data-article>[\s\S]*?<\/article>/, `<article data-article data-ssr>${renderArticle(post, url.origin)}</article>`);
+    // data-view marks the page as countable (#18): assets/js/main.js sends
+    // one view beacon for it — see src/views.js.
+    .replace(/<article data-article>[\s\S]*?<\/article>/, `<article data-article data-ssr${viewAttr(post)}>${renderArticle(post, url.origin)}</article>`);
 
   return new Response(html, {
     headers: {
@@ -235,7 +246,7 @@ export async function handleCollectionItemPage(request, url, env) {
     .replace('<meta property="og:title" content="" />', `<meta property="og:title" content="${escapeHtml(item.title)}" />`)
     .replace('<meta property="og:description" content="" />', `<meta property="og:description" content="${description}" />`)
     .replace('<link rel="canonical" href="/" />', `<link rel="canonical" href="${canonical}" />`)
-    .replace(/<article data-collection-item>[\s\S]*?<\/article>/, `<article data-collection-item>${renderCollectionItem(item, collection)}</article>`);
+    .replace(/<article data-collection-item>[\s\S]*?<\/article>/, `<article data-collection-item${viewAttr(item)}>${renderCollectionItem(item, collection)}</article>`);
 
   return new Response(html, {
     headers: {

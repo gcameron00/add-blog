@@ -12,7 +12,7 @@
 
 import { getPublishedItemBySlug, getPublishedPostBySlug, getSettings, listPublishedItems } from './db.js';
 import { escapeHtml, renderMarkdown } from '../assets/js/markdown.js';
-import { applySiteBranding, applyHomeMeta, isFeatureEnabled } from './site-template.js';
+import { applySiteBranding, applyHomeMeta, applyImageMeta, isFeatureEnabled } from './site-template.js';
 import { collectionTitle, findCollectionByLegacyPath, findCollectionByPath, renderCollectionIndex, renderCollectionItem, resolveCollections } from './collections.js';
 
 function formatDate(iso) {
@@ -82,29 +82,6 @@ function renderRelated(related) {
     </section>`;
 }
 
-/**
- * og:image for link previews (WhatsApp, Slack, LinkedIn, …), which mostly
- * show no picture without one — Apple's previews guess from the inlined
- * cover <img>, most others don't. The post's cover as a large card; else
- * the owner's brand icon as a small one; else nothing (the default
- * checkmark SVG isn't a useful preview). Must be absolute URLs — cover and
- * icon URLs are site-relative /media/ paths.
- */
-function renderImageMeta(post, settings, origin) {
-  const tag = (attr, key, value) => `\n    <meta ${attr}="${key}" content="${escapeHtml(value)}" />`;
-  if (post.cover) {
-    return (
-      tag('property', 'og:image', `${origin}${post.cover.url}`) +
-      (post.cover.alt ? tag('property', 'og:image:alt', post.cover.alt) : '') +
-      tag('name', 'twitter:card', 'summary_large_image')
-    );
-  }
-  if (settings.site_icon_key) {
-    return tag('property', 'og:image', `${origin}/media/${settings.site_icon_key}`) + tag('name', 'twitter:card', 'summary');
-  }
-  return '';
-}
-
 /** GET /posts/:slug. Returns null for anything else, so the caller can fall through. */
 export async function handlePostPage(request, url, env) {
   const match = url.pathname.match(/^\/posts\/([^/]+)\/?$/);
@@ -130,13 +107,13 @@ export async function handlePostPage(request, url, env) {
   const title = `${escapeHtml(post.title)} — ${escapeHtml(siteTitle)}`;
   const description = escapeHtml(post.excerpt || '');
   const canonical = `${url.origin}/posts/${encodeURIComponent(post.slug)}`;
-  const imageMeta = renderImageMeta(post, settings, url.origin);
 
+  html = applyImageMeta(html, settings, url.origin, post.cover);
   html = html
     .replace(`<title>Post — ${escapeHtml(siteTitle)}</title>`, `<title>${title}</title>`)
     .replace('<meta name="description" content="" />', `<meta name="description" content="${description}" />`)
     .replace('<meta property="og:title" content="" />', `<meta property="og:title" content="${escapeHtml(post.title)}" />`)
-    .replace('<meta property="og:description" content="" />', `<meta property="og:description" content="${description}" />${imageMeta}`)
+    .replace('<meta property="og:description" content="" />', `<meta property="og:description" content="${description}" />`)
     .replace('<link rel="canonical" href="/" />', `<link rel="canonical" href="${canonical}" />`)
     // data-ssr tells assets/js/post.js the article is already here, so it
     // enhances it in place instead of refetching and rebuilding it — which
@@ -193,6 +170,7 @@ export async function handleCollectionIndexPage(request, url, env) {
   const indexTitle = collectionTitle(collection, 'Collection');
   const canonical = `${url.origin}${base}/`;
 
+  html = applyImageMeta(html, settings, url.origin);
   html = html
     .replace(`<title>Collection — ${escapeHtml(siteTitle)}</title>`, `<title>${escapeHtml(indexTitle)} — ${escapeHtml(siteTitle)}</title>`)
     .replace('<link rel="canonical" href="/" />', `<link rel="canonical" href="${canonical}" />`)
@@ -242,6 +220,7 @@ export async function handleCollectionItemPage(request, url, env) {
   const description = escapeHtml(item.excerpt || '');
   const canonical = `${url.origin}${base}/${encodeURIComponent(item.slug)}`;
 
+  html = applyImageMeta(html, settings, url.origin, item.cover);
   html = html
     .replace(`<title>Item — ${escapeHtml(siteTitle)}</title>`, `<title>${title}</title>`)
     .replace('<meta name="description" content="" />', `<meta name="description" content="${description}" />`)
@@ -273,6 +252,7 @@ export async function handleHomePage(request, url, env, admin) {
   const shellResponse = await env.ASSETS.fetch(request);
   let html = applySiteBranding(await shellResponse.text(), settings);
   html = applyHomeMeta(html, settings);
+  html = applyImageMeta(html, settings, url.origin);
 
   return new Response(html, {
     headers: {
@@ -309,6 +289,7 @@ export async function handleAboutPage(request, url, env) {
   const shellRequest = new Request(new URL('/about/', url), request);
   const shellResponse = await env.ASSETS.fetch(shellRequest);
   let html = applySiteBranding(await shellResponse.text(), settings);
+  html = applyImageMeta(html, settings, url.origin);
 
   if (settings.about_content) {
     html = html.replace(

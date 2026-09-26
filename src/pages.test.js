@@ -53,18 +53,39 @@ describe('GET /posts/:slug', () => {
 
   it('falls back to the brand icon for og:image when the post has no cover', async () => {
     await env.DB.prepare(`UPDATE posts SET cover_key = NULL WHERE slug = ?`).bind(SLUG).run();
+    await setSetting('social_image_key', '');
     await setSetting('site_icon_key', '2026/08/abc123-icon.png');
     const html = await (await get(`/posts/${SLUG}`)).text();
     expect(html).toContain(`<meta property="og:image" content="https://${HOST}/media/2026/08/abc123-icon.png" />`);
     expect(html).toContain('<meta name="twitter:card" content="summary" />');
   });
 
-  it('omits og:image when there is neither a cover nor a brand icon', async () => {
+  it('omits og:image when there is neither a cover, a social image nor a brand icon', async () => {
     await env.DB.prepare(`UPDATE posts SET cover_key = NULL WHERE slug = ?`).bind(SLUG).run();
+    await setSetting('social_image_key', '');
     await setSetting('site_icon_key', '');
     const html = await (await get(`/posts/${SLUG}`)).text();
     expect(html).not.toContain('og:image');
     expect(html).not.toContain('twitter:card');
+    expect(html).not.toContain('<!-- og-image -->');
+  });
+
+  it('prefers settings.social_image_key (#14) over the brand icon when the post has no cover', async () => {
+    await env.DB.prepare(`UPDATE posts SET cover_key = NULL WHERE slug = ?`).bind(SLUG).run();
+    await setSetting('social_image_key', '2026/09/abc123-share.jpg');
+    await setSetting('site_icon_key', '2026/08/abc123-icon.png');
+    const html = await (await get(`/posts/${SLUG}`)).text();
+    expect(html).toContain(`<meta property="og:image" content="https://${HOST}/media/2026/09/abc123-share.jpg" />`);
+    expect(html).toContain('<meta name="twitter:card" content="summary_large_image" />');
+    expect(html.match(/property="og:image"/g)).toHaveLength(1);
+  });
+
+  it('still prefers the post cover over settings.social_image_key', async () => {
+    await env.DB.prepare(`UPDATE posts SET cover_key = ? WHERE slug = ?`).bind('2026/09/abc123-hike.jpg', SLUG).run();
+    await setSetting('social_image_key', '2026/09/abc123-share.jpg');
+    const html = await (await get(`/posts/${SLUG}`)).text();
+    expect(html).toContain(`<meta property="og:image" content="https://${HOST}/media/2026/09/abc123-hike.jpg" />`);
+    expect(html).not.toContain('abc123-share.jpg');
   });
 
   it('inlines the rendered article body — works with JS disabled', async () => {
@@ -248,6 +269,24 @@ describe('site branding — settings.site_title/site_description reach the publi
     expect(archiveHtml).toContain('content="Every post, grouped by year."');
   });
 
+  it('gives the homepage, archive, tags and about pages settings.social_image_key as og:image (#14)', async () => {
+    await setSetting('social_image_key', '2026/09/abc123-share.jpg');
+    for (const path of ['/', '/archive/', '/tags/', '/about/']) {
+      const html = await (await get(path)).text();
+      expect(html).toContain(`<meta property="og:image" content="https://${HOST}/media/2026/09/abc123-share.jpg" />`);
+      expect(html).toContain('<meta name="twitter:card" content="summary_large_image" />');
+      expect(html).not.toContain('<!-- og-image -->');
+    }
+  });
+
+  it('falls back to the brand icon as a small card on site-wide pages without a social image', async () => {
+    await setSetting('social_image_key', '');
+    await setSetting('site_icon_key', '2026/08/abc123-icon.png');
+    const html = await (await get('/')).text();
+    expect(html).toContain(`<meta property="og:image" content="https://${HOST}/media/2026/08/abc123-icon.png" />`);
+    expect(html).toContain('<meta name="twitter:card" content="summary" />');
+  });
+
   it('does not query settings for a non-HTML static asset', async () => {
     const res = await get('/assets/css/styles.css');
     expect(res.status).toBe(200);
@@ -281,6 +320,37 @@ describe('handleCollectionIndexPage / handleCollectionItemPage / handleLegacyCol
     expect(res.headers.get('Cache-Control')).toBe('public, max-age=60, s-maxage=3600, stale-while-revalidate=86400');
     const html = await res.text();
     expect(html).toContain('<h1>Portfolio</h1>');
+  });
+
+  it('handleCollectionIndexPage uses settings.social_image_key as og:image (#14)', async () => {
+    await setSetting('collections', [PROJECT_COLLECTION]);
+    await setSetting('social_image_key', '2026/09/abc123-share.jpg');
+    const url = new URL(`https://${HOST}/portfolio/`);
+    const html = await (await handleCollectionIndexPage(new Request(url), url, env)).text();
+    expect(html).toContain(`<meta property="og:image" content="https://${HOST}/media/2026/09/abc123-share.jpg" />`);
+  });
+
+  it('handleCollectionItemPage uses the item cover as og:image (#14)', async () => {
+    await setSetting('collections', [PROJECT_COLLECTION]);
+    await setSetting('social_image_key', '2026/09/abc123-share.jpg');
+    const now = new Date().toISOString();
+    await env.DB
+      .prepare(`
+        INSERT INTO posts (
+          id, slug, title, excerpt, body_md, body_html, status, visibility, author_id,
+          cover_key, cover_alt, created_at, updated_at, published_at, post_type, type_fields
+        ) VALUES (?, ?, ?, ?, ?, ?, 'published', 'public', 'a1', ?, ?, ?, ?, ?, 'project', '{}')
+      `)
+      .bind('og-proj', 'og-project', 'OG Project', 'An item.', 'Body', '<p>Body</p>',
+        '2026/09/abc123-item.jpg', 'The finished thing', now, now, now)
+      .run();
+    const url = new URL(`https://${HOST}/portfolio/og-project`);
+    const res = await handleCollectionItemPage(new Request(url), url, env);
+    expect(res.status).toBe(200);
+    const html = await res.text();
+    expect(html).toContain(`<meta property="og:image" content="https://${HOST}/media/2026/09/abc123-item.jpg" />`);
+    expect(html).toContain('<meta property="og:image:alt" content="The finished thing" />');
+    expect(html).not.toContain('abc123-share.jpg');
   });
 
   it('src/site-template.js adds a header nav link for a collection with nav.header true', async () => {

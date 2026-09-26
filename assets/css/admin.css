@@ -423,6 +423,14 @@ body.admin {
 /* Fullscreen (F11) pins the toolbar with `.fullscreen` added — two classes,
    so EasyMDE's own #fff background there outranks the single-class rule
    above on specificity, not just source order. Match it explicitly. */
+/* Side-by-side and fullscreen (editor.js re-adds them so iPads get them) are
+   too cramped on a phone — the same 700px cut-off EasyMDE's own CSS uses. */
+@media (max-width: 700px) {
+  /* EasyMDE puts non-`fa` classes on the <button>; :has() covers it if a
+     version ever leaves them on the inner <i> instead. */
+  .editor-toolbar .editor-btn--wide,
+  .editor-toolbar button:has(> .editor-btn--wide) { display: none; }
+}
 .editor-toolbar.fullscreen { background: var(--bg-subtle); }
 .editor-toolbar.fullscreen::before { background: linear-gradient(to right, var(--bg-subtle), transparent); }
 .editor-toolbar.fullscreen::after { background: linear-gradient(to left, var(--bg-subtle), transparent); }
@@ -693,6 +701,7 @@ body.admin {
   font-size: var(--text-xs);
 }
 .icon-preview img { width: 100%; height: 100%; object-fit: cover; }
+.icon-preview--wide { width: 7.6rem; aspect-ratio: 1200 / 630; }
 
 /* --- Activity ------------------------------------------------------------- */
 

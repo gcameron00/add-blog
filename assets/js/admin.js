@@ -1579,37 +1579,41 @@ async function initSettings() {
     else field.value = value ?? '';
   }
 
-  // site_icon_key (#15) rides the generic load/save loop above/below like any
-  // other scalar field (it's just a hidden input) — this only adds the
-  // picker/preview around it, the same pattern editor.js's cover image uses.
-  const iconInput = form.elements.site_icon_key;
-  const iconPreview = form.querySelector('[data-icon-preview]');
-  const iconPick = form.querySelector('[data-icon-pick]');
-  const iconRemove = form.querySelector('[data-icon-remove]');
+  // site_icon_key (#15) and social_image_key (#14) ride the generic
+  // load/save loop above/below like any other scalar field (each is just a
+  // hidden input) — this only adds the picker/preview around them, the same
+  // pattern editor.js's cover image uses.
+  function initMediaSetting(name, prefix) {
+    const input = form.elements[name];
+    const preview = form.querySelector(`[data-${prefix}-preview]`);
+    const pick = form.querySelector(`[data-${prefix}-pick]`);
+    const remove = form.querySelector(`[data-${prefix}-remove]`);
+    if (!input) return;
 
-  function renderIconPreview() {
-    if (!iconPreview) return;
-    clear(iconPreview);
-    if (iconInput.value) {
-      iconPreview.append(el('img', { src: `/media/${iconInput.value}`, alt: '' }));
-    } else {
-      iconPreview.append(el('span', { text: 'Default' }));
+    function renderPreview() {
+      if (!preview) return;
+      clear(preview);
+      if (input.value) {
+        preview.append(el('img', { src: `/media/${input.value}`, alt: '' }));
+      } else {
+        preview.append(el('span', { text: 'Default' }));
+      }
+      if (remove) remove.hidden = !input.value;
     }
-    if (iconRemove) iconRemove.hidden = !iconInput.value;
-  }
-  if (iconInput) {
-    renderIconPreview();
-    iconPick?.addEventListener('click', () => openMediaPicker({
+    renderPreview();
+    pick?.addEventListener('click', () => openMediaPicker({
       onSelect: (item) => {
-        iconInput.value = item.key;
-        renderIconPreview();
+        input.value = item.key;
+        renderPreview();
       },
     }));
-    iconRemove?.addEventListener('click', () => {
-      iconInput.value = '';
-      renderIconPreview();
+    remove?.addEventListener('click', () => {
+      input.value = '';
+      renderPreview();
     });
   }
+  initMediaSetting('site_icon_key', 'icon');
+  initMediaSetting('social_image_key', 'social');
 
   // nav_config isn't a plain form field (see the block comment above
   // initSettings) — loaded and re-serialized separately from the generic

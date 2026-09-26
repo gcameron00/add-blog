@@ -145,7 +145,29 @@ function createEditor() {
         title: 'Insert image from library',
       },
       '|',
-      'preview', 'side-by-side', 'fullscreen', '|',
+      'preview',
+      // EasyMDE drops its built-in 'side-by-side' and 'fullscreen' buttons
+      // (by name) whenever its user-agent sniff says "mobile" — which
+      // includes iPad, where both work fine. Re-adding them under our own
+      // names keeps them; admin.css hides them again at phone widths, where
+      // a split view genuinely is too narrow. Their toolbarElements entries
+      // are aliased back to the built-in names in createEditor() below, so
+      // EasyMDE's toggles still find the buttons to mark them active.
+      {
+        name: 'side-by-side-any',
+        action: EasyMDE.toggleSideBySide,
+        className: 'fa fa-columns editor-btn--wide',
+        title: 'Toggle Side by Side (F9)',
+        noDisable: true,
+      },
+      {
+        name: 'fullscreen-any',
+        action: EasyMDE.toggleFullScreen,
+        className: 'fa fa-arrows-alt editor-btn--wide',
+        title: 'Toggle Fullscreen (F11)',
+        noDisable: true,
+      },
+      '|',
       'guide',
     ],
     previewRender(markdown, previewEl) {
@@ -159,6 +181,10 @@ function createEditor() {
       return rendered.innerHTML;
     },
   });
+
+  const buttons = mde.toolbarElements || {};
+  buttons['side-by-side'] ||= buttons['side-by-side-any'];
+  buttons.fullscreen ||= buttons['fullscreen-any'];
 
   mde.codemirror.on('change', () => {
     refreshCounts();

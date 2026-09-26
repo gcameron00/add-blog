@@ -105,11 +105,25 @@ describe('POST /api/track', () => {
     expect(await viewsFor(SLUG)).toBe(0);
   });
 
-  it('ignores a beacon from another origin, or with no Origin at all', async () => {
+  it('ignores a beacon from another origin', async () => {
     expect((await track({ slug: SLUG }, { headers: { Origin: 'https://elsewhere.example' } })).status).toBe(204);
+    expect(await viewsFor(SLUG)).toBe(0);
+  });
+
+  it('counts a beacon that arrives with no Origin header', async () => {
     const res = await SELF.fetch(`https://${HOST}/api/track`, { method: 'POST', body: JSON.stringify({ slug: SLUG }) });
     expect(res.status).toBe(204);
+    expect(await viewsFor(SLUG)).toBe(1);
+  });
+
+  it('falls back to Sec-Fetch-Site when there is no Origin', async () => {
+    const send = (site) => SELF.fetch(`https://${HOST}/api/track`, {
+      method: 'POST', headers: { 'Sec-Fetch-Site': site }, body: JSON.stringify({ slug: SLUG }),
+    });
+    await send('cross-site');
     expect(await viewsFor(SLUG)).toBe(0);
+    await send('same-origin');
+    expect(await viewsFor(SLUG)).toBe(1);
   });
 
   it('never counts on the admin host', async () => {
@@ -126,7 +140,8 @@ describe('POST /api/track', () => {
 
   it('keeps separate rows per UTC day, and goes away with the post', async () => {
     await insertPost({ id: 'track-cascade', slug: 'track-cascade' });
-    await recordView(env.DB, 'track-cascade', '2026-01-01');
+    expect(await recordView(env.DB, 'track-cascade', '2026-01-01')).toBe(true);
+    expect(await recordView(env.DB, 'no-such-post', '2026-01-01')).toBe(false);
     await recordView(env.DB, 'track-cascade', '2026-01-02');
     await recordView(env.DB, 'track-cascade', '2026-01-02');
     expect(await viewsFor('track-cascade', '2026-01-01')).toBe(1);

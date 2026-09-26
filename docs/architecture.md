@@ -496,7 +496,7 @@ and is fixed by a re-render migration.
 
 **Other measures.** All write endpoints require `Content-Type: application/json` and a
 same-origin `Origin` header — except the public `POST /api/track` (#18), which takes
-`sendBeacon`'s `text/plain` body; it still requires a same-origin `Origin`, writes
+`sendBeacon`'s `text/plain` body; it still rejects a cross-site `Origin`, writes
 only an aggregate count, and relies on a Cloudflare rate-limiting rule rather than
 per-identity limits, since it has no identity. Per-identity rate limits on writes and uploads. Upload
 size cap and content-type allow-list. Every mutation writes to `audit_log`. No secrets

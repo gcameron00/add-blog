@@ -61,9 +61,10 @@ async function readSlug(request) {
  * its link still works) and `analytics_enabled` is on. Settings values are
  * stored JSON-encoded (src/admin-settings.js's writeSettings), so the
  * checkbox's `true` is the literal text `true`; a missing row counts as off.
+ * Resolves to whether a view was counted.
  */
 export async function recordView(db, slug, day = utcDay()) {
-  await db
+  const result = await db
     .prepare(`
       INSERT INTO post_views (post_id, day, views)
       SELECT p.id, ?, 1 FROM posts p
@@ -73,6 +74,27 @@ export async function recordView(db, slug, day = utcDay()) {
     `)
     .bind(day, slug)
     .run();
+  return (result?.meta?.changes || 0) > 0;
+}
+
+/**
+ * Whether a beacon demonstrably came from another site. Browsers send Origin
+ * on every cross-origin POST, so a foreign Origin is the real signal. A
+ * missing one isn't: not every engine is guaranteed to attach Origin to a
+ * same-origin sendBeacon, and rejecting those silently lost real views
+ * (#18 follow-up). Sec-Fetch-Site, where sent, is the fallback check.
+ */
+function isCrossSite(request, url) {
+  const origin = request.headers.get('Origin');
+  if (origin) return origin !== url.origin;
+  const site = request.headers.get('Sec-Fetch-Site');
+  return Boolean(site) && site !== 'same-origin';
+}
+
+// One line per beacon that isn't counted, so the real-time Workers log shows
+// why — the response is deliberately the same 204 either way.
+function logIgnored(reason, slug) {
+  console.log(JSON.stringify({ event: 'track_view_ignored', reason, ...(slug ? { slug } : {}) }));
 }
 
 /** POST /api/track. Returns null for any other path or method. */
@@ -80,17 +102,23 @@ export async function handleTrackView(request, url, env, admin) {
   if (url.pathname !== TRACK_PATH || request.method !== 'POST') return null;
   // An editor reading a post on the admin host isn't a reader.
   if (admin || !env.DB) return noContent();
-  // Browsers always send Origin on a POST, sendBeacon included. Requiring our
-  // own stops another site from inflating counts through its visitors'
-  // browsers, and drops the laziest scripted calls; it isn't flood
-  // protection — anything can forge a header.
-  if (request.headers.get('Origin') !== url.origin) return noContent();
+  // Stops another site inflating counts through its visitors' browsers. Not
+  // flood protection — anything can forge a header; that's the rate-limit
+  // rule's job (docs/deployment.md).
+  if (isCrossSite(request, url)) {
+    logIgnored('cross_site');
+    return noContent();
+  }
 
   const slug = await readSlug(request);
-  if (!slug) return noContent();
+  if (!slug) {
+    logIgnored('bad_body');
+    return noContent();
+  }
 
   try {
-    await recordView(env.DB, slug);
+    // Not counted: unknown or unpublished slug, or analytics_enabled is off.
+    if (!(await recordView(env.DB, slug))) logIgnored('not_counted', slug);
   } catch (err) {
     // e.g. migrations/0009_post_views.sql not applied yet on this site —
     // a lost count, never a visible error.

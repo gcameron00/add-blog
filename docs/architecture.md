@@ -276,7 +276,10 @@ and repeat visits count again (there's no visitor state to dedupe with), readers
 without JavaScript and most bots aren't counted, and the admin host never counts. It's
 kept in its own table, not a `posts` column, so an anonymous write can never touch the
 row whose `updated_at` is the editor's conflict token. The path is deliberately neutral:
-it was `/api/track`, which content blockers' generic filter rules block. `/api/pagecounter` is the only
+it was `/api/track`, which blockers' generic filter rules match. That only helps against
+URL-based rules; a blocker that drops every `sendBeacon` request (as one Safari extension
+tested does) still stops the count, so readers running one aren't counted, an accepted
+limit. `/api/pagecounter` is the only
 anonymous D1 write path; see §6 and [deployment.md](deployment.md) for the rate-limit
 rule in front of it.
 

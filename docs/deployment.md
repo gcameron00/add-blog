@@ -107,19 +107,19 @@ See [architecture.md](architecture.md) §3 and
 
 **0009 (view counts, #18) is additive only** — a new `post_views` table (one row per
 post per UTC day, a count, nothing about visitors) and its index. Unlike the other
-migrations, the Worker tolerates running before it: `POST /api/track` swallows the
+migrations, the Worker tolerates running before it: `POST /api/pagecounter` swallows the
 missing-table error (a lost count, still a `204`), and `GET /api/admin/stats` reports
 `views: null` instead of failing. Counting only happens while the site's
 `analytics_enabled` setting is on — `migrations/seed.sql` seeds it `true`, so a site
 seeded from that file starts counting as soon as both are in place; untick "Count page
 views" in Settings to stop. Before or alongside it, add the rate-limiting rule below.
 
-**Rate-limit `/api/track` (per site, Cloudflare dashboard).** It's the one route that
+**Rate-limit `/api/pagecounter` (per site, Cloudflare dashboard).** It's the one route that
 writes to D1 with no identity, so a scripted flood could use up the account's D1 write
 allowance — on the Workers Free plan that's shared by every site here, and running out
 stops admin saves, scheduled publishing and imports everywhere until the daily reset.
 In each site's zone: **Security → WAF → Rate limiting rules → Create rule** — match
-`http.request.uri.path eq "/api/track"` and `http.request.method eq "POST"`, count by
+`http.request.uri.path eq "/api/pagecounter"` and `http.request.method eq "POST"`, count by
 IP, e.g. 30 requests per 10 seconds, action **Block**. A normal reader sends one
 request per page. The free plan includes one such rule per zone.
 

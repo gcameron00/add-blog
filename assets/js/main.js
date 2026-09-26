@@ -370,7 +370,7 @@ function sendViewBeacon() {
   const slug = document.querySelector('[data-view]')?.dataset.view;
   if (!slug || typeof navigator.sendBeacon !== 'function') return;
   try {
-    navigator.sendBeacon('/api/track', JSON.stringify({ slug }));
+    navigator.sendBeacon('/api/pagecounter', JSON.stringify({ slug }));
   } catch {
     // A refused beacon is a lost count, never a broken page.
   }

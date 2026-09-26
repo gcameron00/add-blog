@@ -173,7 +173,7 @@ All tags that have at least one published post, with `post_count`.
 Published posts grouped by year and month — slug, title and date only. One request
 backs the whole archive page.
 
-### `POST /api/track`
+### `POST /api/pagecounter`
 
 One page view (#18) — sent by `assets/js/main.js` as a `navigator.sendBeacon` from
 post and collection item pages (the ones the Worker marks `data-view="<slug>"`).

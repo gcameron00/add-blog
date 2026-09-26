@@ -268,14 +268,15 @@ aggregate counts only, no cookies, no third-party scripts. Pages are edge-cached
 so the page handlers can't count, and counting every `GET` in the Worker would count
 crawlers and link unfurlers too. Instead `src/pages.js` marks post permalinks and
 collection item pages (not indexes) with `data-view="<slug>"`, and `assets/js/main.js`
-sends one same-origin `navigator.sendBeacon('/api/track', {slug})`. `src/views.js`
+sends one same-origin `navigator.sendBeacon('/api/pagecounter', {slug})`. `src/views.js`
 adds one to that post's row for today in a single statement, and only if the slug is
 published (unlisted included) and `analytics_enabled` is on; the server decides, so a
 cached page never carries a stale setting. It always answers an empty `204`. Refreshes
 and repeat visits count again (there's no visitor state to dedupe with), readers
 without JavaScript and most bots aren't counted, and the admin host never counts. It's
 kept in its own table, not a `posts` column, so an anonymous write can never touch the
-row whose `updated_at` is the editor's conflict token. `/api/track` is the only
+row whose `updated_at` is the editor's conflict token. The path is deliberately neutral:
+it was `/api/track`, which content blockers' generic filter rules block. `/api/pagecounter` is the only
 anonymous D1 write path; see §6 and [deployment.md](deployment.md) for the rate-limit
 rule in front of it.
 
@@ -495,7 +496,7 @@ happens on write, a sanitiser bug is contained to the posts written while it was
 and is fixed by a re-render migration.
 
 **Other measures.** All write endpoints require `Content-Type: application/json` and a
-same-origin `Origin` header — except the public `POST /api/track` (#18), which takes
+same-origin `Origin` header — except the public `POST /api/pagecounter` (#18), which takes
 `sendBeacon`'s `text/plain` body; it still rejects a cross-site `Origin`, writes
 only an aggregate count, and relies on a Cloudflare rate-limiting rule rather than
 per-identity limits, since it has no identity. Per-identity rate limits on writes and uploads. Upload

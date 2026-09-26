@@ -808,7 +808,7 @@ gated on a deploy rather than any new setup.
   else the site-wide `social_image_key`, else the brand icon); what's missing is a
   per-post generated card (title over brand colours) for posts without a cover.
 - Privacy-preserving view counts (no cookies, no third-party analytics) — ✅ built
-  (#18): `migrations/0009_post_views.sql`, `src/views.js` (`POST /api/track`), a
+  (#18): `migrations/0009_post_views.sql`, `src/views.js` (`POST /api/pagecounter`), a
   `data-view` marker on post and collection item pages (`src/pages.js`) and a
   `sendBeacon` from `assets/js/main.js`; the dashboard shows a 30-day total. See
   [architecture.md](architecture.md) §3. Collection index pages aren't counted yet

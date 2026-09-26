@@ -919,6 +919,14 @@ export function getStats() {
   );
 }
 
+/** Per-page view counts for the /admin/stats/ page. `data` is null on a site without migrations/0009_post_views.sql — and in the demo, which has no readers to count. */
+export function getViewStats({ range, from, to, type, sort, order, limit = 50, offset = 0 } = {}) {
+  return withFallback(
+    () => call('/admin/stats/views', { query: { range, from, to, type, sort, order, limit, offset } }),
+    async () => ({ data: null })
+  );
+}
+
 export function getActivity(limit = 8) {
   return withFallback(
     () => call('/admin/audit', { query: { limit } }),

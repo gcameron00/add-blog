@@ -7,8 +7,8 @@
  * dashboard keeps working in between deploying the Worker and the migration.
  */
 
-import { withErrors } from './admin-http.js';
-import { viewTotals } from './views.js';
+import { apiFail, withErrors } from './admin-http.js';
+import { VIEW_SORTS, firstViewDay, resolveViewRange, viewStats, viewTotals } from './views.js';
 
 async function countPostsByStatus(db, status) {
   const row = await db.prepare(`SELECT COUNT(*) AS n FROM posts WHERE status = ?`).bind(status).first();
@@ -112,12 +112,43 @@ async function auditHandler(url, env) {
   });
 }
 
+/**
+ * GET /api/admin/stats/views — the /admin/stats/ page's per-page table
+ * (src/views.js's viewStats). `range` is a preset or `custom` with
+ * `from`/`to`; `sort`/`order` pick from a fixed list. Answers `data: null`
+ * rather than a 500 on a site without migrations/0009_post_views.sql, same
+ * posture as `views` on GET /stats.
+ */
+async function viewStatsHandler(url, env) {
+  const q = url.searchParams;
+  const sort = q.get('sort') || 'views';
+  if (!VIEW_SORTS.includes(sort)) apiFail(400, 'bad_request', `sort must be one of ${VIEW_SORTS.join(', ')}.`, { field: 'sort' });
+  const order = q.get('order') || undefined;
+  if (order && order !== 'asc' && order !== 'desc') apiFail(400, 'bad_request', 'order must be asc or desc.', { field: 'order' });
+  const limit = Math.min(200, Math.max(1, Number(q.get('limit')) || 50));
+  const offset = Math.max(0, Number(q.get('offset')) || 0);
+
+  let firstDay;
+  try {
+    firstDay = await firstViewDay(env.DB);
+  } catch {
+    return Response.json({ data: null });
+  }
+  const range = resolveViewRange(
+    { range: q.get('range') || '30d', from: q.get('from'), to: q.get('to') },
+    { firstDay }
+  );
+  const result = await viewStats(env.DB, range, { type: q.get('type') || 'all', sort, order, limit, offset });
+  return Response.json({ range, ...result });
+}
+
 export async function handleDashboardApi(request, url, ctxBundle) {
   const { env, identity } = ctxBundle;
   if (!identity) return null;
   if (request.method !== 'GET') return null;
 
   if (url.pathname === '/api/admin/stats') return withErrors(() => statsHandler(env));
+  if (url.pathname === '/api/admin/stats/views') return withErrors(() => viewStatsHandler(url, env));
   if (url.pathname === '/api/admin/audit') return withErrors(() => auditHandler(url, env));
   return null;
 }

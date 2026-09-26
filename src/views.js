@@ -150,3 +150,162 @@ export async function viewTotals(db, today = new Date()) {
     .first();
   return { total: row?.total || 0, last_30_days: row?.last_30_days || 0 };
 }
+
+/* --- Stats page (/admin/stats/) ------------------------------------------- */
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+// Rolling presets count back from today (UTC) inclusive, like viewTotals'
+// 30 days. `ytd` and `all` are anchored instead; `custom` takes from/to.
+const RANGE_DAYS = { '7d': 7, '30d': 30, '90d': 90, '12m': 365 };
+export const VIEW_RANGES = [...Object.keys(RANGE_DAYS), 'ytd', 'all', 'custom'];
+
+const ISO_DAY = /^\d{4}-\d{2}-\d{2}$/;
+// A decade and a bit — a sane cap on a custom range, far past any real one.
+const MAX_RANGE_DAYS = 3700;
+
+function parseDay(value, field) {
+  if (typeof value !== 'string' || !ISO_DAY.test(value) || utcDay(new Date(`${value}T00:00:00Z`)) !== value) {
+    throw Object.assign(new Error(`${field} must be a date, YYYY-MM-DD.`), { status: 400, code: 'bad_request', field });
+  }
+  return value;
+}
+
+function addDays(day, n) {
+  return utcDay(new Date(Date.parse(`${day}T00:00:00Z`) + n * DAY_MS));
+}
+
+function daysBetween(from, to) {
+  return Math.round((Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / DAY_MS) + 1;
+}
+
+/**
+ * `{ key, from, to, days, previous }` for a `range` preset (or `custom` with
+ * `from`/`to`), all inclusive UTC days. `previous` is the same-length span
+ * ending the day before `from` — what the "vs previous period" change
+ * compares against — or null for `all`, which has nothing before it.
+ * `firstDay` is the earliest day with any count, which is where "all" starts.
+ * Throws a 400-shaped error for an unknown preset or malformed dates.
+ */
+export function resolveViewRange({ range = '30d', from, to } = {}, { today = new Date(), firstDay = null } = {}) {
+  const end = utcDay(today);
+  let start;
+  let last = end;
+  if (RANGE_DAYS[range]) {
+    start = addDays(end, 1 - RANGE_DAYS[range]);
+  } else if (range === 'ytd') {
+    start = `${end.slice(0, 4)}-01-01`;
+  } else if (range === 'all') {
+    start = firstDay && firstDay < end ? firstDay : end;
+  } else if (range === 'custom') {
+    start = parseDay(from, 'from');
+    last = parseDay(to, 'to');
+    if (start > last) {
+      throw Object.assign(new Error('from must be on or before to.'), { status: 400, code: 'bad_request', field: 'from' });
+    }
+    if (daysBetween(start, last) > MAX_RANGE_DAYS) {
+      throw Object.assign(new Error('That range is too long.'), { status: 400, code: 'bad_request', field: 'from' });
+    }
+  } else {
+    throw Object.assign(new Error(`range must be one of ${VIEW_RANGES.join(', ')}.`), { status: 400, code: 'bad_request', field: 'range' });
+  }
+
+  const days = daysBetween(start, last);
+  const previous = range === 'all' ? null : { from: addDays(start, -days), to: addDays(start, -1) };
+  return { key: range, from: start, to: last, days, previous };
+}
+
+// Only ever interpolated from this map — never from the request — so the
+// ORDER BY stays a fixed string. Each has a stable tie-break so paging
+// doesn't shuffle rows with equal views or equal dates.
+const SORTS = {
+  views: (dir) => `in_range ${dir}, p.published_at DESC, p.title COLLATE NOCASE ASC`,
+  // Never-published rows (an archived draft with old views) sort last either way.
+  published: (dir) => `p.published_at IS NULL, p.published_at ${dir}, p.title COLLATE NOCASE ASC`,
+  title: (dir) => `p.title COLLATE NOCASE ${dir}, p.id ASC`,
+};
+export const VIEW_SORTS = Object.keys(SORTS);
+// What a column header's first click means — most views and newest first,
+// titles A–Z.
+const DEFAULT_ORDER = { views: 'desc', published: 'desc', title: 'asc' };
+
+/**
+ * Per-page view counts for `range` (from resolveViewRange), for GET
+ * /api/admin/stats/views: one row per post or collection item with its views
+ * in the range and in the previous period, plus the range's totals.
+ *
+ * Every published page is listed, zero views included, so sorting by title
+ * or date gives the whole list; anything else (archived, back to draft)
+ * appears only while it has views in the range. `type` is 'all' or one
+ * post_type.
+ */
+export async function viewStats(db, range, { type = 'all', sort = 'views', order, limit = 50, offset = 0 } = {}) {
+  const sortSql = SORTS[sort] || SORTS.views;
+  const dir = (order || DEFAULT_ORDER[sort] || 'desc').toLowerCase() === 'asc' ? 'ASC' : 'DESC';
+  // With no previous period the join window is just the range, so
+  // in_previous is always 0 — reported as null below. The aliases aren't
+  // `views`: SQLite would resolve that name in HAVING to post_views.views,
+  // the raw per-day column, not the sum.
+  const windowStart = range.previous ? range.previous.from : range.from;
+
+  const typeSql = type && type !== 'all' ? 'WHERE p.post_type = ?' : '';
+  const typeParams = type && type !== 'all' ? [type] : [];
+  const base = `
+    SELECT p.id, p.slug, p.title, p.post_type, p.status, p.visibility, p.published_at,
+           COALESCE(SUM(CASE WHEN v.day >= ? THEN v.views END), 0) AS in_range,
+           COALESCE(SUM(CASE WHEN v.day <  ? THEN v.views END), 0) AS in_previous
+    FROM posts p
+    LEFT JOIN post_views v ON v.post_id = p.id AND v.day BETWEEN ? AND ?
+    ${typeSql}
+    GROUP BY p.id
+    HAVING p.status = 'published' OR in_range > 0
+  `;
+  const baseParams = [range.from, range.from, windowStart, range.to, ...typeParams];
+
+  const [rows, totals, top, enabled] = await Promise.all([
+    db.prepare(`${base} ORDER BY ${sortSql(dir)} LIMIT ? OFFSET ?`).bind(...baseParams, limit, offset).all(),
+    db
+      .prepare(`
+        SELECT COUNT(*) AS pages,
+               COALESCE(SUM(in_range), 0) AS views,
+               COALESCE(SUM(in_previous), 0) AS previous_views,
+               COALESCE(SUM(in_range > 0), 0) AS pages_viewed
+        FROM (${base})
+      `)
+      .bind(...baseParams)
+      .first(),
+    db.prepare(`SELECT id, title, in_range AS views FROM (${base}) WHERE in_range > 0 ORDER BY in_range DESC, title COLLATE NOCASE LIMIT 1`).bind(...baseParams).first(),
+    db.prepare(`SELECT value FROM settings WHERE key = 'analytics_enabled'`).first(),
+  ]);
+
+  const hasPrevious = Boolean(range.previous);
+  return {
+    data: (rows.results || []).map((row) => ({
+      id: row.id,
+      slug: row.slug,
+      title: row.title,
+      post_type: row.post_type,
+      status: row.status,
+      visibility: row.visibility,
+      published_at: row.published_at,
+      views: row.in_range,
+      previous_views: hasPrevious ? row.in_previous : null,
+    })),
+    totals: {
+      views: totals?.views || 0,
+      previous_views: hasPrevious ? totals?.previous_views || 0 : null,
+      pages_viewed: totals?.pages_viewed || 0,
+      top: top || null,
+    },
+    // Counts already stored still show when counting is switched off; the
+    // page says so rather than looking like nobody is reading.
+    counting: enabled?.value === 'true',
+    page: { limit, offset, total: totals?.pages || 0, has_more: offset + (rows.results || []).length < (totals?.pages || 0) },
+  };
+}
+
+/** The earliest day with any count — where the "all time" range starts. */
+export async function firstViewDay(db) {
+  const row = await db.prepare(`SELECT MIN(day) AS day FROM post_views`).first();
+  return row?.day || null;
+}

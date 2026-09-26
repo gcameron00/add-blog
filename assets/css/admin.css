@@ -238,6 +238,49 @@ body.admin {
   margin-top: var(--sp-1);
 }
 
+a.stat--link { display: block; color: inherit; text-decoration: none; transition: border-color var(--transition); }
+a.stat--link:hover { border-color: var(--accent); text-decoration: none; }
+a.stat--link .stat__label::after { content: ' →'; }
+.stat__sub {
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  margin-top: var(--sp-1);
+}
+.stat__sub--up { color: var(--ok); }
+.stat__sub--down { color: var(--danger); }
+
+/* --- Page views (/admin/stats/) ------------------------------------------- */
+
+.stats-range { margin-bottom: var(--sp-5); }
+.stats-range .segmented { flex-wrap: wrap; }
+.stats-range__custom {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-3);
+  align-items: flex-end;
+  margin-top: var(--sp-3);
+}
+.stats-range__custom label { display: grid; gap: var(--sp-1); }
+.stats-range__custom[hidden] { display: none; }
+.stats-range__label { margin: var(--sp-2) 0 0; }
+.table th.numeric { text-align: right; }
+.th-sort {
+  font: inherit;
+  text-transform: inherit;
+  letter-spacing: inherit;
+  color: inherit;
+  background: none;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+  display: inline-flex;
+  gap: var(--sp-1);
+}
+.th-sort:hover, th[aria-sort] .th-sort { color: var(--text); }
+.th-sort__arrow { min-width: 0.7em; }
+.view-change--up { color: var(--ok); }
+.view-change--down { color: var(--danger); }
+
 /* --- Tables --------------------------------------------------------------- */
 
 .table { width: 100%; border-collapse: collapse; font-size: var(--text-sm); }

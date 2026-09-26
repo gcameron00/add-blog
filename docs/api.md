@@ -345,8 +345,9 @@ Settings keys: `site_title`, `site_description`, `site_url`, `admin_url`, `base_
 0008_collections.sql — see [architecture.md](architecture.md) §3; validated by
 `validateCollections` on write). `PUT` only touches keys present in the
 request body — not a literal full-replace — since the settings form only submits the
-keys it has inputs for; a stricter reading would silently drop `social_image_key`
-(the one seeded key with no form field) on every save.
+keys it has inputs for; a stricter reading would silently drop any seeded key the
+form has no input for (`social_image_key` was one, until #14 gave it a field) on
+every save.
 
 `site_icon_key` is an R2 media key, same shape as a post's `cover_key` — set via
 admin/settings/index.html's "Brand icon" field (the same library picker the editor's
@@ -367,6 +368,13 @@ raster-only in practice; it also isn't resized, so the manifest reports its size
 `"any"` rather than claiming a fixed 192×192/512×512 that likely isn't true.
 Deleting a media item referenced by `site_icon_key` (or `social_image_key`) is guarded
 the same way a post's `cover_key` is — `409 conflict` without `?force=true`.
+
+`social_image_key` (#14) is the same shape, set via the "Social image" field next to
+"Brand icon". `src/site-template.js`'s `applyImageMeta` fills the `<!-- og-image -->`
+placeholder in every public page shell with an absolute `og:image` plus a
+`twitter:card`: a post's or collection item's own cover first (with `og:image:alt`),
+else `social_image_key`, both as `summary_large_image`; else `site_icon_key` as a small
+`summary` card; else no image tags at all.
 
 `site_title` and `site_description` aren't admin-only values — `src/site-template.js`
 templates them onto every public page (see [architecture.md](architecture.md) §2's

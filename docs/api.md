@@ -173,6 +173,18 @@ All tags that have at least one published post, with `post_count`.
 Published posts grouped by year and month — slug, title and date only. One request
 backs the whole archive page.
 
+### `POST /api/track`
+
+One page view (#18) — sent by `assets/js/main.js` as a `navigator.sendBeacon` from
+post and collection item pages (the ones the Worker marks `data-view="<slug>"`).
+Body: `{"slug": "…"}` (sent as `text/plain`, at most 512 bytes). Adds one to that
+post's count for today (UTC) in `post_views` if the slug is a published post or
+collection item (unlisted included), `analytics_enabled` is on, and the request's
+`Origin` is the site's own. Always `204 No Content`, `Cache-Control: no-store` — whether
+or not anything was counted, so it reveals nothing about which slugs exist or whether
+counting is on. A no-op on the admin host. Never edge-cached. See
+[architecture.md](architecture.md) §3.
+
 ### Non-JSON public routes
 
 | Route | Returns |
@@ -326,7 +338,7 @@ rather than a guess.
 | `PATCH` | `/authors/:id` | Update name, email, role, or `disabled` (owner only) |
 | `DELETE` | `/authors/:id` | Remove (owner only); their posts are reassigned to whoever performed the delete |
 | `GET` | `/audit` | Audit log, newest first, filterable by `actor`, `action`, `via`, paginated (`limit`/`offset`, `page` envelope). Each entry includes `entity`/`entity_id` (added for the full `/admin/audit/` page, #12) |
-| `GET` | `/stats` | Dashboard counters: posts by status, views, recent activity |
+| `GET` | `/stats` | Dashboard counters: posts by status, words, media, next scheduled post, and `views` — `{ total, last_30_days }` across posts and collection items (#18), or `null` if the site hasn't applied `migrations/0009_post_views.sql` |
 | `POST` | `/export` | Full content export to R2 as JSON; returns a short-lived link |
 | `POST` | `/import` | Import from an export bundle or a Markdown/front-matter archive |
 

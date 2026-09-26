@@ -287,9 +287,9 @@ tests. Not yet hands-on verified in production — see docs/deployment.md §6.
   slightly different list this doc originally sketched (which had an unused
   `theme_accent` and was missing `admin_url`).
 - `GET /api/admin/stats` — post counts by status, total `word_count`, media count
-  (0 until Phase 5's media slice ships), next scheduled post. No "views" figure —
-  nothing collects page views yet, `analytics_enabled` is a stored preference with no
-  collection code behind it regardless of its value.
+  (0 until Phase 5's media slice ships), next scheduled post. The `views` figure
+  arrived later with view counting (#18, Phase 7) — before that, `analytics_enabled`
+  was a stored preference with no collection code behind it.
 - `GET /api/admin/audit` — filterable by `actor`/`action`/`via`, newest first. Required
   going back through every `writeAuditLog` call in `src/admin-posts.js` to add a
   `title` to each one's `detail` (some only had `slug`, `fields`, or a bare id before)
@@ -795,8 +795,8 @@ gated on a deploy rather than any new setup.
   above — client-rendered only.
 - **Dashboard stats from real data.** ✅ Already satisfied by Phase 5b's
   `GET /api/admin/stats` (post counts by status, total word count, media count, next
-  scheduled post) — see Phase 5 above. What's left under this heading is specifically
-  *view* stats, which depends on the view-counts item below being built first.
+  scheduled post) — see Phase 5 above. *View* stats followed with the view-counts
+  item below (#18): a 30-day views tile.
 
 **Still to build:**
 
@@ -807,9 +807,12 @@ gated on a deploy rather than any new setup.
   already emits an `og:image` (#14, `src/site-template.js`'s `applyImageMeta`: cover,
   else the site-wide `social_image_key`, else the brand icon); what's missing is a
   per-post generated card (title over brand colours) for posts without a cover.
-- Privacy-preserving view counts (no cookies, no third-party analytics) — not
-  started; `src/admin-dashboard.js` already notes in its own comment that the
-  `views` figure is intentionally absent pending this.
+- Privacy-preserving view counts (no cookies, no third-party analytics) — ✅ built
+  (#18): `migrations/0009_post_views.sql`, `src/views.js` (`POST /api/track`), a
+  `data-view` marker on post and collection item pages (`src/pages.js`) and a
+  `sendBeacon` from `assets/js/main.js`; the dashboard shows a 30-day total. See
+  [architecture.md](architecture.md) §3. Collection index pages aren't counted yet
+  (#46); per-post counts in the admin post list are a possible follow-on.
 - Lighthouse budget in CI; accessibility audit; RSS validation — not started; no
   Lighthouse/accessibility tooling in `package.json` or `.github/workflows/`, and the
   existing feed tests (`src/feeds.test.js`) check string content, not spec

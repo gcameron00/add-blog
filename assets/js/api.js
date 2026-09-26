@@ -912,6 +912,7 @@ export function getStats() {
           next_scheduled: posts
             .filter((p) => p.status === 'scheduled')
             .sort((a, b) => String(a.scheduled_for).localeCompare(String(b.scheduled_for)))[0] || null,
+          views: null, // a demo has no readers to count
         },
       };
     }

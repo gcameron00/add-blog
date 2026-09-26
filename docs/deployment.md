@@ -69,6 +69,7 @@ npx wrangler d1 execute gcameron-blog --file=./migrations/0005_audit_via_import.
 npx wrangler d1 execute gcameron-blog --file=./migrations/0006_media_source_url.sql --remote
 npx wrangler d1 execute gcameron-blog --file=./migrations/0007_nav_config.sql --remote
 npx wrangler d1 execute gcameron-blog --file=./migrations/0008_collections.sql --remote
+npx wrangler d1 execute gcameron-blog --file=./migrations/0009_post_views.sql --remote
 ```
 
 **0003 is a rebuild, not a plain `ALTER TABLE ADD COLUMN` like 0002** — SQLite can't
@@ -103,6 +104,24 @@ instead (`src/validate.js`'s `validatePostType`, checked against that site's own
 "constrained but not `CHECK`-constrained" column in this schema is already validated.
 See [architecture.md](architecture.md) §3 and
 [vibecode-migration.md](vibecode-migration.md) for the full design rationale.
+
+**0009 (view counts, #18) is additive only** — a new `post_views` table (one row per
+post per UTC day, a count, nothing about visitors) and its index. Unlike the other
+migrations, the Worker tolerates running before it: `POST /api/track` swallows the
+missing-table error (a lost count, still a `204`), and `GET /api/admin/stats` reports
+`views: null` instead of failing. Counting only happens while the site's
+`analytics_enabled` setting is on — `migrations/seed.sql` seeds it `true`, so a site
+seeded from that file starts counting as soon as both are in place; untick "Count page
+views" in Settings to stop. Before or alongside it, add the rate-limiting rule below.
+
+**Rate-limit `/api/track` (per site, Cloudflare dashboard).** It's the one route that
+writes to D1 with no identity, so a scripted flood could use up the account's D1 write
+allowance — on the Workers Free plan that's shared by every site here, and running out
+stops admin saves, scheduled publishing and imports everywhere until the daily reset.
+In each site's zone: **Security → WAF → Rate limiting rules → Create rule** — match
+`http.request.uri.path eq "/api/track"` and `http.request.method eq "POST"`, count by
+IP, e.g. 30 requests per 10 seconds, action **Block**. A normal reader sends one
+request per page. The free plan includes one such rule per zone.
 
 This list is the full bootstrap sequence for a brand-new site; for a site that's
 already live (`gcameron`), only run the migration file(s) that haven't been applied

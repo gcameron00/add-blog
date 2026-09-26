@@ -39,6 +39,10 @@
  * Phase 6 adds `/mcp` (src/mcp.js) — already in ADMIN_ONLY_PREFIXES below,
  * so it inherits the same Access-identity guard `/api/admin/*` gets with no
  * changes here; it just needed a handler to dispatch to.
+ *
+ * #18 adds `POST /api/track` (src/views.js) — the one public-host route that
+ * writes to D1 without an identity: one aggregate view count per beacon,
+ * nothing about the visitor. See that file for why it's shaped the way it is.
  */
 
 import { embedFrameSrcOrigins } from '../assets/js/markdown.js';
@@ -61,6 +65,7 @@ import { verifyAccessIdentity } from './access.js';
 import { resolveAuthor } from './auth.js';
 import { handleAdminApi } from './admin-api.js';
 import { handleMcp } from './mcp.js';
+import { handleTrackView } from './views.js';
 import { publishDuePosts } from './cron.js';
 import { getSettings } from './db.js';
 import { applyImageMeta, applySiteBranding, isFeatureEnabled } from './site-template.js';
@@ -287,6 +292,7 @@ export default {
           (await handleAboutPage(request, url, env)) ||
           (await handleAdminApi(request, url, { env, ctx, identity })) ||
           (await handleMcp(request, url, { env, ctx, identity })) ||
+          (await handleTrackView(request, url, env, admin)) ||
           (await handlePublicApi(request, url, env)) ||
           (await handleMedia(request, url, env)) ||
           (await handleFeeds(request, url, env)) ||

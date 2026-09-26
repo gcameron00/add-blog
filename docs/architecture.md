@@ -225,6 +225,16 @@ CREATE INDEX idx_audit_created ON audit_log(created_at DESC);
 -- 'import' added by migrations/0005_audit_via_import.sql (Phase 7) — same
 -- reasoning, for posts created by the WordPress WXR importer.
 
+-- View counts (#18, migrations/0009_post_views.sql). Aggregate only: one row
+-- per post (or collection item) per UTC day — no visitor data of any kind.
+CREATE TABLE post_views (
+  post_id TEXT NOT NULL REFERENCES posts(id) ON DELETE CASCADE,
+  day     TEXT NOT NULL,                 -- UTC, YYYY-MM-DD
+  views   INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY (post_id, day)
+);
+CREATE INDEX idx_post_views_day ON post_views(day);
+
 -- Full-text search over published content. External-content FTS5 indexes
 -- posts without duplicating body_md, but is then only ever as fresh as these
 -- triggers keep it — nothing populates it at query time.
@@ -252,6 +262,22 @@ its own permalink (and `/api/posts/:slug`) with `<meta name="robots" content="no
 but every listing query in `src/db.js` leaves it out (`listedFilter`): the home page and
 search, tags and tag counts, archive, related posts, feeds and sitemap. It's set from the
 editor's Visibility card or the MCP tools, and the admin post list marks it "Unlisted".
+
+**View counts (#18)** back the "Count page views" setting (`analytics_enabled`):
+aggregate counts only, no cookies, no third-party scripts. Pages are edge-cached (§5),
+so the page handlers can't count, and counting every `GET` in the Worker would count
+crawlers and link unfurlers too. Instead `src/pages.js` marks post permalinks and
+collection item pages (not indexes) with `data-view="<slug>"`, and `assets/js/main.js`
+sends one same-origin `navigator.sendBeacon('/api/track', {slug})`. `src/views.js`
+adds one to that post's row for today in a single statement, and only if the slug is
+published (unlisted included) and `analytics_enabled` is on; the server decides, so a
+cached page never carries a stale setting. It always answers an empty `204`. Refreshes
+and repeat visits count again (there's no visitor state to dedupe with), readers
+without JavaScript and most bots aren't counted, and the admin host never counts. It's
+kept in its own table, not a `posts` column, so an anonymous write can never touch the
+row whose `updated_at` is the editor's conflict token. `/api/track` is the only
+anonymous D1 write path; see §6 and [deployment.md](deployment.md) for the rate-limit
+rule in front of it.
 
 ### Design notes
 
@@ -469,7 +495,10 @@ happens on write, a sanitiser bug is contained to the posts written while it was
 and is fixed by a re-render migration.
 
 **Other measures.** All write endpoints require `Content-Type: application/json` and a
-same-origin `Origin` header. Per-identity rate limits on writes and uploads. Upload
+same-origin `Origin` header — except the public `POST /api/track` (#18), which takes
+`sendBeacon`'s `text/plain` body; it still requires a same-origin `Origin`, writes
+only an aggregate count, and relies on a Cloudflare rate-limiting rule rather than
+per-identity limits, since it has no identity. Per-identity rate limits on writes and uploads. Upload
 size cap and content-type allow-list. Every mutation writes to `audit_log`. No secrets
 are ever sent to the browser — the admin front end holds no API keys, because the
 Access cookie is the credential.

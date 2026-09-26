@@ -288,6 +288,8 @@ async function initDashboard() {
       { label: 'Scheduled', value: data.scheduled },
       { label: 'Media files', value: data.media },
       { label: 'Words written', value: data.words.toLocaleString() },
+      // null until the site has migrations/0009_post_views.sql (#18).
+      { label: 'Views, last 30 days', value: data.views ? data.views.last_30_days.toLocaleString() : '—' },
     ];
     clear(statsHost).append(
       ...tiles.map((tile) =>

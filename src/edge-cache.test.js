@@ -2,7 +2,7 @@ import { createExecutionContext, env, waitOnExecutionContext } from 'cloudflare:
 import { afterEach, describe, expect, it } from 'vitest';
 import worker from './index.js';
 import { purgePostUrls } from './cache-purge.js';
-import { edgeCacheKey, isEdgeCacheable } from './edge-cache.js';
+import { edgeCacheKey, isEdgeCacheable, isEdgeCacheableRequest } from './edge-cache.js';
 
 const HOST = 'blog.mysite.com';
 const ADMIN_HOST = 'blog-admin.mysite.com';
@@ -69,6 +69,17 @@ describe('edge cache', () => {
     expect(hit.headers.get('X-Edge-Cache')).toBe('HIT');
   });
 
+  it('never caches filtered /api/posts lists, which a publish cannot purge', async () => {
+    // The home page's own first-page request — a just-published post must
+    // show up on the next load, not after s-maxage runs out.
+    for (const path of ['/api/posts?limit=10&offset=0', '/api/posts?tag=workers&limit=50']) {
+      await fetchWithCache(url(path));
+      const again = await fetchWithCache(url(path));
+      expect(again.status).toBe(200);
+      expect(again.headers.get('X-Edge-Cache')).toBeNull();
+    }
+  });
+
   it('never caches a 404', async () => {
     await fetchWithCache(url('/posts/does-not-exist'));
     const again = await fetchWithCache(url('/posts/does-not-exist'));
@@ -105,6 +116,19 @@ describe('edgeCacheKey', () => {
   it('drops tracking parameters but keeps meaningful ones', () => {
     const key = edgeCacheKey(new Request('https://x.test/api/posts?tag=ski&utm_medium=social&gclid=1'));
     expect(key).toBe('https://x.test/api/posts?tag=ski');
+  });
+});
+
+describe('isEdgeCacheableRequest', () => {
+  it('allows pages, media and unfiltered API URLs', () => {
+    for (const href of ['https://x.test/posts/a?utm_source=x', 'https://x.test/media/a.png', 'https://x.test/api/posts/a', 'https://x.test/api/tags', 'https://x.test/api/posts?fbclid=1']) {
+      expect(isEdgeCacheableRequest(new Request(href))).toBe(true);
+    }
+  });
+
+  it('refuses API URLs with a query, and non-GETs', () => {
+    expect(isEdgeCacheableRequest(new Request('https://x.test/api/posts?limit=10&offset=0'))).toBe(false);
+    expect(isEdgeCacheableRequest(new Request('https://x.test/posts/a', { method: 'HEAD' }))).toBe(false);
   });
 });
 

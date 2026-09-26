@@ -64,7 +64,7 @@ import { handleMcp } from './mcp.js';
 import { publishDuePosts } from './cron.js';
 import { getSettings } from './db.js';
 import { applyImageMeta, applySiteBranding, isFeatureEnabled } from './site-template.js';
-import { edgeCacheEnabled, matchEdgeCache, storeInEdgeCache } from './edge-cache.js';
+import { edgeCacheEnabled, isEdgeCacheableRequest, matchEdgeCache, storeInEdgeCache } from './edge-cache.js';
 
 const DEFAULT_ADMIN_HOST = 'blog-admin.mysite.com';
 
@@ -272,7 +272,7 @@ export default {
         // Public GETs only: the admin host is never cached (withSharedHeaders
         // marks it no-store), and the admin-path guard above has already run,
         // so a cached copy can never stand in for its 404. See src/edge-cache.js.
-        const cacheable = !admin && request.method === 'GET' && edgeCacheEnabled(env);
+        const cacheable = !admin && isEdgeCacheableRequest(request) && edgeCacheEnabled(env);
         const cached = cacheable ? await matchEdgeCache(request) : null;
         response =
           cached ||

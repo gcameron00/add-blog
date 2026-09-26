@@ -42,6 +42,21 @@ export function edgeCacheKey(request) {
   return url.href;
 }
 
+/**
+ * Whether a request may be served from / stored in the cache at all. JSON API
+ * URLs with a query string (`/api/posts?limit=10&offset=0`, `?tag=…`, `?q=…`)
+ * are left out: src/cache-purge.js can't enumerate them, so a cached copy
+ * would keep a just-published post off the home page and tag pages until it
+ * expired. They're a single D1 query each, and weren't edge-cached before
+ * this module existed either. The deterministic ones it does purge
+ * (`/api/posts/:slug`, `/api/tags`, `/api/archive`) are still cached.
+ */
+export function isEdgeCacheableRequest(request) {
+  if (request.method !== 'GET') return false;
+  const url = new URL(edgeCacheKey(request));
+  return !(url.pathname.startsWith('/api/') && url.search);
+}
+
 /** Whether a handler's response is meant to be held in a shared cache. */
 export function isEdgeCacheable(response) {
   if (response.status !== 200 || response.headers.has('Set-Cookie')) return false;

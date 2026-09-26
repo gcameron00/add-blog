@@ -34,6 +34,7 @@ const dom = {
   body: document.querySelector('[data-field="body"]'),
   slug: document.querySelector('[data-field="slug"]'),
   excerpt: document.querySelector('[data-field="excerpt"]'),
+  visibility: document.querySelector('[data-field="visibility"]'),
   saveState: document.querySelector('[data-save-state]'),
   counts: document.querySelector('[data-counts]'),
   statusSlot: document.querySelector('[data-status-slot]'),
@@ -589,6 +590,7 @@ function fill(post) {
   mde.value(post.body_md || '');
   dom.slug.value = post.slug || '';
   dom.excerpt.value = post.excerpt || '';
+  dom.visibility.value = post.visibility === 'unlisted' ? 'unlisted' : 'public';
   dom.coverAlt.value = post.cover_alt || post.cover?.alt || '';
   if (post.scheduled_for) dom.schedule.value = post.scheduled_for.slice(0, 16);
 
@@ -748,6 +750,7 @@ function collect() {
     subtitle: dom.subtitle.value.trim(),
     slug: dom.slug.value.trim(),
     excerpt: dom.excerpt.value.trim(),
+    visibility: dom.visibility.value,
     body_md: mde.value(),
     tags: state.tags.map((t) => t.name),
     cover_key: state.cover.key || null,
@@ -855,6 +858,7 @@ function wire() {
   for (const field of [dom.subtitle, dom.excerpt, dom.coverAlt]) {
     field.addEventListener('input', markDirty);
   }
+  dom.visibility.addEventListener('change', markDirty);
 
   dom.coverPick.addEventListener('click', () => openMediaPicker({ onSelect: setCover }));
   dom.coverRemove.addEventListener('click', clearCover);

@@ -144,7 +144,7 @@ CREATE TABLE posts (
   status          TEXT NOT NULL DEFAULT 'draft'
                   CHECK (status IN ('draft','scheduled','published','archived')),
   visibility      TEXT NOT NULL DEFAULT 'public'
-                  CHECK (visibility IN ('public','unlisted')),
+                  CHECK (visibility IN ('public','unlisted')),  -- unlisted: permalink only, see below
   author_id       TEXT NOT NULL REFERENCES authors(id),
   cover_key       TEXT,                  -- R2 object key
   cover_alt       TEXT,
@@ -246,6 +246,12 @@ CREATE TRIGGER posts_fts_au AFTER UPDATE ON posts BEGIN
   INSERT INTO posts_fts(rowid, title, excerpt, body_md) VALUES (new.rowid, new.title, new.excerpt, new.body_md);
 END;
 ```
+
+`visibility` is independent of `status`. An **unlisted** post, once published, opens at
+its own permalink (and `/api/posts/:slug`) with `<meta name="robots" content="noindex">`,
+but every listing query in `src/db.js` leaves it out (`listedFilter`): the home page and
+search, tags and tag counts, archive, related posts, feeds and sitemap. It's set from the
+editor's Visibility card or the MCP tools, and the admin post list marks it "Unlisted".
 
 ### Design notes
 

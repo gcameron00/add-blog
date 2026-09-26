@@ -26,6 +26,16 @@ function postTypeFilter(alias) {
   return `${alias ? `${alias}.` : ''}post_type = 'post'`;
 }
 
+// `visibility = 'unlisted'` (migrations/0001_init.sql) — a published post
+// that's reachable at its own permalink but listed nowhere: not the home
+// page, search, tags, archive, related posts, feeds or the sitemap. Applied
+// to every listing query below; deliberately NOT to the by-slug lookups
+// (getPublishedPostBySlug/getPublishedItemBySlug), since the link still
+// working is the whole point of unlisted rather than draft.
+function listedFilter(alias) {
+  return `${alias ? `${alias}.` : ''}visibility = 'public'`;
+}
+
 function parseTags(json) {
   if (!json) return [];
   const tags = JSON.parse(json);
@@ -91,7 +101,7 @@ function mapItemSummary(row) {
  * parameters (never string-built into the query).
  */
 export async function listPublishedPosts(db, { limit = 20, offset = 0, tag, q, before, after } = {}) {
-  const where = [`p.status = 'published'`, postTypeFilter('p')];
+  const where = [`p.status = 'published'`, postTypeFilter('p'), listedFilter('p')];
   const params = [];
 
   if (tag) {
@@ -155,7 +165,7 @@ async function relatedPosts(db, postId) {
       SELECT p2.slug, p2.title, p2.published_at, COUNT(*) AS shared
       FROM post_tags pt1
       JOIN post_tags pt2 ON pt2.tag_id = pt1.tag_id AND pt2.post_id != pt1.post_id
-      JOIN posts p2 ON p2.id = pt2.post_id AND p2.status = 'published' AND ${postTypeFilter('p2')}
+      JOIN posts p2 ON p2.id = pt2.post_id AND p2.status = 'published' AND ${postTypeFilter('p2')} AND ${listedFilter('p2')}
       WHERE pt1.post_id = ?
       GROUP BY p2.id
       ORDER BY shared DESC, p2.published_at DESC
@@ -171,7 +181,7 @@ export async function getPublishedPostBySlug(db, slug) {
   const row = await db
     .prepare(`
       SELECT p.id, p.slug, p.title, p.subtitle, p.excerpt, p.body_html, p.body_md,
-             p.cover_key, p.cover_alt, p.reading_minutes, p.published_at, p.updated_at,
+             p.cover_key, p.cover_alt, p.reading_minutes, p.published_at, p.updated_at, p.visibility,
              a.name AS author_name, a.avatar_key AS author_avatar_key,
              ${TAGS_SUBQUERY} AS tags_json
       FROM posts p
@@ -187,6 +197,7 @@ export async function getPublishedPostBySlug(db, slug) {
     ...mapSummary(row),
     body_html: row.body_html,
     body_md: row.body_md,
+    visibility: row.visibility,
     related: await relatedPosts(db, row.id),
   };
 }
@@ -198,7 +209,7 @@ export async function listTags(db) {
       SELECT t.slug, t.name, COUNT(pt.post_id) AS post_count
       FROM tags t
       JOIN post_tags pt ON pt.tag_id = t.id
-      JOIN posts p ON p.id = pt.post_id AND p.status = 'published' AND ${postTypeFilter('p')}
+      JOIN posts p ON p.id = pt.post_id AND p.status = 'published' AND ${postTypeFilter('p')} AND ${listedFilter('p')}
       GROUP BY t.id
       HAVING post_count > 0
       ORDER BY post_count DESC, t.name ASC
@@ -213,7 +224,7 @@ export async function getArchive(db) {
     .prepare(`
       SELECT slug, title, published_at, reading_minutes
       FROM posts
-      WHERE status = 'published' AND ${postTypeFilter()}
+      WHERE status = 'published' AND ${postTypeFilter()} AND ${listedFilter()}
       ORDER BY published_at DESC
     `)
     .all();
@@ -247,18 +258,18 @@ export async function getMediaRow(db, key) {
  */
 export async function listSitemapEntries(db, collections = []) {
   const posts = await db
-    .prepare(`SELECT slug, updated_at FROM posts WHERE status = 'published' AND ${postTypeFilter()} ORDER BY updated_at DESC`)
+    .prepare(`SELECT slug, updated_at FROM posts WHERE status = 'published' AND ${postTypeFilter()} AND ${listedFilter()} ORDER BY updated_at DESC`)
     .all();
   const tags = await db
     .prepare(`SELECT DISTINCT t.slug FROM tags t JOIN post_tags pt ON pt.tag_id = t.id
-              JOIN posts p ON p.id = pt.post_id AND p.status = 'published' AND ${postTypeFilter('p')}`)
+              JOIN posts p ON p.id = pt.post_id AND p.status = 'published' AND ${postTypeFilter('p')} AND ${listedFilter('p')}`)
     .all();
 
   const items = [];
   for (const collection of collections) {
     if (!collection?.in_sitemap || !collection.type || !collection.base_path) continue;
     const { results } = await db
-      .prepare(`SELECT slug, updated_at FROM posts WHERE status = 'published' AND post_type = ?`)
+      .prepare(`SELECT slug, updated_at FROM posts WHERE status = 'published' AND post_type = ? AND ${listedFilter()}`)
       .bind(collection.type)
       .all();
     for (const row of results) items.push({ slug: row.slug, updated_at: row.updated_at, base_path: collection.base_path });
@@ -277,7 +288,7 @@ export async function listRecentPosts(db, limit = 20) {
              ${TAGS_SUBQUERY} AS tags_json
       FROM posts p
       JOIN authors a ON a.id = p.author_id
-      WHERE p.status = 'published' AND ${postTypeFilter('p')}
+      WHERE p.status = 'published' AND ${postTypeFilter('p')} AND ${listedFilter('p')}
       ORDER BY p.published_at DESC
       LIMIT ?
     `)
@@ -298,7 +309,7 @@ export async function listPublishedItems(db, type, { limit = 20, offset = 0 } = 
   const boundedOffset = Math.max(0, Number(offset) || 0);
 
   const countRow = await db
-    .prepare(`SELECT COUNT(*) AS total FROM posts WHERE status = 'published' AND post_type = ?`)
+    .prepare(`SELECT COUNT(*) AS total FROM posts WHERE status = 'published' AND post_type = ? AND ${listedFilter()}`)
     .bind(type)
     .first();
 
@@ -307,7 +318,7 @@ export async function listPublishedItems(db, type, { limit = 20, offset = 0 } = 
       SELECT slug, title, subtitle, excerpt, cover_key, cover_alt, reading_minutes,
              published_at, updated_at, type_fields
       FROM posts
-      WHERE status = 'published' AND post_type = ?
+      WHERE status = 'published' AND post_type = ? AND ${listedFilter()}
       ORDER BY published_at DESC
       LIMIT ? OFFSET ?
     `)
@@ -326,14 +337,14 @@ export async function getPublishedItemBySlug(db, type, slug) {
   const row = await db
     .prepare(`
       SELECT slug, title, subtitle, excerpt, body_html, body_md, cover_key, cover_alt,
-             reading_minutes, published_at, updated_at, type_fields
+             reading_minutes, published_at, updated_at, type_fields, visibility
       FROM posts
       WHERE slug = ? AND post_type = ? AND status = 'published'
     `)
     .bind(slug, type)
     .first();
   if (!row) return null;
-  return { ...mapItemSummary(row), body_html: row.body_html, body_md: row.body_md };
+  return { ...mapItemSummary(row), body_html: row.body_html, body_md: row.body_md, visibility: row.visibility };
 }
 
 /** Site settings as a plain object — used for feed title/description and the OG defaults. */

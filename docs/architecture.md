@@ -144,7 +144,7 @@ CREATE TABLE posts (
   status          TEXT NOT NULL DEFAULT 'draft'
                   CHECK (status IN ('draft','scheduled','published','archived')),
   visibility      TEXT NOT NULL DEFAULT 'public'
-                  CHECK (visibility IN ('public','unlisted')),
+                  CHECK (visibility IN ('public','unlisted')),  -- unlisted: permalink only, see below
   author_id       TEXT NOT NULL REFERENCES authors(id),
   cover_key       TEXT,                  -- R2 object key
   cover_alt       TEXT,
@@ -246,6 +246,12 @@ CREATE TRIGGER posts_fts_au AFTER UPDATE ON posts BEGIN
   INSERT INTO posts_fts(rowid, title, excerpt, body_md) VALUES (new.rowid, new.title, new.excerpt, new.body_md);
 END;
 ```
+
+`visibility` is independent of `status`. An **unlisted** post, once published, opens at
+its own permalink (and `/api/posts/:slug`) with `<meta name="robots" content="noindex">`,
+but every listing query in `src/db.js` leaves it out (`listedFilter`): the home page and
+search, tags and tag counts, archive, related posts, feeds and sitemap. It's set from the
+editor's Visibility card or the MCP tools, and the admin post list marks it "Unlisted".
 
 ### Design notes
 
@@ -392,7 +398,9 @@ minutes, never permanent staleness.
 > public-host `GET` whose response is `public` with `s-maxage` or `immutable` (pages,
 > `/api/*`, `/media/*`, feeds) is served from, or stored in, the cache; responses carry
 > `X-Edge-Cache: HIT|MISS` (the Cache API sets no `cf-cache-status`). The key is the
-> request URL minus tracking parameters (`utm_*`, `fbclid`, …). The admin host, non-GETs,
+> request URL minus tracking parameters (`utm_*`, `fbclid`, …). `/api/*` URLs with a query
+> string (the home page's `/api/posts?limit=…&offset=…`, tag and search lists) are never
+> cached, since a publish can't purge every variant. The admin host, non-GETs,
 > non-200s and Workers static assets are never cached. `caches.default` is per data
 > centre, and so is the purge: it clears the colo the admin request ran in, and other
 > colos pick up an edit when their copy's `s-maxage` expires (up to an hour for pages).

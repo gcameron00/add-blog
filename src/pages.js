@@ -82,6 +82,14 @@ function renderRelated(related) {
     </section>`;
 }
 
+/**
+ * An unlisted post/item is linkable but listed nowhere (src/db.js's
+ * listedFilter) — this keeps search engines from listing it either.
+ */
+function robotsMeta(entry) {
+  return entry.visibility === 'unlisted' ? '\n    <meta name="robots" content="noindex" />' : '';
+}
+
 /** GET /posts/:slug. Returns null for anything else, so the caller can fall through. */
 export async function handlePostPage(request, url, env) {
   const match = url.pathname.match(/^\/posts\/([^/]+)\/?$/);
@@ -111,7 +119,7 @@ export async function handlePostPage(request, url, env) {
   html = applyImageMeta(html, settings, url.origin, post.cover);
   html = html
     .replace(`<title>Post — ${escapeHtml(siteTitle)}</title>`, `<title>${title}</title>`)
-    .replace('<meta name="description" content="" />', `<meta name="description" content="${description}" />`)
+    .replace('<meta name="description" content="" />', `<meta name="description" content="${description}" />${robotsMeta(post)}`)
     .replace('<meta property="og:title" content="" />', `<meta property="og:title" content="${escapeHtml(post.title)}" />`)
     .replace('<meta property="og:description" content="" />', `<meta property="og:description" content="${description}" />`)
     .replace('<link rel="canonical" href="/" />', `<link rel="canonical" href="${canonical}" />`)
@@ -223,7 +231,7 @@ export async function handleCollectionItemPage(request, url, env) {
   html = applyImageMeta(html, settings, url.origin, item.cover);
   html = html
     .replace(`<title>Item — ${escapeHtml(siteTitle)}</title>`, `<title>${title}</title>`)
-    .replace('<meta name="description" content="" />', `<meta name="description" content="${description}" />`)
+    .replace('<meta name="description" content="" />', `<meta name="description" content="${description}" />${robotsMeta(item)}`)
     .replace('<meta property="og:title" content="" />', `<meta property="og:title" content="${escapeHtml(item.title)}" />`)
     .replace('<meta property="og:description" content="" />', `<meta property="og:description" content="${description}" />`)
     .replace('<link rel="canonical" href="/" />', `<link rel="canonical" href="${canonical}" />`)

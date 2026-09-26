@@ -542,6 +542,9 @@ function postsTable(posts, { compact = false, onChange, role, collectionsByType 
         ]),
         el('td', {}, [
           statusBadge(post.status),
+          // Status alone reads "published" for an unlisted post too — say so,
+          // since it won't show up anywhere on the public site's lists.
+          post.visibility === 'unlisted' ? el('div', { class: 'table__sub', text: 'Unlisted' }) : null,
           post.status === 'scheduled'
             ? el('div', { class: 'table__sub', text: formatDateTime(post.scheduled_for) })
             : null,

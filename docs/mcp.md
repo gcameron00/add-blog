@@ -135,6 +135,21 @@ field specs included. Read-only, every role. Exists so a client can discover val
 `post_type` values and each one's `type_fields` keys before calling `create_post`,
 rather than guessing or failing a call first to find out.
 
+**`get_view_stats`** — Page views (#18), the same numbers as the `/admin/stats/` page
+and from the same queries (`src/views.js`). `range` (`7d`|`30d`|`90d`|`12m`|`ytd`|`all`|
+`custom`, default `30d`; `custom` takes `from`/`to` as `YYYY-MM-DD`). Without `slug`/`id`
+it lists pages ranked by views — every published post and collection item, zero views
+included, plus anything unpublished still read in the range — with `type` (default
+`"all"`), `sort` (`views`|`published`|`title`), `order`, `limit` (default 20, max 100)
+and `offset`; each page carries `views` and `previous_views` (the same-length span just
+before, `null` for `all`), alongside `totals` for the whole filtered list. With `slug` or
+`id` it returns that page's `totals` (`views`, `previous_views`, `all_time`,
+`first_day`) and a `series` of views per day, Monday-start week or month depending on the
+range's length. Every answer carries `counting` (whether `analytics_enabled` is on) and a
+`note` that counts are per UTC day and miss readers without JavaScript or with a
+beacon-blocking extension — so a model reports them as a floor, not a census. Returns
+`unavailable` on a site that hasn't applied `migrations/0009_post_views.sql`.
+
 ### Writing
 
 **`create_post`** *(author)* — `title` (required), `body_md`, `subtitle`, `excerpt`,
@@ -245,6 +260,7 @@ read:
 | `list_media` | ✓ | | | |
 | `get_site_settings` | ✓ | | | |
 | `list_collections` | ✓ | | | |
+| `get_view_stats` | ✓ | | | |
 | `create_post` | | | | |
 | `update_post` | | | ✓ | |
 | `publish_post` | | | ✓ | |

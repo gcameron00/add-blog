@@ -44,6 +44,7 @@ import { getSettings } from './db.js';
 import { buildMediaKey, detectDimensions, sanitizeFilename, sha256Hex } from './media-parse.js';
 import { fetchMediaFromUrl } from './mcp-media-fetch.js';
 import { renderPostBody } from './track.js';
+import { VIEW_RANGES, VIEW_SORTS, firstViewDay, postViewStats, resolveViewRange, viewStats } from './views.js';
 import {
   ValidationError,
   validateBodyMd,
@@ -191,6 +192,59 @@ async function getSiteSettings(_args, { env }) {
   const settings = await getSettings(env.DB);
   const data = Object.fromEntries(SITE_SETTINGS_KEYS.map((key) => [key, settings[key]]));
   return { data, audit: { action: 'mcp.get_site_settings' } };
+}
+
+// Said on every get_view_stats answer so a model doesn't read the counts as
+// complete, or read a quiet day as local-time midnight to midnight.
+const VIEW_STATS_NOTE = 'Aggregate page views per UTC day, no visitor data. Readers without JavaScript or with a beacon-blocking extension are not counted, so treat the numbers as a floor.';
+
+/**
+ * The /admin/stats/ page's numbers for an agent: a ranked list of pages for
+ * a range, or — given `slug`/`id` — one page's totals and per-day series.
+ * Same src/views.js queries as GET /api/admin/stats/views(/:id), so the two
+ * can't disagree.
+ */
+async function getViewStats(args, { env }) {
+  let firstDay;
+  try {
+    firstDay = await firstViewDay(env.DB);
+  } catch {
+    fail('unavailable', 'View counting is not set up on this site (migrations/0009_post_views.sql has not been applied).');
+  }
+  let range;
+  try {
+    range = resolveViewRange({ range: args.range || '30d', from: args.from, to: args.to }, { firstDay });
+  } catch (err) {
+    if (err.status === 400) fail('bad_request', err.message, { field: err.field });
+    throw err;
+  }
+
+  if (args.id || args.slug) {
+    const post = await resolvePost(env.DB, args);
+    const { totals, series, counting } = await postViewStats(env.DB, post.id, range);
+    return {
+      data: {
+        range,
+        post: { id: post.id, slug: post.slug, title: post.title, post_type: post.post_type, status: post.status, published_at: post.published_at },
+        totals,
+        series,
+        counting,
+        note: VIEW_STATS_NOTE,
+      },
+      audit: { action: 'mcp.get_view_stats', entity: 'post', entityId: post.id, detail: { range: range.key } },
+    };
+  }
+
+  const sort = args.sort || 'views';
+  if (!VIEW_SORTS.includes(sort)) fail('bad_request', `sort must be one of ${VIEW_SORTS.join(', ')}.`, { field: 'sort' });
+  if (args.order && args.order !== 'asc' && args.order !== 'desc') fail('bad_request', 'order must be asc or desc.', { field: 'order' });
+  const limit = Math.min(100, Math.max(1, Number(args.limit) || 20));
+  const offset = Math.max(0, Number(args.offset) || 0);
+  const result = await viewStats(env.DB, range, { type: args.type || 'all', sort, order: args.order, limit, offset });
+  return {
+    data: { range, pages: result.data, totals: result.totals, counting: result.counting, page: result.page, note: VIEW_STATS_NOTE },
+    audit: { action: 'mcp.get_view_stats', detail: { range: range.key } },
+  };
 }
 
 /* --- Writing ------------------------------------------------------------ */
@@ -614,6 +668,28 @@ export const TOOLS = [
     inputSchema: { type: 'object', properties: {} },
     annotations: { readOnlyHint: true },
     handler: listCollections,
+  },
+  {
+    name: 'get_view_stats',
+    minRole: 'read',
+    description: (site) => `Page views on ${site}: without slug/id, pages ranked by views over a date range (every published post and collection item, zero views included) with totals and the change on the previous period; with slug or id, that one page's totals, all-time views and views per day/week/month. Aggregate counts only.`,
+    inputSchema: {
+      type: 'object',
+      properties: {
+        range: { ...str('Date range (default "30d"). Rolling ranges end today (UTC); "custom" needs from and to.'), enum: VIEW_RANGES },
+        from: str('Start day, YYYY-MM-DD, inclusive — range "custom" only.'),
+        to: str('End day, YYYY-MM-DD, inclusive — range "custom" only.'),
+        slug: str('One page by slug — returns its totals and series instead of the ranked list.'),
+        id: str('One page by id — as slug.'),
+        type: str('Filter the list by post_type (default "all"; "post", or a collection type from list_collections).'),
+        sort: { ...str('List order (default "views").'), enum: VIEW_SORTS },
+        order: { ...str('Default: desc for views and published, asc for title.'), enum: ['asc', 'desc'] },
+        limit: int('Max pages listed (default 20, max 100).'),
+        offset: int('Pagination offset.'),
+      },
+    },
+    annotations: { readOnlyHint: true },
+    handler: getViewStats,
   },
   {
     name: 'create_post',

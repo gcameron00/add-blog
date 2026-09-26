@@ -9,6 +9,7 @@ import { createExecutionContext, env, waitOnExecutionContext } from 'cloudflare:
 import { beforeAll, describe, expect, it } from 'vitest';
 import { handleMcp } from './mcp.js';
 import { resolveAuthor } from './auth.js';
+import { recordView } from './views.js';
 import { embedShortcodeReference } from '../assets/js/markdown.js';
 
 const ADMIN_HOST = 'blog-admin.mysite.com';
@@ -391,5 +392,69 @@ describe('protocol edge cases', () => {
     expect(res.status).toBe(400);
     const body = await res.json();
     expect(body.error.code).toBe(-32700);
+  });
+});
+
+describe('get_view_stats', () => {
+  const TYPE = 'mcpviewsfixture';
+
+  // Two pages of their own post_type so the seed posts stay out of the
+  // assertions; views on fixed days so ranges are deterministic.
+  async function seed() {
+    await env.DB
+      .prepare(`INSERT INTO settings (key, value, updated_at) VALUES ('analytics_enabled', 'true', ?)
+                ON CONFLICT(key) DO UPDATE SET value = excluded.value`)
+      .bind(new Date().toISOString())
+      .run();
+    await env.DB.prepare(`DELETE FROM post_views`).run();
+    for (const [id, title] of [['mv-a', 'Most read'], ['mv-b', 'Less read']]) {
+      await env.DB
+        .prepare(`
+          INSERT OR IGNORE INTO posts (id, slug, title, body_md, status, author_id, created_at, updated_at, published_at, post_type)
+          VALUES (?, ?, ?, 'Body', 'published', 'a1', '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z', ?)
+        `)
+        .bind(id, id, title, TYPE)
+        .run();
+    }
+    for (const [slug, day, times] of [['mv-a', '2026-08-10', 3], ['mv-a', '2026-07-10', 1], ['mv-b', '2026-08-11', 1]]) {
+      for (let i = 0; i < times; i++) await recordView(env.DB, slug, day);
+    }
+  }
+
+  const tool = async (identity, args) => (await rpc(identity, 'tools/call', { name: 'get_view_stats', arguments: args })).body.result;
+
+  it('is a read tool every role sees', async () => {
+    const { body } = await rpc(author, 'tools/list');
+    const listed = body.result.tools.find((t) => t.name === 'get_view_stats');
+    expect(listed.annotations.readOnlyHint).toBe(true);
+  });
+
+  it('ranks pages by views for a range, with previous-period counts and totals', async () => {
+    await seed();
+    const result = await tool(author, { range: 'custom', from: '2026-08-01', to: '2026-08-31', type: TYPE });
+    expect(result.isError).toBeFalsy();
+    const data = result.structuredContent;
+    expect(data.range).toMatchObject({ from: '2026-08-01', to: '2026-08-31', previous: { from: '2026-07-01', to: '2026-07-31' } });
+    expect(data.pages.map((p) => [p.slug, p.views, p.previous_views])).toEqual([['mv-a', 3, 1], ['mv-b', 1, 0]]);
+    expect(data.totals).toMatchObject({ views: 4, previous_views: 1, pages_viewed: 2 });
+    expect(data.counting).toBe(true);
+    expect(data.note).toMatch(/floor/);
+  });
+
+  it('gives one page its totals and series when asked by slug', async () => {
+    await seed();
+    const { structuredContent: data } = await tool(owner, { slug: 'mv-a', range: 'custom', from: '2026-08-01', to: '2026-08-31' });
+    expect(data.post).toMatchObject({ id: 'mv-a', title: 'Most read' });
+    expect(data.totals).toEqual({ views: 3, previous_views: 1, all_time: 4, first_day: '2026-07-10' });
+    expect(data.series.bucket).toBe('day');
+    expect(data.series.points.find((p) => p.start === '2026-08-10').views).toBe(3);
+  });
+
+  it('returns actionable errors for a bad range, sort or slug', async () => {
+    for (const [args, field] of [[{ range: 'forever' }, 'range'], [{ sort: 'slug' }, 'sort'], [{ slug: 'no-such-post' }, 'slug']]) {
+      const result = await tool(author, args);
+      expect(result.isError, JSON.stringify(args)).toBe(true);
+      expect(JSON.parse(result.content[0].text).error.field).toBe(field);
+    }
   });
 });

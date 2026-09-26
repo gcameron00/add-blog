@@ -2,9 +2,9 @@
  * Server-rendered permalink: GET /posts/:slug — correct <title>, meta
  * description and Open Graph tags for crawlers and link previews, plus the
  * article body itself inlined so the page works with JavaScript disabled.
- * assets/js/post.js still runs on top and re-renders the same content
- * client-side (harmless, and keeps this a static-template-based Worker
- * rather than a second copy of the front end's DOM-building code).
+ * The article is marked `data-ssr`, and assets/js/post.js then only enhances
+ * it in place (heading anchors, embed themes, route maps) rather than
+ * refetching the post and rebuilding the same content client-side.
  *
  * `/post/?slug=…` (the Phase 1 query-param fallback) 301s here — see
  * docs/architecture.md §2.
@@ -60,7 +60,26 @@ function renderArticle(post, origin) {
       <div class="tag-list">${tags}</div>
       <p class="small muted" style="margin-top:1rem"><a href="/">← All posts</a></p>
     </footer>
+    ${renderRelated(post.related)}
   `;
+}
+
+/** Same markup assets/js/post.js builds client-side, so the page doesn't shift when it runs. */
+function renderRelated(related) {
+  if (!related?.length) return '';
+  const items = related
+    .map((r) => `
+        <li>
+          <a href="/posts/${encodeURIComponent(r.slug)}">${escapeHtml(r.title)}</a>
+          <div class="post-meta"><time datetime="${escapeHtml(r.published_at || '')}">${formatDate(r.published_at)}</time></div>
+        </li>`)
+    .join('');
+  return `
+    <section class="related">
+      <h2>Related posts</h2>
+      <ul>${items}
+      </ul>
+    </section>`;
 }
 
 /**
@@ -119,7 +138,10 @@ export async function handlePostPage(request, url, env) {
     .replace('<meta property="og:title" content="" />', `<meta property="og:title" content="${escapeHtml(post.title)}" />`)
     .replace('<meta property="og:description" content="" />', `<meta property="og:description" content="${description}" />${imageMeta}`)
     .replace('<link rel="canonical" href="/" />', `<link rel="canonical" href="${canonical}" />`)
-    .replace(/<article data-article>[\s\S]*?<\/article>/, `<article data-article>${renderArticle(post, url.origin)}</article>`);
+    // data-ssr tells assets/js/post.js the article is already here, so it
+    // enhances it in place instead of refetching and rebuilding it — which
+    // would reload every embed and delay the route maps.
+    .replace(/<article data-article>[\s\S]*?<\/article>/, `<article data-article data-ssr>${renderArticle(post, url.origin)}</article>`);
 
   return new Response(html, {
     headers: {

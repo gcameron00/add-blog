@@ -341,6 +341,7 @@ rather than a guess.
 | `DELETE` | `/authors/:id` | Remove (owner only); their posts are reassigned to whoever performed the delete |
 | `GET` | `/audit` | Audit log, newest first, filterable by `actor`, `action`, `via`, paginated (`limit`/`offset`, `page` envelope). Each entry includes `entity`/`entity_id` (added for the full `/admin/audit/` page, #12) |
 | `GET` | `/stats` | Dashboard counters: posts by status, words, media, next scheduled post, and `views` — `{ total, last_30_days }` across posts and collection items (#18), or `null` if the site hasn't applied `migrations/0009_post_views.sql` |
+| `GET` | `/stats/views` | Per-page view counts for the `/admin/stats/` page — see below |
 | `POST` | `/export` | Full content export to R2 as JSON; returns a short-lived link |
 | `POST` | `/import` | Import from an export bundle or a Markdown/front-matter archive |
 
@@ -351,6 +352,44 @@ half of removing someone, `DELETE` the harder-to-undo one. Both `disabled: true`
 the target is the only remaining active (non-disabled) owner — and disabling or
 deleting your own row is rejected the same way regardless of how many other owners
 exist; only another owner can do either to you.
+
+#### `GET /api/admin/stats/views`
+
+One row per post and collection item with its views in a date range, for the
+`/admin/stats/` page. Query parameters:
+
+- `range` — `7d`, `30d` (default), `90d`, `12m` (365 days), `ytd`, `all`, or `custom`
+  with `from`/`to` (`YYYY-MM-DD`, inclusive, at most ~10 years apart). Rolling ranges
+  end today; all days are UTC, the only resolution `post_views` stores. `all` starts
+  at the earliest day with any count.
+- `type` — `all` (default) or one `post_type` (`post`, or a collection's type).
+- `sort` — `views` (default), `published`, or `title`; `order` — `asc`/`desc`
+  (defaults: views and published newest/most first, title A–Z). Never-published rows
+  sort last by `published`.
+- `limit` (1–200, default 50), `offset`.
+
+Every published page is listed, zero views included; anything else (archived, back to
+draft) appears only while it has views in the range. Response:
+
+```json
+{
+  "range": { "key": "30d", "from": "2026-08-28", "to": "2026-09-26", "days": 30,
+             "previous": { "from": "2026-07-29", "to": "2026-08-27" } },
+  "data": [{ "id": "…", "slug": "…", "title": "…", "post_type": "post", "status": "published",
+             "visibility": "public", "published_at": "…", "views": 42, "previous_views": 30 }],
+  "totals": { "views": 120, "previous_views": 95, "pages_viewed": 7,
+              "top": { "id": "…", "title": "…", "views": 42 } },
+  "counting": true,
+  "page": { "limit": 50, "offset": 0, "total": 12, "has_more": false }
+}
+```
+
+`previous` is the same-length span just before the range (what the page's change
+figures compare against); it and every `previous_views` are `null` for `all`.
+`counting` mirrors `analytics_enabled`, so the page can say counting is off.
+`totals` cover every row matching `type`, not just the returned page. An unknown
+`range`/`sort`/`order` or a malformed date is a `400`. `{ "data": null }` if the site
+hasn't applied `migrations/0009_post_views.sql`.
 
 Settings keys: `site_title`, `site_description`, `site_url`, `admin_url`, `base_path`,
 `timezone`, `posts_per_page`, `allow_raw_html`, `social_image_key`, `site_icon_key`,

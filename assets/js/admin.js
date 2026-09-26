@@ -289,11 +289,12 @@ async function initDashboard() {
       { label: 'Media files', value: data.media },
       { label: 'Words written', value: data.words.toLocaleString() },
       // null until the site has migrations/0009_post_views.sql (#18).
-      { label: 'Views, last 30 days', value: data.views ? data.views.last_30_days.toLocaleString() : '—' },
+      { label: 'Views, last 30 days', value: data.views ? data.views.last_30_days.toLocaleString() : '—', href: '/admin/stats/?range=30d' },
     ];
     clear(statsHost).append(
       ...tiles.map((tile) =>
-        el('div', { class: 'stat' }, [
+        // A tile with an href opens the fuller breakdown behind its number.
+        el(tile.href ? 'a' : 'div', { class: tile.href ? 'stat stat--link' : 'stat', href: tile.href }, [
           el('div', { class: 'stat__value', text: String(tile.value) }),
           el('div', { class: 'stat__label', text: tile.label }),
         ])
@@ -1916,11 +1917,281 @@ async function initImport() {
   });
 }
 
+/* --- Page views (stats) --------------------------------------------------- */
+
+const RANGE_LABELS = {
+  '7d': 'Last 7 days', '30d': 'Last 30 days', '90d': 'Last 90 days', '12m': 'Last 12 months',
+  ytd: 'Year to date', all: 'All time', custom: 'Custom range',
+};
+
+// The "vs previous period" cell/sub-line. null previous means there is no
+// previous period (All time); a page with nothing before is "New".
+function viewChange(views, previous) {
+  if (previous === null || previous === undefined) return { text: '—', tone: '' };
+  if (previous === 0) return views > 0 ? { text: 'New', tone: 'up' } : { text: '—', tone: '' };
+  const pct = Math.round(((views - previous) / previous) * 100);
+  if (pct === 0) return { text: '0%', tone: '' };
+  return { text: `${pct > 0 ? '+' : '−'}${Math.abs(pct).toLocaleString()}%`, tone: pct > 0 ? 'up' : 'down' };
+}
+
+// Range dates are plain UTC days; format them without a local-time shift.
+function formatDay(day) {
+  return new Date(`${day}T00:00:00Z`).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' });
+}
+
+async function initStats() {
+  const rangeGroup = document.querySelector('[data-range]');
+  const customForm = document.querySelector('[data-custom-range]');
+  const rangeLabel = document.querySelector('[data-range-label]');
+  const countingOff = document.querySelector('[data-counting-off]');
+  const summary = document.querySelector('[data-stats-summary]');
+  const host = document.querySelector('[data-stats-table]');
+  const typeFilter = document.querySelector('[data-type-filter]');
+  const more = document.querySelector('[data-load-more]');
+  const PAGE_SIZE = 50;
+
+  // Everything the view depends on lives in the query string, so the
+  // dashboard tile and Posts button can deep-link and Back works.
+  const params = new URLSearchParams(location.search);
+  const state = {
+    range: RANGE_LABELS[params.get('range')] ? params.get('range') : '30d',
+    from: params.get('from') || '',
+    to: params.get('to') || '',
+    type: params.get('type') || 'all',
+    sort: ['views', 'published', 'title'].includes(params.get('sort')) ? params.get('sort') : 'views',
+    order: ['asc', 'desc'].includes(params.get('order')) ? params.get('order') : '',
+    offset: 0,
+  };
+  if (state.range === 'custom' && !(state.from && state.to)) state.range = '30d';
+  let shownRange = null; // the last range the server resolved, for prefilling Custom
+
+  let collectionsByType = {};
+  try {
+    const { data } = await api.getSettings();
+    for (const c of Array.isArray(data.collections) ? data.collections : []) collectionsByType[c.type] = c;
+  } catch { /* "All types"/"Posts" still work */ }
+  for (const c of Object.values(collectionsByType)) {
+    typeFilter?.append(el('option', { value: c.type, text: c.label_plural || c.label }));
+  }
+  if (typeFilter) typeFilter.value = state.type;
+  if (typeFilter && typeFilter.value !== state.type) state.type = typeFilter.value = 'all';
+
+  function syncUrl() {
+    const next = new URLSearchParams();
+    next.set('range', state.range);
+    if (state.range === 'custom') { next.set('from', state.from); next.set('to', state.to); }
+    if (state.type !== 'all') next.set('type', state.type);
+    if (state.sort !== 'views') next.set('sort', state.sort);
+    if (state.order) next.set('order', state.order);
+    history.replaceState(null, '', `${location.pathname}?${next}`);
+  }
+
+  function paintRange() {
+    for (const button of rangeGroup?.querySelectorAll('button') || []) {
+      button.setAttribute('aria-pressed', String(button.dataset.rangeKey === state.range));
+    }
+    if (customForm) {
+      customForm.hidden = state.range !== 'custom';
+      customForm.elements.from.value = state.from;
+      customForm.elements.to.value = state.to;
+    }
+  }
+
+  function renderSummary(result) {
+    const { totals, range } = result;
+    const change = viewChange(totals.views, totals.previous_views);
+    const tiles = [
+      {
+        label: 'Views',
+        value: totals.views.toLocaleString(),
+        sub: range.previous ? `${change.text} vs previous ${range.days.toLocaleString()} days` : null,
+        tone: change.tone,
+      },
+      { label: 'Pages viewed', value: totals.pages_viewed.toLocaleString() },
+      {
+        label: 'Most viewed',
+        value: totals.top ? totals.top.views.toLocaleString() : '—',
+        sub: totals.top?.title || null,
+      },
+    ];
+    clear(summary).append(
+      ...tiles.map((tile) =>
+        el('div', { class: 'stat' }, [
+          el('div', { class: 'stat__value', text: tile.value }),
+          el('div', { class: 'stat__label', text: tile.label }),
+          tile.sub ? el('div', { class: `stat__sub${tile.tone ? ` stat__sub--${tile.tone}` : ''}`, text: tile.sub }) : null,
+        ])
+      )
+    );
+  }
+
+  function sortHeader(label, key, { numeric = false } = {}) {
+    const active = state.sort === key;
+    const dir = active ? (state.order || (key === 'title' ? 'asc' : 'desc')) : null;
+    return el('th', {
+      class: numeric ? 'numeric' : null,
+      'aria-sort': active ? (dir === 'asc' ? 'ascending' : 'descending') : null,
+    }, [
+      el('button', {
+        type: 'button',
+        class: 'th-sort',
+        onClick: () => {
+          if (active) state.order = dir === 'asc' ? 'desc' : 'asc';
+          else state.order = '';
+          state.sort = key;
+          load();
+        },
+      }, [label, el('span', { class: 'th-sort__arrow', 'aria-hidden': 'true', text: active ? (dir === 'asc' ? '↑' : '↓') : '' })]),
+    ]);
+  }
+
+  function statsRow(row) {
+    const change = viewChange(row.views, row.previous_views);
+    const typeLabel = row.post_type && row.post_type !== 'post' ? (collectionsByType[row.post_type]?.label || row.post_type) : null;
+    return el('tr', {}, [
+      el('td', {}, [
+        el('a', { class: 'table__title', href: editHref(row), text: row.title }),
+        el('div', { class: 'table__sub', text: [
+          typeLabel,
+          `/${row.slug}`,
+          row.status !== 'published' ? row.status : null,
+          row.visibility === 'unlisted' ? 'unlisted' : null,
+        ].filter(Boolean).join(' · ') }),
+      ]),
+      el('td', { class: 'numeric', text: row.views.toLocaleString() }),
+      el('td', {}, [row.published_at ? timeEl(row.published_at) : el('span', { class: 'muted', text: '—' })]),
+      el('td', { class: `numeric view-change${change.tone ? ` view-change--${change.tone}` : ''}`, text: change.text }),
+    ]);
+  }
+
+  async function load({ append = false } = {}) {
+    if (!append) state.offset = 0;
+    syncUrl();
+    paintRange();
+    host.setAttribute('aria-busy', 'true');
+    try {
+      const result = await api.getViewStats({
+        range: state.range,
+        from: state.range === 'custom' ? state.from : undefined,
+        to: state.range === 'custom' ? state.to : undefined,
+        type: state.type,
+        sort: state.sort,
+        order: state.order || undefined,
+        limit: PAGE_SIZE,
+        offset: state.offset,
+      });
+
+      if (!result.data) {
+        clear(summary);
+        clear(countingOff);
+        rangeLabel.textContent = '';
+        renderEmpty(host, {
+          title: 'No view counts available',
+          body: api.isDemoMode()
+            ? 'The demo has no readers to count.'
+            : 'This site hasn’t applied migrations/0009_post_views.sql yet (docs/deployment.md).',
+        });
+        if (more) more.hidden = true;
+        return;
+      }
+
+      const { range, data, page } = result;
+      shownRange = range;
+      rangeLabel.textContent = `${RANGE_LABELS[range.key]}: ${formatDay(range.from)} – ${formatDay(range.to)}${range.previous ? `, compared with ${formatDay(range.previous.from)} – ${formatDay(range.previous.to)}` : ''}`;
+
+      clear(countingOff);
+      if (!result.counting) {
+        countingOff.append(
+          el('div', { class: 'callout callout--info' }, [
+            icon('eye'),
+            el('div', {}, [
+              el('strong', { text: 'Page-view counting is off' }),
+              el('span', {}, ['Counts already recorded are shown, but no new views are being counted. Turn on “Count page views” in ', el('a', { href: '/admin/settings/', text: 'Settings' }), '.']),
+            ]),
+          ])
+        );
+      }
+
+      if (!append) {
+        renderSummary(result);
+        clear(host);
+      }
+
+      if (!data.length && !append) {
+        renderEmpty(host, { title: 'Nothing to show for this range', body: 'Published pages and anything read in this range will appear here.' });
+        if (more) more.hidden = true;
+        return;
+      }
+
+      let body = host.querySelector('tbody');
+      if (!body) {
+        body = el('tbody');
+        host.append(
+          el('table', { class: 'table stats-table' }, [
+            el('thead', {}, [
+              el('tr', {}, [
+                sortHeader('Page', 'title'),
+                sortHeader('Views', 'views', { numeric: true }),
+                sortHeader('Published', 'published'),
+                el('th', { class: 'numeric', text: 'Change' }),
+              ]),
+            ]),
+            body,
+          ])
+        );
+      }
+      for (const row of data) body.append(statsRow(row));
+
+      state.offset += data.length;
+      if (more) more.hidden = !page.has_more;
+    } catch (error) {
+      renderError(host, error, load);
+    } finally {
+      host.removeAttribute('aria-busy');
+    }
+  }
+
+  rangeGroup?.addEventListener('click', (event) => {
+    const button = event.target.closest('button[data-range-key]');
+    if (!button) return;
+    const key = button.dataset.rangeKey;
+    if (key === 'custom') {
+      // Wait for dates before loading; prefill with the range on screen.
+      state.range = 'custom';
+      if (!state.from && shownRange) Object.assign(state, { from: shownRange.from, to: shownRange.to });
+      paintRange();
+      customForm?.elements.from.focus();
+      return;
+    }
+    state.range = key;
+    load();
+  });
+
+  customForm?.addEventListener('submit', (event) => {
+    event.preventDefault();
+    const from = customForm.elements.from.value;
+    const to = customForm.elements.to.value;
+    if (!from || !to) return;
+    if (from > to) {
+      toast('The start date must be on or before the end date.', 'error');
+      return;
+    }
+    Object.assign(state, { range: 'custom', from, to });
+    load();
+  });
+
+  typeFilter?.addEventListener('change', () => { state.type = typeFilter.value; load(); });
+  more?.addEventListener('click', () => load({ append: true }));
+
+  load();
+}
+
 /* --- Dispatch ------------------------------------------------------------- */
 
 const PAGES = {
   dashboard: initDashboard,
   audit: initAudit,
+  stats: initStats,
   posts: initPosts,
   tags: initTags,
   media: initMedia,

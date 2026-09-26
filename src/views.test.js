@@ -2,7 +2,7 @@ import { SELF, createExecutionContext, env, waitOnExecutionContext } from 'cloud
 import { beforeEach, describe, expect, it } from 'vitest';
 import { handleDashboardApi } from './admin-dashboard.js';
 import { resolveAuthor } from './auth.js';
-import { recordView, utcDay, viewTotals } from './views.js';
+import { recordView, resolveViewRange, utcDay, viewTotals } from './views.js';
 
 const HOST = 'blog.mysite.com';
 const ADMIN_HOST = 'blog-admin.mysite.com';
@@ -171,5 +171,139 @@ describe('view totals', () => {
     await waitOnExecutionContext(ctx);
     const { data } = await res.json();
     expect(data.views).toEqual({ total: 1, last_30_days: 1 });
+  });
+});
+
+describe('resolveViewRange', () => {
+  const today = new Date('2026-09-26T12:00:00Z');
+
+  it('counts rolling presets back from today, inclusive, with a same-length previous period', () => {
+    expect(resolveViewRange({ range: '7d' }, { today })).toEqual({
+      key: '7d', from: '2026-09-20', to: '2026-09-26', days: 7,
+      previous: { from: '2026-09-13', to: '2026-09-19' },
+    });
+    expect(resolveViewRange({ range: '30d' }, { today }).from).toBe('2026-08-28');
+    expect(resolveViewRange({ range: '12m' }, { today }).days).toBe(365);
+  });
+
+  it('anchors ytd to 1 January and all to the first counted day, with no previous period', () => {
+    expect(resolveViewRange({ range: 'ytd' }, { today })).toMatchObject({ from: '2026-01-01', to: '2026-09-26' });
+    expect(resolveViewRange({ range: 'all' }, { today, firstDay: '2026-05-04' })).toMatchObject({ from: '2026-05-04', previous: null });
+    expect(resolveViewRange({ range: 'all' }, { today })).toMatchObject({ from: '2026-09-26', days: 1 });
+  });
+
+  it('takes custom from/to and rejects anything malformed', () => {
+    expect(resolveViewRange({ range: 'custom', from: '2026-08-01', to: '2026-08-31' }, { today })).toMatchObject({
+      days: 31, previous: { from: '2026-07-01', to: '2026-07-31' },
+    });
+    for (const bad of [
+      { range: 'week' },
+      { range: 'custom' },
+      { range: 'custom', from: '2026-02-30', to: '2026-03-01' },
+      { range: 'custom', from: '2026-03-02', to: '2026-03-01' },
+      { range: 'custom', from: '1990-01-01', to: '2026-03-01' },
+    ]) {
+      expect(() => resolveViewRange(bad, { today }), JSON.stringify(bad)).toThrow(expect.objectContaining({ status: 400 }));
+    }
+  });
+});
+
+describe('GET /api/admin/stats/views', () => {
+  async function callStats(query) {
+    const url = new URL(`https://${ADMIN_HOST}/api/admin/stats/views?${query}`);
+    const identity = { email: 'grant@mysite.com', author: await resolveAuthor(env.DB, 'grant@mysite.com') };
+    const ctx = createExecutionContext();
+    const res = await handleDashboardApi(new Request(url), url, { env, ctx, identity });
+    await waitOnExecutionContext(ctx);
+    return res;
+  }
+
+  // Four fixtures, all under their own post_type so the seed posts stay out
+  // of the assertions: two read in August, one never read, one read and then
+  // archived, plus a draft that must never be listed.
+  async function seed() {
+    const type = 'statsfixture';
+    const rows = [
+      { id: 'sv-a', title: 'Alpha', published_at: '2026-03-01T00:00:00Z' },
+      { id: 'sv-b', title: 'bravo', published_at: '2026-06-01T00:00:00Z' },
+      { id: 'sv-c', title: 'Charlie', published_at: '2026-01-01T00:00:00Z' },
+      { id: 'sv-d', title: 'Delta', published_at: '2025-12-01T00:00:00Z' },
+      { id: 'sv-e', title: 'Echo', status: 'draft' },
+    ];
+    for (const row of rows) {
+      await insertPost({ id: row.id, slug: row.id, status: row.status || 'published', postType: type });
+      await env.DB
+        .prepare(`UPDATE posts SET title = ?, status = ?, published_at = ? WHERE id = ?`)
+        .bind(row.title, row.status || 'published', row.published_at || null, row.id)
+        .run();
+    }
+    for (const [slug, day, times] of [
+      ['sv-a', '2026-08-10', 3], ['sv-a', '2026-07-20', 2],
+      ['sv-b', '2026-08-15', 5],
+      ['sv-d', '2026-08-02', 1],
+    ]) {
+      for (let i = 0; i < times; i++) await recordView(env.DB, slug, day);
+    }
+    await env.DB.prepare(`UPDATE posts SET status = 'archived' WHERE id = 'sv-d'`).run();
+    return type;
+  }
+
+  it('lists every published page with its views and previous-period views', async () => {
+    const type = await seed();
+    const res = await callStats(`range=custom&from=2026-08-01&to=2026-08-31&type=${type}`);
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.range).toMatchObject({ from: '2026-08-01', to: '2026-08-31', previous: { from: '2026-07-01', to: '2026-07-31' } });
+    expect(body.data.map((r) => [r.id, r.views, r.previous_views])).toEqual([
+      ['sv-b', 5, 0],
+      ['sv-a', 3, 2],
+      ['sv-d', 1, 0], // archived, but read in the range
+      ['sv-c', 0, 0], // published, never read
+    ]);
+    expect(body.totals).toEqual({ views: 9, previous_views: 2, pages_viewed: 3, top: { id: 'sv-b', title: 'bravo', views: 5 } });
+    expect(body.counting).toBe(true);
+    expect(body.page).toEqual({ limit: 50, offset: 0, total: 4, has_more: false });
+  });
+
+  it('drops an unpublished page once it has no views in the range', async () => {
+    const type = await seed();
+    const { data } = await (await callStats(`range=custom&from=2026-09-01&to=2026-09-30&type=${type}`)).json();
+    expect(data.map((r) => r.id).sort()).toEqual(['sv-a', 'sv-b', 'sv-c']);
+  });
+
+  it('sorts by title (case-insensitive) and published date, both ways', async () => {
+    const type = await seed();
+    const range = `range=custom&from=2026-08-01&to=2026-08-31&type=${type}`;
+    const ids = async (q) => (await (await callStats(`${range}&${q}`)).json()).data.map((r) => r.id);
+    expect(await ids('sort=title')).toEqual(['sv-a', 'sv-b', 'sv-c', 'sv-d']);
+    expect(await ids('sort=title&order=desc')).toEqual(['sv-d', 'sv-c', 'sv-b', 'sv-a']);
+    expect(await ids('sort=published')).toEqual(['sv-b', 'sv-a', 'sv-c', 'sv-d']);
+    expect(await ids('sort=published&order=asc')).toEqual(['sv-d', 'sv-c', 'sv-a', 'sv-b']);
+    expect(await ids('sort=views&order=asc')).toEqual(['sv-c', 'sv-d', 'sv-a', 'sv-b']);
+  });
+
+  it('pages with limit/offset while totals cover every row', async () => {
+    const type = await seed();
+    const body = await (await callStats(`range=custom&from=2026-08-01&to=2026-08-31&type=${type}&limit=2&offset=2`)).json();
+    expect(body.data.map((r) => r.id)).toEqual(['sv-d', 'sv-c']);
+    expect(body.page).toEqual({ limit: 2, offset: 2, total: 4, has_more: false });
+    expect(body.totals.views).toBe(9);
+  });
+
+  it('reports no previous period for all time, and whether counting is on', async () => {
+    const type = await seed();
+    await setAnalytics(false);
+    const body = await (await callStats(`range=all&type=${type}`)).json();
+    expect(body.range.previous).toBeNull();
+    expect(body.totals.previous_views).toBeNull();
+    expect(body.data.find((r) => r.id === 'sv-a')).toMatchObject({ views: 5, previous_views: null });
+    expect(body.counting).toBe(false);
+  });
+
+  it('rejects an unknown range, sort or order', async () => {
+    for (const q of ['range=forever', 'sort=slug', 'order=up', 'range=custom&from=2026-09-01']) {
+      const res = await callStats(q);
+      expect(res.status, q).toBe(400);
+    }
   });
 });

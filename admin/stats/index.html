@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light dark" />
+    <script src="/assets/js/theme-init.js"></script>
+    <meta name="robots" content="noindex, nofollow" />
+    <title>Page views — add-blog admin</title>
+    <link rel="icon" href="/assets/favicon.svg" type="image/svg+xml" sizes="any" />
+    <link rel="icon" href="/assets/favicon-32x32.png" sizes="32x32" type="image/png" />
+    <link rel="apple-touch-icon" href="/assets/apple-touch-icon.png" />
+    <link rel="manifest" href="/site.webmanifest" />
+    <meta name="theme-color" content="#2563eb" />
+    <link rel="stylesheet" href="/assets/css/styles.css" />
+    <link rel="stylesheet" href="/assets/css/admin.css" />
+    <script type="module" src="/assets/js/admin.js"></script>
+  </head>
+  <body class="admin" data-page="stats">
+    <a class="skip-link" href="#main">Skip to content</a>
+
+    <div class="admin-layout">
+      <aside class="admin-sidebar" data-sidebar></aside>
+
+      <main class="admin-main" id="main" data-demo-slot>
+        <div class="admin-header">
+          <div>
+            <h1>Page views</h1>
+            <p>How often each post and collection item has been read.</p>
+          </div>
+          <div class="admin-header__actions">
+            <button class="btn" type="button" data-theme-toggle aria-label="Toggle theme"></button>
+            <a class="btn" href="/admin/posts/">All posts</a>
+          </div>
+        </div>
+
+        <div class="stats-range">
+          <div class="segmented" role="group" aria-label="Time range" data-range>
+            <button type="button" data-range-key="7d" aria-pressed="false">7 days</button>
+            <button type="button" data-range-key="30d" aria-pressed="true">30 days</button>
+            <button type="button" data-range-key="90d" aria-pressed="false">90 days</button>
+            <button type="button" data-range-key="12m" aria-pressed="false">12 months</button>
+            <button type="button" data-range-key="ytd" aria-pressed="false">Year to date</button>
+            <button type="button" data-range-key="all" aria-pressed="false">All time</button>
+            <button type="button" data-range-key="custom" aria-pressed="false">Custom</button>
+          </div>
+
+          <form class="stats-range__custom" data-custom-range hidden>
+            <label>
+              <span class="small muted">From</span>
+              <input type="date" name="from" required />
+            </label>
+            <label>
+              <span class="small muted">To</span>
+              <input type="date" name="to" required />
+            </label>
+            <button class="btn btn--sm btn--primary" type="submit">Apply</button>
+          </form>
+
+          <p class="small muted stats-range__label" data-range-label aria-live="polite"></p>
+        </div>
+
+        <div data-counting-off></div>
+        <div class="stat-grid" data-stats-summary></div>
+
+        <div class="card card--flush">
+          <div class="filters">
+            <label class="visually-hidden" for="stats-type">Filter by type</label>
+            <select id="stats-type" data-type-filter>
+              <option value="all" selected>All types</option>
+              <option value="post">Posts</option>
+            </select>
+          </div>
+
+          <div data-stats-table aria-live="polite"></div>
+
+          <div class="pagination" style="padding: var(--sp-4) var(--sp-5)">
+            <button class="btn" type="button" data-load-more hidden>Load more</button>
+          </div>
+        </div>
+
+        <p class="small muted">
+          Counts are kept per day in UTC, so a "day" here starts at midnight UTC rather than
+          local midnight. Only readers whose browser runs JavaScript and doesn't block the
+          counter are counted.
+        </p>
+      </main>
+    </div>
+  </body>
+</html>

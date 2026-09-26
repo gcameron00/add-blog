@@ -927,6 +927,14 @@ export function getViewStats({ range, from, to, type, sort, order, limit = 50, o
   );
 }
 
+/** One page's view counts, all-time total and chart series for the stats page's single-page view. Same `data: null` fallback as getViewStats. */
+export function getPostViewStats(id, { range, from, to } = {}) {
+  return withFallback(
+    () => call(`/admin/stats/views/${encodeURIComponent(id)}`, { query: { range, from, to } }),
+    async () => ({ data: null })
+  );
+}
+
 export function getActivity(limit = 8) {
   return withFallback(
     () => call('/admin/audit', { query: { limit } }),

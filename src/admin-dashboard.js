@@ -8,7 +8,7 @@
  */
 
 import { apiFail, withErrors } from './admin-http.js';
-import { VIEW_SORTS, firstViewDay, resolveViewRange, viewStats, viewTotals } from './views.js';
+import { VIEW_SORTS, firstViewDay, postViewStats, resolveViewRange, viewSeries, viewStats, viewTotals } from './views.js';
 
 async function countPostsByStatus(db, status) {
   const row = await db.prepare(`SELECT COUNT(*) AS n FROM posts WHERE status = ?`).bind(status).first();
@@ -138,8 +138,36 @@ async function viewStatsHandler(url, env) {
     { range: q.get('range') || '30d', from: q.get('from'), to: q.get('to') },
     { firstDay }
   );
-  const result = await viewStats(env.DB, range, { type: q.get('type') || 'all', sort, order, limit, offset });
-  return Response.json({ range, ...result });
+  const type = q.get('type') || 'all';
+  const [result, series] = await Promise.all([
+    viewStats(env.DB, range, { type, sort, order, limit, offset }),
+    // Only the first page draws the chart; "Load more" just appends rows.
+    offset === 0 ? viewSeries(env.DB, range, { type }) : null,
+  ]);
+  return Response.json({ range, ...result, ...(series ? { series } : {}) });
+}
+
+/**
+ * GET /api/admin/stats/views/:id — one page's view counts for the stats
+ * page's single-page view. Same `range`/`from`/`to` as the list, same
+ * `data: null` posture without migration 0009; 404 for an unknown id.
+ */
+async function postViewStatsHandler(url, env, id) {
+  const q = url.searchParams;
+  let firstDay;
+  try {
+    firstDay = await firstViewDay(env.DB);
+  } catch {
+    return Response.json({ data: null });
+  }
+  const range = resolveViewRange(
+    { range: q.get('range') || '30d', from: q.get('from'), to: q.get('to') },
+    { firstDay }
+  );
+  const result = await postViewStats(env.DB, id, range);
+  if (!result) apiFail(404, 'not_found', 'No post with that id.');
+  const { post, ...rest } = result;
+  return Response.json({ range, data: post, ...rest });
 }
 
 export async function handleDashboardApi(request, url, ctxBundle) {
@@ -149,6 +177,8 @@ export async function handleDashboardApi(request, url, ctxBundle) {
 
   if (url.pathname === '/api/admin/stats') return withErrors(() => statsHandler(env));
   if (url.pathname === '/api/admin/stats/views') return withErrors(() => viewStatsHandler(url, env));
+  const postViews = url.pathname.match(/^\/api\/admin\/stats\/views\/([^/]+)$/);
+  if (postViews) return withErrors(() => postViewStatsHandler(url, env, postViews[1]));
   if (url.pathname === '/api/admin/audit') return withErrors(() => auditHandler(url, env));
   return null;
 }

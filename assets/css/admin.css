@@ -278,6 +278,49 @@ a.stat--link .stat__label::after { content: ' →'; }
 }
 .th-sort:hover, th[aria-sort] .th-sort { color: var(--text); }
 .th-sort__arrow { min-width: 0.7em; }
+
+/* One series, so one hue: the accent, stepped for each theme (validated
+   against --surface for lightness band and ≥3:1 contrast). */
+:root { --chart-bar: #2563eb; --chart-bar-active: #1e40af; }
+:root[data-theme="dark"] { --chart-bar: #3b82f6; --chart-bar-active: #93c5fd; }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) { --chart-bar: #3b82f6; --chart-bar-active: #93c5fd; }
+}
+.stats-post { margin-bottom: var(--sp-4); }
+.stats-post[hidden] { display: none; }
+.stats-post__title { margin: var(--sp-2) 0 var(--sp-1); }
+.stats-post__meta { margin: 0; }
+.views-chart { position: relative; }
+.views-chart__svg { display: block; overflow: visible; touch-action: pan-y; }
+.views-chart__svg:focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; border-radius: var(--radius-sm); }
+.views-chart__grid { stroke: var(--border); stroke-width: 1; }
+.views-chart__baseline { stroke: var(--border-strong); stroke-width: 1; }
+.views-chart__tick { fill: var(--text-faint); font-size: 11px; font-variant-numeric: tabular-nums; }
+.views-chart__bar { fill: var(--chart-bar); }
+.views-chart__bar.is-active { fill: var(--chart-bar-active); }
+.views-chart__tooltip {
+  position: absolute;
+  top: 0;
+  transform: translate(-50%, -100%);
+  display: grid;
+  gap: 2px;
+  padding: var(--sp-2) var(--sp-3);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-sm);
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  white-space: nowrap;
+  pointer-events: none;
+  z-index: 2;
+}
+.views-chart__tooltip[hidden] { display: none; }
+.views-chart__tooltip strong { color: var(--text); font-size: var(--text-sm); }
+.views-chart__empty { margin: var(--sp-2) 0 0; }
+.views-chart__table { margin-top: var(--sp-3); }
+.views-chart__table summary { cursor: pointer; color: var(--text-muted); }
+.views-chart__table .table { margin-top: var(--sp-2); }
 .view-change--up { color: var(--ok); }
 .view-change--down { color: var(--danger); }
 

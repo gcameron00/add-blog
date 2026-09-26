@@ -34,6 +34,8 @@
           </div>
         </div>
 
+        <div class="stats-post" data-post-header hidden></div>
+
         <div class="stats-range">
           <div class="segmented" role="group" aria-label="Time range" data-range>
             <button type="button" data-range-key="7d" aria-pressed="false">7 days</button>
@@ -63,7 +65,12 @@
         <div data-counting-off></div>
         <div class="stat-grid" data-stats-summary></div>
 
-        <div class="card card--flush">
+        <div class="card" data-chart-card>
+          <div class="card__header"><h2 data-chart-title>Views</h2></div>
+          <div data-chart></div>
+        </div>
+
+        <div class="card card--flush" data-table-card>
           <div class="filters">
             <label class="visually-hidden" for="stats-type">Filter by type</label>
             <select id="stats-type" data-type-filter>

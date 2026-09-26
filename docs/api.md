@@ -179,8 +179,10 @@ One page view (#18) — sent by `assets/js/main.js` as a `navigator.sendBeacon` 
 post and collection item pages (the ones the Worker marks `data-view="<slug>"`).
 Body: `{"slug": "…"}` (sent as `text/plain`, at most 512 bytes). Adds one to that
 post's count for today (UTC) in `post_views` if the slug is a published post or
-collection item (unlisted included), `analytics_enabled` is on, and the request's
-`Origin` is the site's own. Always `204 No Content`, `Cache-Control: no-store` — whether
+collection item (unlisted included), `analytics_enabled` is on, and the request isn't
+cross-site (a foreign `Origin`, or with no `Origin` a `Sec-Fetch-Site` other than
+`same-origin`). A beacon that isn't counted logs a `track_view_ignored` line with its
+reason (`cross_site`, `bad_body`, `not_counted`) to the Worker's logs. Always `204 No Content`, `Cache-Control: no-store` — whether
 or not anything was counted, so it reveals nothing about which slugs exist or whether
 counting is on. A no-op on the admin host. Never edge-cached. See
 [architecture.md](architecture.md) §3.

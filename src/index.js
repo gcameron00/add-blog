@@ -63,7 +63,7 @@ import { handleAdminApi } from './admin-api.js';
 import { handleMcp } from './mcp.js';
 import { publishDuePosts } from './cron.js';
 import { getSettings } from './db.js';
-import { applySiteBranding, isFeatureEnabled } from './site-template.js';
+import { applyImageMeta, applySiteBranding, isFeatureEnabled } from './site-template.js';
 
 const DEFAULT_ADMIN_HOST = 'blog-admin.mysite.com';
 
@@ -207,7 +207,7 @@ async function brandStaticAsset(response, env, admin, url) {
     return new Response('Not found', { status: 404 });
   }
 
-  const html = applySiteBranding(await response.text(), settings);
+  const html = applyImageMeta(applySiteBranding(await response.text(), settings), settings, url.origin);
   const headers = new Headers(response.headers);
   if (response.status === 200) {
     // docs/architecture.md §5: "Public HTML pages" caching policy. Left

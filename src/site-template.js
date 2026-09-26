@@ -166,3 +166,30 @@ export function applyHomeMeta(html, settings) {
     // *body* copy that's this same site description, not just its meta tags.
     .replace(/(<div class="hero">[\s\S]*?<p>)[\s\S]*?(<\/p>)/, `$1${description}$2`);
 }
+
+/**
+ * #14 — og:image + twitter:card for link previews (WhatsApp, Slack,
+ * LinkedIn, X, …), which mostly show no picture without them. Fills the
+ * <!-- og-image --> placeholder every public page shell carries, in order:
+ * the page's own cover (a post or collection item) as a large card; else
+ * settings.social_image_key, the site-wide share image, also large; else
+ * settings.site_icon_key as a small card; else nothing (the default
+ * checkmark SVG isn't a useful preview). Must be absolute URLs, so `origin`
+ * is the request's — cover and media URLs are site-relative /media/ paths.
+ */
+export function applyImageMeta(html, settings, origin, cover = null) {
+  const tag = (attr, key, value) => `<meta ${attr}="${key}" content="${escapeHtml(value)}" />`;
+  const tags = [];
+  if (cover) {
+    tags.push(tag('property', 'og:image', `${origin}${cover.url}`));
+    if (cover.alt) tags.push(tag('property', 'og:image:alt', cover.alt));
+    tags.push(tag('name', 'twitter:card', 'summary_large_image'));
+  } else if (settings.social_image_key) {
+    tags.push(tag('property', 'og:image', `${origin}/media/${settings.social_image_key}`));
+    tags.push(tag('name', 'twitter:card', 'summary_large_image'));
+  } else if (settings.site_icon_key) {
+    tags.push(tag('property', 'og:image', `${origin}/media/${settings.site_icon_key}`));
+    tags.push(tag('name', 'twitter:card', 'summary'));
+  }
+  return html.replace('<!-- og-image -->', tags.join('\n    '));
+}

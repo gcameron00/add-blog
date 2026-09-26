@@ -63,6 +63,21 @@
               </p>
             </div>
 
+            <div class="field">
+              <label>Social image</label>
+              <div data-social-preview class="icon-preview icon-preview--wide"></div>
+              <input type="hidden" id="social_image_key" name="social_image_key" />
+              <div style="display: flex; gap: .5rem; margin-top: .5rem">
+                <button class="btn btn--sm" type="button" data-social-pick>Choose from library</button>
+                <button class="btn btn--sm btn--ghost" type="button" data-social-remove hidden>Remove</button>
+              </div>
+              <p class="field__hint">
+                The picture shown when a link to this site is shared (WhatsApp, Slack, LinkedIn, X, …).
+                A post's cover image takes its place on that post. Landscape, e.g. 1200×630, works best.
+                Leave unset to fall back to the brand icon.
+              </p>
+            </div>
+
             <div class="form-row">
               <div class="field">
                 <label for="site_url">Public URL</label>

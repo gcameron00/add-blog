@@ -22,11 +22,12 @@ import { purgeBrandedPages } from './cache-purge.js';
 // render — the only ones where a stale edge-cached page is visibly wrong.
 // nav_config renders on every public page (header+footer); about_content is
 // /about/'s body — both edited here, so both belong in this set too.
-// site_icon_key (#15) brands the favicon and header mark the same way.
+// site_icon_key (#15) brands the favicon and header mark the same way, and
+// social_image_key (#14) is every public page's og:image (applyImageMeta).
 // collections (migrations/0008) renders into the header/footer nav
 // (src/site-template.js) same as nav_config, so a change there needs the
 // same purge.
-const BRANDING_KEYS = new Set(['site_title', 'site_description', 'admin_url', 'nav_config', 'about_content', 'site_icon_key', 'collections']);
+const BRANDING_KEYS = new Set(['site_title', 'site_description', 'admin_url', 'nav_config', 'about_content', 'site_icon_key', 'social_image_key', 'collections']);
 
 // Exported so src/mcp-tools.js's `update_site_settings` validates against
 // the exact same allow-list — one list, not two that can drift apart.

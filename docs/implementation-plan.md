@@ -803,8 +803,10 @@ gated on a deploy rather than any new setup.
 - Reading progress bar on the public post page — no code anywhere yet; the only
   other item from the original "related posts, reading progress, copy-link-to-heading"
   grouping that isn't already done.
-- OG image generation for posts without a cover — not started; no `og:image` tag
-  exists anywhere yet, including in `src/pages.js`'s SSR meta tags.
+- OG image generation for posts without a cover — not started. Every public page
+  already emits an `og:image` (#14, `src/site-template.js`'s `applyImageMeta`: cover,
+  else the site-wide `social_image_key`, else the brand icon); what's missing is a
+  per-post generated card (title over brand colours) for posts without a cover.
 - Privacy-preserving view counts (no cookies, no third-party analytics) — not
   started; `src/admin-dashboard.js` already notes in its own comment that the
   `views` figure is intentionally absent pending this.

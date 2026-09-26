@@ -342,6 +342,7 @@ rather than a guess.
 | `GET` | `/audit` | Audit log, newest first, filterable by `actor`, `action`, `via`, paginated (`limit`/`offset`, `page` envelope). Each entry includes `entity`/`entity_id` (added for the full `/admin/audit/` page, #12) |
 | `GET` | `/stats` | Dashboard counters: posts by status, words, media, next scheduled post, and `views` — `{ total, last_30_days }` across posts and collection items (#18), or `null` if the site hasn't applied `migrations/0009_post_views.sql` |
 | `GET` | `/stats/views` | Per-page view counts for the `/admin/stats/` page — see below |
+| `GET` | `/stats/views/:id` | One page's view counts and chart series for the stats page's single-page view — see below |
 | `POST` | `/export` | Full content export to R2 as JSON; returns a short-lived link |
 | `POST` | `/import` | Import from an export bundle or a Markdown/front-matter archive |
 
@@ -380,9 +381,16 @@ draft) appears only while it has views in the range. Response:
   "totals": { "views": 120, "previous_views": 95, "pages_viewed": 7,
               "top": { "id": "…", "title": "…", "views": 42 } },
   "counting": true,
-  "page": { "limit": 50, "offset": 0, "total": 12, "has_more": false }
+  "page": { "limit": 50, "offset": 0, "total": 12, "has_more": false },
+  "series": { "bucket": "day", "points": [{ "start": "2026-08-28", "end": "2026-08-28", "views": 14 }] }
 }
 ```
+
+`series` is the chart: total views per bucket across the range, filtered by `type`
+like the rows, with every bucket present (zeros included). `bucket` is `day` for ranges
+up to 92 days, `week` (Monday-start) up to 731, `month` beyond; a partial first or last
+week/month is clipped to the range, so `start`/`end` always fall inside it. Only
+returned when `offset` is 0 — "Load more" pages don't redraw the chart.
 
 `previous` is the same-length span just before the range (what the page's change
 figures compare against); it and every `previous_views` are `null` for `all`.
@@ -390,6 +398,25 @@ figures compare against); it and every `previous_views` are `null` for `all`.
 `totals` cover every row matching `type`, not just the returned page. An unknown
 `range`/`sort`/`order` or a malformed date is a `400`. `{ "data": null }` if the site
 hasn't applied `migrations/0009_post_views.sql`.
+
+#### `GET /api/admin/stats/views/:id`
+
+One post or collection item's numbers for the stats page's single-page view
+(`/admin/stats/?post=<id>`). Takes the same `range`/`from`/`to` as the list:
+
+```json
+{
+  "range": { "key": "30d", "from": "…", "to": "…", "days": 30, "previous": { "from": "…", "to": "…" } },
+  "data": { "id": "…", "slug": "…", "title": "…", "post_type": "post", "status": "published",
+            "visibility": "public", "published_at": "…" },
+  "totals": { "views": 42, "previous_views": 30, "all_time": 310, "first_day": "2026-06-14" },
+  "series": { "bucket": "day", "points": [{ "start": "…", "end": "…", "views": 3 }] },
+  "counting": true
+}
+```
+
+`all_time` and `first_day` (its earliest counted day, or `null`) ignore the range.
+`404` for an unknown id; the same `400`s and `{ "data": null }` fallback as the list.
 
 Settings keys: `site_title`, `site_description`, `site_url`, `admin_url`, `base_path`,
 `timezone`, `posts_per_page`, `allow_raw_html`, `social_image_key`, `site_icon_key`,

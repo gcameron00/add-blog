@@ -307,3 +307,86 @@ describe('GET /api/admin/stats/views', () => {
     }
   });
 });
+
+describe('stats chart series and single-page view', () => {
+  async function call(path) {
+    const url = new URL(`https://${ADMIN_HOST}${path}`);
+    const identity = { email: 'grant@mysite.com', author: await resolveAuthor(env.DB, 'grant@mysite.com') };
+    const ctx = createExecutionContext();
+    const res = await handleDashboardApi(new Request(url), url, { env, ctx, identity });
+    await waitOnExecutionContext(ctx);
+    return res;
+  }
+
+  async function seed() {
+    const type = 'seriesfixture';
+    await insertPost({ id: 'ss-a', slug: 'ss-a', postType: type });
+    await insertPost({ id: 'ss-b', slug: 'ss-b', postType: 'otherfixture' });
+    for (const [slug, day, times] of [
+      ['ss-a', '2026-08-03', 2], ['ss-a', '2026-08-04', 1], ['ss-a', '2026-08-10', 3],
+      ['ss-a', '2026-07-15', 5], ['ss-a', '2024-01-10', 1],
+      ['ss-b', '2026-08-04', 4],
+    ]) {
+      for (let i = 0; i < times; i++) await recordView(env.DB, slug, day);
+    }
+    return type;
+  }
+
+  it('fills every day of a short range, zeros included, filtered by type', async () => {
+    const type = await seed();
+    const { series } = await (await call(`/api/admin/stats/views?range=custom&from=2026-08-01&to=2026-08-12&type=${type}`)).json();
+    expect(series.bucket).toBe('day');
+    expect(series.points).toHaveLength(12);
+    expect(series.points[0]).toEqual({ start: '2026-08-01', end: '2026-08-01', views: 0 });
+    expect(series.points.filter((p) => p.views)).toEqual([
+      { start: '2026-08-03', end: '2026-08-03', views: 2 },
+      { start: '2026-08-04', end: '2026-08-04', views: 1 }, // ss-b's 4 are another type
+      { start: '2026-08-10', end: '2026-08-10', views: 3 },
+    ]);
+  });
+
+  it('groups a longer range into Monday-start weeks, clipping the ends to the range', async () => {
+    const type = await seed();
+    const { series } = await (await call(`/api/admin/stats/views?range=custom&from=2026-06-03&to=2026-09-30&type=${type}`)).json();
+    expect(series.bucket).toBe('week');
+    expect(series.points[0]).toEqual({ start: '2026-06-03', end: '2026-06-07', views: 0 }); // Wed–Sun
+    expect(series.points.at(-1)).toEqual({ start: '2026-09-28', end: '2026-09-30', views: 0 });
+    expect(series.points.filter((p) => p.views)).toEqual([
+      { start: '2026-07-13', end: '2026-07-19', views: 5 },
+      { start: '2026-08-03', end: '2026-08-09', views: 3 },
+      { start: '2026-08-10', end: '2026-08-16', views: 3 },
+    ]);
+  });
+
+  it('groups ranges over two years by month', async () => {
+    const type = await seed();
+    const { series } = await (await call(`/api/admin/stats/views?range=custom&from=2023-12-15&to=2026-09-30&type=${type}`)).json();
+    expect(series.bucket).toBe('month');
+    expect(series.points[0]).toEqual({ start: '2023-12-15', end: '2023-12-31', views: 0 });
+    expect(series.points.find((p) => p.start === '2026-08-01')).toEqual({ start: '2026-08-01', end: '2026-08-31', views: 6 });
+  });
+
+  it('leaves the series off "Load more" pages', async () => {
+    const body = await (await call('/api/admin/stats/views?range=30d&offset=1')).json();
+    expect(body).not.toHaveProperty('series');
+  });
+
+  it('gives one page its range, previous-period and all-time counts', async () => {
+    await seed();
+    const res = await call('/api/admin/stats/views/ss-a?range=custom&from=2026-08-01&to=2026-08-31');
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.data).toMatchObject({ id: 'ss-a', slug: 'ss-a' });
+    expect(body.totals).toEqual({ views: 6, previous_views: 5, all_time: 12, first_day: '2024-01-10' });
+    expect(body.series.points).toHaveLength(31);
+    expect(body.counting).toBe(true);
+  });
+
+  it('has no previous period for all time, and 404s an unknown page', async () => {
+    await seed();
+    const { totals } = await (await call('/api/admin/stats/views/ss-a?range=all')).json();
+    expect(totals).toMatchObject({ views: 12, previous_views: null, all_time: 12 });
+    expect((await call('/api/admin/stats/views/no-such-post')).status).toBe(404);
+    expect((await call('/api/admin/stats/views/ss-a?range=forever')).status).toBe(400);
+  });
+});

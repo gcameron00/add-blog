@@ -1935,8 +1935,193 @@ function viewChange(views, previous) {
 }
 
 // Range dates are plain UTC days; format them without a local-time shift.
-function formatDay(day) {
-  return new Date(`${day}T00:00:00Z`).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' });
+function formatDay(day, options = { day: 'numeric', month: 'short', year: 'numeric' }) {
+  return new Date(`${day}T00:00:00Z`).toLocaleDateString(undefined, { ...options, timeZone: 'UTC' });
+}
+
+const BUCKET_NOUN = { day: 'day', week: 'week', month: 'month' };
+
+// What one bar covers, for the tooltip and the table view. A clipped first
+// or last week/month shows its real span rather than the calendar one.
+function bucketLabel(point, bucket) {
+  if (bucket === 'day') return formatDay(point.start, { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' });
+  const dayAfterEnd = new Date(Date.parse(`${point.end}T00:00:00Z`) + 86400000);
+  if (bucket === 'month' && point.start.endsWith('-01') && dayAfterEnd.getUTCDate() === 1) return formatDay(point.start, { month: 'long', year: 'numeric' });
+  return `${formatDay(point.start, { day: 'numeric', month: 'short' })} – ${formatDay(point.end)}`;
+}
+
+// The short x-axis tick for a bar.
+function bucketTick(point, bucket) {
+  if (bucket === 'month') return formatDay(point.start, { month: 'short', year: '2-digit' });
+  return formatDay(point.start, { day: 'numeric', month: 'short' });
+}
+
+// Whole-number y-axis steps (1, 2, 5 × 10^n) giving about four gridlines.
+function niceStep(max) {
+  if (max <= 4) return 1;
+  const rough = max / 4;
+  const exp = 10 ** Math.floor(Math.log10(rough));
+  for (const m of [1, 2, 5, 10]) if (m * exp >= rough) return m * exp;
+  return 10 * exp;
+}
+
+const SVG_NS = 'http://www.w3.org/2000/svg';
+function svgEl(tag, attrs = {}) {
+  const node = document.createElementNS(SVG_NS, tag);
+  for (const [key, value] of Object.entries(attrs)) node.setAttribute(key, value);
+  return node;
+}
+
+/**
+ * A single-series column chart of `series` ({ bucket, points }) into `host`,
+ * drawn as inline SVG at the host's width and redrawn when that changes. One
+ * hue (--chart-bar), hairline gridlines, 4px rounded bar tops; a tooltip on
+ * hover, and on keyboard focus with the arrow keys; and the same numbers as
+ * a table under "Show as table", so nothing depends on hovering.
+ */
+function renderViewsChart(host, series) {
+  host._chartObserver?.disconnect();
+  clear(host);
+  const { bucket, points } = series;
+  const total = points.reduce((sum, p) => sum + p.views, 0);
+
+  const figure = el('div', { class: 'views-chart' });
+  const tooltip = el('div', { class: 'views-chart__tooltip', role: 'status', 'aria-live': 'polite', hidden: true });
+  figure.append(tooltip);
+
+  const table = el('details', { class: 'views-chart__table' }, [
+    el('summary', { class: 'small', text: 'Show as table' }),
+    el('table', { class: 'table' }, [
+      el('thead', {}, [el('tr', {}, [
+        el('th', { text: BUCKET_NOUN[bucket][0].toUpperCase() + BUCKET_NOUN[bucket].slice(1) }),
+        el('th', { class: 'numeric', text: 'Views' }),
+      ])]),
+      el('tbody', {}, points.map((p) => el('tr', {}, [
+        el('td', { text: bucketLabel(p, bucket) }),
+        el('td', { class: 'numeric', text: p.views.toLocaleString() }),
+      ]))),
+    ]),
+  ]);
+
+  append(host, figure, total === 0 ? el('p', { class: 'small muted views-chart__empty', text: 'No views in this range.' }) : null, table);
+
+  let active = -1;
+  let bars = [];
+  let geometry = null;
+
+  function showTooltip(index) {
+    active = index;
+    bars.forEach((bar, i) => bar?.classList.toggle('is-active', i === index));
+    if (index < 0 || !geometry) {
+      tooltip.hidden = true;
+      return;
+    }
+    const point = points[index];
+    clear(tooltip).append(
+      el('strong', { text: `${point.views.toLocaleString()} ${point.views === 1 ? 'view' : 'views'}` }),
+      el('span', { text: bucketLabel(point, bucket) })
+    );
+    tooltip.hidden = false;
+    const center = geometry.left + geometry.slot * (index + 0.5);
+    const half = tooltip.offsetWidth / 2;
+    tooltip.style.left = `${Math.min(Math.max(center, half), geometry.width - half)}px`;
+    tooltip.style.top = `${geometry.y(point.views) - 8}px`;
+  }
+
+  function draw(width) {
+    const height = 200;
+    const maxViews = Math.max(0, ...points.map((p) => p.views));
+    const step = niceStep(maxViews);
+    const top = Math.max(step, Math.ceil(maxViews / step) * step);
+    const tickLabels = [];
+    for (let v = 0; v <= top; v += step) tickLabels.push(v);
+
+    const left = 12 + String(top.toLocaleString()).length * 7;
+    const right = 8;
+    const topPad = 10;
+    const bottom = 24;
+    const plotW = Math.max(10, width - left - right);
+    const plotH = height - topPad - bottom;
+    const slot = plotW / points.length;
+    const y = (v) => topPad + plotH - (v / top) * plotH;
+    geometry = { left, slot, width, y };
+
+    const svg = svgEl('svg', {
+      width, height, viewBox: `0 0 ${width} ${height}`,
+      class: 'views-chart__svg', tabindex: '0', role: 'img',
+      'aria-label': `Views per ${BUCKET_NOUN[bucket]}, ${points.length} ${BUCKET_NOUN[bucket]}s, ${total.toLocaleString()} in total. Use the arrow keys to read each ${BUCKET_NOUN[bucket]}, or open the table below.`,
+    });
+
+    for (const value of tickLabels) {
+      const gy = Math.round(y(value)) + 0.5;
+      svg.append(svgEl('line', { x1: left, x2: left + plotW, y1: gy, y2: gy, class: value === 0 ? 'views-chart__baseline' : 'views-chart__grid' }));
+      const label = svgEl('text', { x: left - 6, y: gy, class: 'views-chart__tick', 'text-anchor': 'end', 'dominant-baseline': 'middle' });
+      label.textContent = value.toLocaleString();
+      svg.append(label);
+    }
+
+    // As many x labels as fit (~80px apart), first and last always included.
+    const labelCount = Math.max(2, Math.min(points.length, Math.floor(plotW / 80)));
+    const labelIndexes = new Set(points.length === 1 ? [0] : Array.from({ length: labelCount }, (_, k) => Math.round((k * (points.length - 1)) / (labelCount - 1))));
+    for (const index of labelIndexes) {
+      const x = left + slot * (index + 0.5);
+      const anchor = labelIndexes.size > 1 && index === 0 ? 'start' : labelIndexes.size > 1 && index === points.length - 1 ? 'end' : 'middle';
+      const label = svgEl('text', { x: anchor === 'start' ? left : anchor === 'end' ? left + plotW : x, y: height - 6, class: 'views-chart__tick', 'text-anchor': anchor });
+      label.textContent = bucketTick(points[index], bucket);
+      svg.append(label);
+    }
+
+    // Bars at most 24px wide, 2px of surface between neighbours; the rounded
+    // end is the data end, the base stays square on the baseline.
+    const barW = Math.max(1, Math.min(24, slot >= 6 ? slot * 0.7 : slot - 2));
+    const base = y(0);
+    bars = points.map((p, i) => {
+      if (p.views <= 0) return null;
+      const x = left + slot * (i + 0.5) - barW / 2;
+      const yTop = y(p.views);
+      const r = Math.min(4, barW / 2, base - yTop);
+      const bar = svgEl('path', {
+        class: 'views-chart__bar',
+        d: `M${x},${base} V${yTop + r} Q${x},${yTop} ${x + r},${yTop} H${x + barW - r} Q${x + barW},${yTop} ${x + barW},${yTop + r} V${base} Z`,
+      });
+      svg.append(bar);
+      return bar;
+    });
+
+    // The whole column is the hit target, not just the painted bar.
+    const indexAt = (clientX) => {
+      const box = svg.getBoundingClientRect();
+      const i = Math.floor((clientX - box.left - left) / slot);
+      return i >= 0 && i < points.length ? i : -1;
+    };
+    svg.addEventListener('pointermove', (event) => showTooltip(indexAt(event.clientX)));
+    svg.addEventListener('pointerleave', () => showTooltip(-1));
+    svg.addEventListener('focus', () => showTooltip(active >= 0 ? active : points.length - 1));
+    svg.addEventListener('blur', () => showTooltip(-1));
+    svg.addEventListener('keydown', (event) => {
+      const moves = { ArrowLeft: -1, ArrowRight: 1, Home: -Infinity, End: Infinity };
+      if (!(event.key in moves)) return;
+      event.preventDefault();
+      const next = Math.min(points.length - 1, Math.max(0, (active < 0 ? points.length - 1 : active) + moves[event.key]));
+      showTooltip(Number.isFinite(next) ? next : 0);
+    });
+
+    figure.querySelector('svg')?.remove();
+    figure.prepend(svg);
+    if (active >= 0) showTooltip(active);
+  }
+
+  let lastWidth = 0;
+  const redraw = () => {
+    const width = Math.floor(figure.clientWidth);
+    if (width && width !== lastWidth) {
+      lastWidth = width;
+      draw(width);
+    }
+  };
+  host._chartObserver = new ResizeObserver(redraw);
+  host._chartObserver.observe(figure);
+  redraw();
 }
 
 async function initStats() {
@@ -1944,7 +2129,12 @@ async function initStats() {
   const customForm = document.querySelector('[data-custom-range]');
   const rangeLabel = document.querySelector('[data-range-label]');
   const countingOff = document.querySelector('[data-counting-off]');
+  const postHeader = document.querySelector('[data-post-header]');
   const summary = document.querySelector('[data-stats-summary]');
+  const chartTitle = document.querySelector('[data-chart-title]');
+  const chartCard = document.querySelector('[data-chart-card]');
+  const chartHost = document.querySelector('[data-chart]');
+  const tableCard = document.querySelector('[data-table-card]');
   const host = document.querySelector('[data-stats-table]');
   const typeFilter = document.querySelector('[data-type-filter]');
   const more = document.querySelector('[data-load-more]');
@@ -1952,17 +2142,21 @@ async function initStats() {
 
   // Everything the view depends on lives in the query string, so the
   // dashboard tile and Posts button can deep-link and Back works.
-  const params = new URLSearchParams(location.search);
-  const state = {
-    range: RANGE_LABELS[params.get('range')] ? params.get('range') : '30d',
-    from: params.get('from') || '',
-    to: params.get('to') || '',
-    type: params.get('type') || 'all',
-    sort: ['views', 'published', 'title'].includes(params.get('sort')) ? params.get('sort') : 'views',
-    order: ['asc', 'desc'].includes(params.get('order')) ? params.get('order') : '',
-    offset: 0,
-  };
-  if (state.range === 'custom' && !(state.from && state.to)) state.range = '30d';
+  const state = { offset: 0 };
+  function readUrl() {
+    const params = new URLSearchParams(location.search);
+    Object.assign(state, {
+      range: RANGE_LABELS[params.get('range')] ? params.get('range') : '30d',
+      from: params.get('from') || '',
+      to: params.get('to') || '',
+      type: params.get('type') || 'all',
+      sort: ['views', 'published', 'title'].includes(params.get('sort')) ? params.get('sort') : 'views',
+      order: ['asc', 'desc'].includes(params.get('order')) ? params.get('order') : '',
+      post: params.get('post') || '',
+    });
+    if (state.range === 'custom' && !(state.from && state.to)) state.range = '30d';
+  }
+  readUrl();
   let shownRange = null; // the last range the server resolved, for prefilling Custom
 
   let collectionsByType = {};
@@ -1976,15 +2170,30 @@ async function initStats() {
   if (typeFilter) typeFilter.value = state.type;
   if (typeFilter && typeFilter.value !== state.type) state.type = typeFilter.value = 'all';
 
-  function syncUrl() {
+  function urlFor(overrides = {}) {
+    const s = { ...state, ...overrides };
     const next = new URLSearchParams();
-    next.set('range', state.range);
-    if (state.range === 'custom') { next.set('from', state.from); next.set('to', state.to); }
-    if (state.type !== 'all') next.set('type', state.type);
-    if (state.sort !== 'views') next.set('sort', state.sort);
-    if (state.order) next.set('order', state.order);
-    history.replaceState(null, '', `${location.pathname}?${next}`);
+    if (s.post) next.set('post', s.post);
+    next.set('range', s.range);
+    if (s.range === 'custom') { next.set('from', s.from); next.set('to', s.to); }
+    if (s.type !== 'all') next.set('type', s.type);
+    if (s.sort !== 'views') next.set('sort', s.sort);
+    if (s.order) next.set('order', s.order);
+    return `${location.pathname}?${next}`;
   }
+
+  // Moving between the list and one page is a real navigation (Back returns);
+  // changing range, sort or filter just updates the address in place.
+  function navigate(overrides) {
+    Object.assign(state, overrides);
+    history.pushState(null, '', urlFor());
+    load();
+  }
+  window.addEventListener('popstate', () => {
+    readUrl();
+    if (typeFilter) typeFilter.value = state.type;
+    load();
+  });
 
   function paintRange() {
     for (const button of rangeGroup?.querySelectorAll('button') || []) {
@@ -1997,23 +2206,26 @@ async function initStats() {
     }
   }
 
-  function renderSummary(result) {
-    const { totals, range } = result;
-    const change = viewChange(totals.views, totals.previous_views);
-    const tiles = [
-      {
-        label: 'Views',
-        value: totals.views.toLocaleString(),
-        sub: range.previous ? `${change.text} vs previous ${range.days.toLocaleString()} days` : null,
-        tone: change.tone,
-      },
-      { label: 'Pages viewed', value: totals.pages_viewed.toLocaleString() },
-      {
-        label: 'Most viewed',
-        value: totals.top ? totals.top.views.toLocaleString() : '—',
-        sub: totals.top?.title || null,
-      },
-    ];
+  function paintRangeLabel(range) {
+    shownRange = range;
+    rangeLabel.textContent = `${RANGE_LABELS[range.key]}: ${formatDay(range.from)} – ${formatDay(range.to)}${range.previous ? `, compared with ${formatDay(range.previous.from)} – ${formatDay(range.previous.to)}` : ''}`;
+  }
+
+  function paintCounting(counting) {
+    clear(countingOff);
+    if (counting) return;
+    countingOff.append(
+      el('div', { class: 'callout callout--info' }, [
+        icon('eye'),
+        el('div', {}, [
+          el('strong', { text: 'Page-view counting is off' }),
+          el('span', {}, ['Counts already recorded are shown, but no new views are being counted. Turn on “Count page views” in ', el('a', { href: '/admin/settings/', text: 'Settings' }), '.']),
+        ]),
+      ])
+    );
+  }
+
+  function paintTiles(tiles) {
     clear(summary).append(
       ...tiles.map((tile) =>
         el('div', { class: 'stat' }, [
@@ -2023,6 +2235,39 @@ async function initStats() {
         ])
       )
     );
+  }
+
+  function viewsTile(totals, range) {
+    const change = viewChange(totals.views, totals.previous_views);
+    return {
+      label: 'Views',
+      value: totals.views.toLocaleString(),
+      sub: range.previous ? `${change.text} vs previous ${range.days.toLocaleString()} days` : null,
+      tone: change.tone,
+    };
+  }
+
+  function paintChart(series) {
+    chartCard.hidden = false;
+    chartTitle.textContent = `Views per ${BUCKET_NOUN[series.bucket]}`;
+    renderViewsChart(chartHost, series);
+  }
+
+  function paintUnavailable() {
+    clear(summary);
+    clear(countingOff);
+    clear(postHeader);
+    chartHost._chartObserver?.disconnect();
+    clear(chartHost);
+    rangeLabel.textContent = '';
+    if (!state.post) chartCard.hidden = true;
+    renderEmpty(state.post ? chartHost : host, {
+      title: 'No view counts available',
+      body: api.isDemoMode()
+        ? 'The demo has no readers to count.'
+        : 'This site hasn’t applied migrations/0009_post_views.sql yet (docs/deployment.md).',
+    });
+    if (more) more.hidden = true;
   }
 
   function sortHeader(label, key, { numeric = false } = {}) {
@@ -2045,14 +2290,27 @@ async function initStats() {
     ]);
   }
 
+  function typeLabelFor(row) {
+    return row.post_type && row.post_type !== 'post' ? (collectionsByType[row.post_type]?.label || row.post_type) : null;
+  }
+
   function statsRow(row) {
     const change = viewChange(row.views, row.previous_views);
-    const typeLabel = row.post_type && row.post_type !== 'post' ? (collectionsByType[row.post_type]?.label || row.post_type) : null;
     return el('tr', {}, [
       el('td', {}, [
-        el('a', { class: 'table__title', href: editHref(row), text: row.title }),
+        // A real href so it opens in a new tab too; a plain click stays in-page.
+        el('a', {
+          class: 'table__title',
+          href: urlFor({ post: row.id }),
+          text: row.title,
+          onClick: (event) => {
+            if (event.metaKey || event.ctrlKey || event.shiftKey || event.button !== 0) return;
+            event.preventDefault();
+            navigate({ post: row.id });
+          },
+        }),
         el('div', { class: 'table__sub', text: [
-          typeLabel,
+          typeLabelFor(row),
           `/${row.slug}`,
           row.status !== 'published' ? row.status : null,
           row.visibility === 'unlisted' ? 'unlisted' : null,
@@ -2064,56 +2322,45 @@ async function initStats() {
     ]);
   }
 
-  async function load({ append = false } = {}) {
+  function rangeQuery() {
+    return {
+      range: state.range,
+      from: state.range === 'custom' ? state.from : undefined,
+      to: state.range === 'custom' ? state.to : undefined,
+    };
+  }
+
+  async function loadList({ append = false } = {}) {
     if (!append) state.offset = 0;
-    syncUrl();
-    paintRange();
     host.setAttribute('aria-busy', 'true');
     try {
       const result = await api.getViewStats({
-        range: state.range,
-        from: state.range === 'custom' ? state.from : undefined,
-        to: state.range === 'custom' ? state.to : undefined,
+        ...rangeQuery(),
         type: state.type,
         sort: state.sort,
         order: state.order || undefined,
         limit: PAGE_SIZE,
         offset: state.offset,
       });
+      if (state.post) return; // the reader moved on to one page meanwhile
 
       if (!result.data) {
-        clear(summary);
-        clear(countingOff);
-        rangeLabel.textContent = '';
-        renderEmpty(host, {
-          title: 'No view counts available',
-          body: api.isDemoMode()
-            ? 'The demo has no readers to count.'
-            : 'This site hasn’t applied migrations/0009_post_views.sql yet (docs/deployment.md).',
-        });
-        if (more) more.hidden = true;
+        paintUnavailable();
         return;
       }
 
       const { range, data, page } = result;
-      shownRange = range;
-      rangeLabel.textContent = `${RANGE_LABELS[range.key]}: ${formatDay(range.from)} – ${formatDay(range.to)}${range.previous ? `, compared with ${formatDay(range.previous.from)} – ${formatDay(range.previous.to)}` : ''}`;
-
-      clear(countingOff);
-      if (!result.counting) {
-        countingOff.append(
-          el('div', { class: 'callout callout--info' }, [
-            icon('eye'),
-            el('div', {}, [
-              el('strong', { text: 'Page-view counting is off' }),
-              el('span', {}, ['Counts already recorded are shown, but no new views are being counted. Turn on “Count page views” in ', el('a', { href: '/admin/settings/', text: 'Settings' }), '.']),
-            ]),
-          ])
-        );
-      }
+      paintRangeLabel(range);
+      paintCounting(result.counting);
 
       if (!append) {
-        renderSummary(result);
+        const { totals } = result;
+        paintTiles([
+          viewsTile(totals, range),
+          { label: 'Pages viewed', value: totals.pages_viewed.toLocaleString() },
+          { label: 'Most viewed', value: totals.top ? totals.top.views.toLocaleString() : '—', sub: totals.top?.title || null },
+        ]);
+        if (result.series) paintChart(result.series);
         clear(host);
       }
 
@@ -2145,10 +2392,76 @@ async function initStats() {
       state.offset += data.length;
       if (more) more.hidden = !page.has_more;
     } catch (error) {
-      renderError(host, error, load);
+      renderError(host, error, loadList);
     } finally {
       host.removeAttribute('aria-busy');
     }
+  }
+
+  async function loadPost() {
+    const id = state.post;
+    chartHost.setAttribute('aria-busy', 'true');
+    try {
+      const result = await api.getPostViewStats(id, rangeQuery());
+      if (state.post !== id) return;
+      if (!result.data) {
+        paintUnavailable();
+        return;
+      }
+
+      const { range, data: post, totals } = result;
+      paintRangeLabel(range);
+      paintCounting(result.counting);
+
+      clear(postHeader).append(
+        el('a', { class: 'small', href: urlFor({ post: '' }), text: '← All pages', onClick: (event) => {
+          if (event.metaKey || event.ctrlKey || event.shiftKey || event.button !== 0) return;
+          event.preventDefault();
+          navigate({ post: '' });
+        } }),
+        el('h2', { class: 'stats-post__title', text: post.title }),
+        el('p', { class: 'small muted stats-post__meta' }, [
+          [
+            typeLabelFor(post),
+            `/${post.slug}`,
+            post.status !== 'published' ? post.status : null,
+            post.visibility === 'unlisted' ? 'unlisted' : null,
+          ].filter(Boolean).join(' · '),
+          ' · ',
+          el('a', { href: editHref(post), text: 'Edit' }),
+        ])
+      );
+
+      paintTiles([
+        viewsTile(totals, range),
+        {
+          label: 'All-time views',
+          value: totals.all_time.toLocaleString(),
+          sub: totals.first_day ? `since counting began, ${formatDay(totals.first_day)}` : 'none counted yet',
+        },
+        {
+          label: 'Published',
+          value: post.published_at ? formatDay(post.published_at.slice(0, 10), { day: 'numeric', month: 'short' }) : '—',
+          sub: post.published_at ? formatDay(post.published_at.slice(0, 10), { year: 'numeric' }) : null,
+        },
+      ]);
+      paintChart(result.series);
+    } catch (error) {
+      clear(postHeader).append(el('a', { class: 'small', href: urlFor({ post: '' }), text: '← All pages' }));
+      clear(summary);
+      renderError(chartHost, error, loadPost);
+    } finally {
+      chartHost.removeAttribute('aria-busy');
+    }
+  }
+
+  function load(options) {
+    if (!options?.append) history.replaceState(null, '', urlFor());
+    paintRange();
+    const single = Boolean(state.post);
+    postHeader.hidden = !single;
+    if (tableCard) tableCard.hidden = single;
+    return single ? loadPost() : loadList(options);
   }
 
   rangeGroup?.addEventListener('click', (event) => {

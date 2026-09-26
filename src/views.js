@@ -309,3 +309,105 @@ export async function firstViewDay(db) {
   const row = await db.prepare(`SELECT MIN(day) AS day FROM post_views`).first();
   return row?.day || null;
 }
+
+// Bars per chart stay readable: daily up to about three months, weekly up
+// to about two years, monthly beyond.
+function bucketFor(days) {
+  if (days <= 92) return 'day';
+  if (days <= 731) return 'week';
+  return 'month';
+}
+
+// The first day of `day`'s bucket — weeks start on Monday (ISO 8601).
+function bucketStart(day, bucket) {
+  if (bucket === 'month') return `${day.slice(0, 8)}01`;
+  if (bucket === 'week') {
+    const weekday = new Date(`${day}T00:00:00Z`).getUTCDay(); // 0 = Sunday
+    return addDays(day, -((weekday + 6) % 7));
+  }
+  return day;
+}
+
+/**
+ * Views per day, week or month across `range`, for the stats page's chart:
+ * `{ bucket, points: [{ start, end, views }] }` with every bucket present
+ * (zeros included) so the chart has no gaps. A partial first or last week or
+ * month is clipped to the range, so `start`/`end` are always inside it.
+ * `postId` narrows to one page; otherwise `type` filters like viewStats.
+ */
+export async function viewSeries(db, range, { type = 'all', postId } = {}) {
+  const where = ['v.day BETWEEN ? AND ?'];
+  const params = [range.from, range.to];
+  if (postId) {
+    where.push('v.post_id = ?');
+    params.push(postId);
+  } else if (type && type !== 'all') {
+    where.push('p.post_type = ?');
+    params.push(type);
+  }
+  const { results } = await db
+    .prepare(`
+      SELECT v.day, SUM(v.views) AS views
+      FROM post_views v JOIN posts p ON p.id = v.post_id
+      WHERE ${where.join(' AND ')}
+      GROUP BY v.day
+    `)
+    .bind(...params)
+    .all();
+  const byDay = new Map((results || []).map((row) => [row.day, row.views]));
+
+  const bucket = bucketFor(range.days);
+  const points = [];
+  let current = null;
+  for (let day = range.from; day <= range.to; day = addDays(day, 1)) {
+    const start = bucketStart(day, bucket);
+    if (!current || current.key !== start) {
+      current = { key: start, start: day, end: day, views: 0 };
+      points.push(current);
+    }
+    current.end = day;
+    current.views += byDay.get(day) || 0;
+  }
+  return { bucket, points: points.map(({ start, end, views }) => ({ start, end, views })) };
+}
+
+/**
+ * One page's numbers for the stats page's single-page view (GET
+ * /api/admin/stats/views/:id): its views in `range` and the previous
+ * period, its all-time total and the first day it was counted, and the
+ * chart series. Null for an unknown id.
+ */
+export async function postViewStats(db, id, range) {
+  const post = await db
+    .prepare(`SELECT id, slug, title, post_type, status, visibility, published_at FROM posts WHERE id = ?`)
+    .bind(id)
+    .first();
+  if (!post) return null;
+
+  const [sums, series, enabled] = await Promise.all([
+    db
+      .prepare(`
+        SELECT COALESCE(SUM(CASE WHEN day BETWEEN ? AND ? THEN views END), 0) AS in_range,
+               COALESCE(SUM(CASE WHEN day BETWEEN ? AND ? THEN views END), 0) AS in_previous,
+               COALESCE(SUM(views), 0) AS all_time,
+               MIN(day) AS first_day
+        FROM post_views WHERE post_id = ?
+      `)
+      .bind(range.from, range.to, range.previous?.from || '', range.previous?.to || '', id)
+      .first(),
+    viewSeries(db, range, { postId: id }),
+    db.prepare(`SELECT value FROM settings WHERE key = 'analytics_enabled'`).first(),
+  ]);
+
+  return {
+    post,
+    totals: {
+      views: sums?.in_range || 0,
+      previous_views: range.previous ? sums?.in_previous || 0 : null,
+      all_time: sums?.all_time || 0,
+      first_day: sums?.first_day || null,
+    },
+    series,
+    counting: enabled?.value === 'true',
+  };
+}

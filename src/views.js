@@ -20,11 +20,13 @@
  * docs/deployment.md), not in here.
  */
 
-// Deliberately neutral: this was /api/track, and content blockers' generic
-// filter-list rules (EasyPrivacy and the like) match "track" in any URL, so
-// readers with a blocker were never counted — even though nothing here
-// tracks anyone. The Cloudflare rate-limiting rule matches this path too
-// (docs/deployment.md); change both together.
+// Deliberately neutral: this was /api/track, and blockers' generic filter-list
+// rules (EasyPrivacy and the like) match "track" in any URL. The rename only
+// gets past those URL rules, though: a blocker that drops every sendBeacon
+// request regardless of URL still stops it (confirmed with a Safari extension),
+// so readers running one aren't counted — an accepted limit. The Cloudflare
+// rate-limiting rule matches this path too (docs/deployment.md); change both
+// together.
 export const COUNTER_PATH = '/api/pagecounter';
 
 // `{"slug":"…"}` for any real slug fits in far less than this.

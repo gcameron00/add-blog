@@ -90,10 +90,20 @@ describe('GET /posts/:slug', () => {
 
   it('inlines the rendered article body — works with JS disabled', async () => {
     const html = await (await get(`/posts/${SLUG}`)).text();
-    expect(html).toMatch(/<article data-article>[\s\S]*<h1>Shipping a blog on Cloudflare Workers<\/h1>/);
+    expect(html).toMatch(/<article data-article data-ssr>[\s\S]*<h1>Shipping a blog on Cloudflare Workers<\/h1>/);
     expect(html).toContain('class="prose"');
     // Not still showing the static template's loading placeholder.
     expect(html).not.toContain('Loading post…');
+  });
+
+  it('server-renders related posts, so post.js has nothing to add after load', async () => {
+    const { data } = await (await get(`/api/posts/${SLUG}`)).json();
+    const html = await (await get(`/posts/${SLUG}`)).text();
+    expect(data.related.length).toBeGreaterThan(0);
+    expect(html).toContain('<section class="related">');
+    for (const related of data.related) {
+      expect(html).toContain(`href="/posts/${encodeURIComponent(related.slug)}"`);
+    }
   });
 
   it('still ships assets/js/post.js so client-side hydration still runs', async () => {

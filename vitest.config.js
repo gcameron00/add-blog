@@ -26,6 +26,10 @@ export default defineConfig({
         r2Buckets: ['MEDIA'],
         bindings: {
           TEST_MIGRATIONS: await readD1Migrations(path.join(dirname, 'migrations')),
+          // src/edge-cache.js — off for every test that goes through SELF, so a
+          // cached copy never masks a routing/branding change between two
+          // requests. src/edge-cache.test.js turns it back on per request.
+          EDGE_CACHE: 'off',
         },
         serviceBindings: {
           ASSETS: await buildPagesASSETSBinding(dirname),

@@ -385,6 +385,19 @@ minutes, never permanent staleness.
 > cached, which is why those variants' short `max-age`/`s-maxage` still matters as the
 > real backstop, not just a fallback for purge failures.
 
+> **Built (2026-09-26):** `src/edge-cache.js` now actually *stores* responses in
+> `caches.default`. Before this, nothing ever called `cache.put`, and a Worker on a
+> Custom Domain runs in front of Cloudflare's CDN cache, so every public request ran the
+> full handler (and the purges above deleted entries that were never written). Any
+> public-host `GET` whose response is `public` with `s-maxage` or `immutable` (pages,
+> `/api/*`, `/media/*`, feeds) is served from, or stored in, the cache; responses carry
+> `X-Edge-Cache: HIT|MISS` (the Cache API sets no `cf-cache-status`). The key is the
+> request URL minus tracking parameters (`utm_*`, `fbclid`, …). The admin host, non-GETs,
+> non-200s and Workers static assets are never cached. `caches.default` is per data
+> centre, and so is the purge: it clears the colo the admin request ran in, and other
+> colos pick up an edit when their copy's `s-maxage` expires (up to an hour for pages).
+> Set `EDGE_CACHE = "off"` in a site's `[vars]` to disable it.
+
 > **Built (2026-08-01):** saving `site_title` or `site_description` through
 > `PUT /settings` (`src/admin-settings.js`) now purges `/`, `/archive/`, `/tags/`, and
 > `/about/` too, via `purgeBrandedPages` — those are the shared static pages

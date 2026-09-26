@@ -7,6 +7,10 @@
  * for local dev with no Worker at all (`python3 -m http.server`, per
  * README.md) — nothing there ever redirects, so /post/?slug= is the only
  * form that resolves to a real file in that mode.
+ *
+ * When the Worker has already rendered the article (`data-ssr`), this only
+ * enhances it in place — it never refetches the post or rebuilds the DOM,
+ * which would reload every embed and hold up the route maps for nothing.
  */
 
 import * as api from './api.js';
@@ -109,7 +113,21 @@ function renderPost(post) {
   hydrateTrackMaps(body);
 }
 
+/** Heading anchors, embed themes and route maps on the Worker's own render. */
+function enhanceServerRendered() {
+  const body = article.querySelector('.prose');
+  if (!body) return;
+  addHeadingLinks(body);
+  syncEmbedThemes(body);
+  hydrateTrackMaps(body);
+}
+
 async function load() {
+  if (article.hasAttribute('data-ssr')) {
+    enhanceServerRendered();
+    return;
+  }
+
   if (!slug) {
     clear(article).append(
       el('div', { class: 'empty-state' }, [

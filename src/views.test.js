@@ -9,7 +9,7 @@ const ADMIN_HOST = 'blog-admin.mysite.com';
 const SLUG = 'shipping-a-blog-on-cloudflare-workers';
 
 function track(body, { host = HOST, method = 'POST', headers = {} } = {}) {
-  return SELF.fetch(`https://${host}/api/track`, {
+  return SELF.fetch(`https://${host}/api/pagecounter`, {
     method,
     // What navigator.sendBeacon sends for a string body, from our own page.
     headers: { 'Content-Type': 'text/plain;charset=UTF-8', Origin: `https://${host}`, ...headers },
@@ -51,7 +51,7 @@ beforeEach(async () => {
   await setAnalytics(true);
 });
 
-describe('POST /api/track', () => {
+describe('POST /api/pagecounter', () => {
   it('counts a view of a published post, once per beacon', async () => {
     const res = await track({ slug: SLUG });
     expect(res.status).toBe(204);
@@ -111,13 +111,13 @@ describe('POST /api/track', () => {
   });
 
   it('counts a beacon that arrives with no Origin header', async () => {
-    const res = await SELF.fetch(`https://${HOST}/api/track`, { method: 'POST', body: JSON.stringify({ slug: SLUG }) });
+    const res = await SELF.fetch(`https://${HOST}/api/pagecounter`, { method: 'POST', body: JSON.stringify({ slug: SLUG }) });
     expect(res.status).toBe(204);
     expect(await viewsFor(SLUG)).toBe(1);
   });
 
   it('falls back to Sec-Fetch-Site when there is no Origin', async () => {
-    const send = (site) => SELF.fetch(`https://${HOST}/api/track`, {
+    const send = (site) => SELF.fetch(`https://${HOST}/api/pagecounter`, {
       method: 'POST', headers: { 'Sec-Fetch-Site': site }, body: JSON.stringify({ slug: SLUG }),
     });
     await send('cross-site');

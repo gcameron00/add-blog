@@ -40,7 +40,7 @@
  * so it inherits the same Access-identity guard `/api/admin/*` gets with no
  * changes here; it just needed a handler to dispatch to.
  *
- * #18 adds `POST /api/track` (src/views.js) — the one public-host route that
+ * #18 adds `POST /api/pagecounter` (src/views.js) — the one public-host route that
  * writes to D1 without an identity: one aggregate view count per beacon,
  * nothing about the visitor. See that file for why it's shaped the way it is.
  */

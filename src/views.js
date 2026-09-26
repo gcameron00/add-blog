@@ -1,5 +1,5 @@
 /**
- * Privacy-preserving view counts (#18) — `POST /api/track`, plus the totals
+ * Privacy-preserving view counts (#18) — `POST /api/pagecounter`, plus the totals
  * the admin dashboard reads. Backs the "Count page views" setting
  * (`analytics_enabled`): aggregate counts only, no cookies, no third-party
  * scripts.
@@ -20,7 +20,12 @@
  * docs/deployment.md), not in here.
  */
 
-export const TRACK_PATH = '/api/track';
+// Deliberately neutral: this was /api/track, and content blockers' generic
+// filter-list rules (EasyPrivacy and the like) match "track" in any URL, so
+// readers with a blocker were never counted — even though nothing here
+// tracks anyone. The Cloudflare rate-limiting rule matches this path too
+// (docs/deployment.md); change both together.
+export const COUNTER_PATH = '/api/pagecounter';
 
 // `{"slug":"…"}` for any real slug fits in far less than this.
 const MAX_BODY_BYTES = 512;
@@ -97,9 +102,9 @@ function logIgnored(reason, slug) {
   console.log(JSON.stringify({ event: 'track_view_ignored', reason, ...(slug ? { slug } : {}) }));
 }
 
-/** POST /api/track. Returns null for any other path or method. */
+/** POST /api/pagecounter. Returns null for any other path or method. */
 export async function handleTrackView(request, url, env, admin) {
-  if (url.pathname !== TRACK_PATH || request.method !== 'POST') return null;
+  if (url.pathname !== COUNTER_PATH || request.method !== 'POST') return null;
   // An editor reading a post on the admin host isn't a reader.
   if (admin || !env.DB) return noContent();
   // Stops another site inflating counts through its visitors' browsers. Not

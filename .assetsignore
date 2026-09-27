@@ -20,3 +20,10 @@ src
 migrations
 scripts
 vitest.config.js
+
+# Repo documentation and tooling config — for contributors, not site
+# visitors. docs/ was being served (e.g. /docs/deployment.md) until #20's
+# deploy log showed it being uploaded.
+docs
+.claude
+.gitignore

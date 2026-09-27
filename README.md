@@ -226,8 +226,9 @@ npm test
 
 add-blog is one shared codebase deployed to multiple independent sites — one Worker,
 one D1, one R2 *per site*, never shared, but all from this one repo. Each site is a
-`[env.NAME]` block in `wrangler.toml`; `.github/workflows/deploy.yml` runs
-`wrangler deploy --env <site>` once per site, on every push to `main`, using
+`[env.NAME]` block in `wrangler.toml`; `.github/workflows/deploy.yml` applies that
+site's pending D1 migrations (`wrangler d1 migrations apply`) and then runs
+`wrangler deploy --env <site>`, once per site, on every push to `main`, using
 `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` repository secrets (the job skips
 cleanly if those aren't set).
 

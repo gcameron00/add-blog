@@ -1141,6 +1141,7 @@ const MCP_TOOLS = [
   ['list_tags', 'read', 'All tags with post counts.'],
   ['list_media', 'read', 'Media library, so a post can reference an existing image.'],
   ['get_site_settings', 'read', 'Title, description, timezone — context before drafting.'],
+  ['get_view_stats', 'read', 'Page views for a date range, ranked — or one page\u2019s totals and daily series.'],
   ['create_post', 'author', 'Create a post. Always a draft, whatever status is passed.'],
   ['update_post', 'author', 'Edit a post. Cannot change status. Supports optimistic concurrency.'],
   ['upload_media_from_url', 'author', 'Fetch and store an image. Alt text is required.'],

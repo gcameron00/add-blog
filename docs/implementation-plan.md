@@ -114,7 +114,7 @@ the negative assertions are written before the positive ones.
   including the FTS5 sync triggers the design note calls for (missing from the first
   pass — `posts_fts` silently never populated without them; caught by a test, not by
   reading the schema).
-- `scripts/generate-seed.mjs` — generates `migrations/seed.sql` from
+- `scripts/generate-seed.mjs` — generates `migrations/seed.sql` (since moved to `scripts/seed.sql`, #20) from
   `assets/js/demo-data.js`, so a first deploy has the same real content the demo has
   been showing since Phase 1, not an empty blog. `INSERT OR IGNORE` throughout —
   safe to apply more than once.
@@ -282,7 +282,7 @@ tests. Not yet hands-on verified in production — see docs/deployment.md §6.
   literal full-replace `PUT` would have silently deleted `social_image_key` — the
   settings table's only key not on the visible form — every time someone saved).
   **Doc fix alongside this:** the key allow-list here — and now in [api.md](api.md) —
-  is the actual union of what `migrations/seed.sql` seeds and what
+  is the actual union of what `scripts/seed.sql` seeds and what
   `admin/settings/index.html`'s form submits (11 keys, including `admin_url`), not the
   slightly different list this doc originally sketched (which had an unused
   `theme_accent` and was missing `admin_url`).

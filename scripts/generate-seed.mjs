@@ -1,5 +1,5 @@
 /**
- * Generates migrations/seed.sql from assets/js/demo-data.js — the same
+ * Generates scripts/seed.sql from assets/js/demo-data.js — the same
  * content that's been standing in for the API since Phase 1, now inserted
  * as real rows so the Phase 3 read path has something real to serve on
  * first deploy, and the front end shows the same content it always has
@@ -10,6 +10,11 @@
  * Not run automatically by anything — a deliberate, one-off step. Rerun it
  * by hand (`node scripts/generate-seed.mjs`) if demo-data.js ever changes
  * and the seed should reflect that.
+ *
+ * Deliberately written to scripts/, not migrations/: `wrangler d1 migrations
+ * apply` (and the tests' readD1Migrations) treat every .sql file in
+ * migrations/ as a migration, so a seed file there would be applied to every
+ * production database on deploy (#20).
  */
 import { writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -18,7 +23,7 @@ import { AUTHORS, TAGS, POSTS, SETTINGS } from '../assets/js/demo-data.js';
 import { renderMarkdown } from '../assets/js/markdown.js';
 
 const dirname = path.dirname(fileURLToPath(import.meta.url));
-const outPath = path.join(dirname, '..', 'migrations', 'seed.sql');
+const outPath = path.join(dirname, 'seed.sql');
 
 function sql(value) {
   if (value === null || value === undefined) return 'NULL';
@@ -36,7 +41,7 @@ const lines = [
   '-- Do not hand-edit — rerun the generator instead.',
   '--',
   '-- Not applied automatically. Apply explicitly, once, after 0001_init.sql:',
-  '--   npx wrangler d1 execute <db-name> --file=./migrations/seed.sql --remote',
+  '--   npx wrangler d1 execute <db-name> --file=./scripts/seed.sql --remote',
   '',
 ];
 
@@ -55,8 +60,8 @@ lines.push('');
 
 // OR IGNORE throughout: this file is meant to be safe to apply more than
 // once (a re-run against an already-seeded database is a no-op, not an
-// error) — matters for local test runs (see src/test-setup.js) and for not
-// punishing someone who re-runs the documented command by hand.
+// error) — doesn't punish someone who re-runs the documented command by
+// hand. (Tests seed through scripts/seed-db.mjs instead, not this file.)
 const published = POSTS.filter((post) => post.status === 'published');
 for (const post of published) {
   const bodyHtml = renderMarkdown(post.body_md);

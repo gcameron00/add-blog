@@ -110,7 +110,7 @@ post per UTC day, a count, nothing about visitors) and its index. Unlike the oth
 migrations, the Worker tolerates running before it: `POST /api/pagecounter` swallows the
 missing-table error (a lost count, still a `204`), and `GET /api/admin/stats` reports
 `views: null` instead of failing. Counting only happens while the site's
-`analytics_enabled` setting is on — `migrations/seed.sql` seeds it `true`, so a site
+`analytics_enabled` setting is on — `scripts/seed.sql` seeds it `true`, so a site
 seeded from that file starts counting as soon as both are in place; untick "Count page
 views" in Settings to stop. Before or alongside it, add the rate-limiting rule below.
 

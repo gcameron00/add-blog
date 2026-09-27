@@ -2,7 +2,7 @@
 -- Do not hand-edit — rerun the generator instead.
 --
 -- Not applied automatically. Apply explicitly, once, after 0001_init.sql:
---   npx wrangler d1 execute <db-name> --file=./migrations/seed.sql --remote
+--   npx wrangler d1 execute <db-name> --file=./scripts/seed.sql --remote
 
 INSERT OR IGNORE INTO authors (id, email, name, bio, avatar_key, role, created_at) VALUES ('a1', 'grant@mysite.com', 'Grant Cameron', 'Builds things on the edge. Writes about what broke.', NULL, 'owner', '2026-07-26T18:01:44Z');
 INSERT OR IGNORE INTO authors (id, email, name, bio, avatar_key, role, created_at) VALUES ('a2', 'ada@mysite.com', 'Ada Okafor', 'Design systems, accessibility, and the occasional performance rant.', NULL, 'editor', '2026-07-26T18:01:44Z');

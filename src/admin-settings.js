@@ -4,7 +4,7 @@
  * is what makes it real instead of demo-store-backed.
  *
  * The key set below is the *actual* union of what's seeded
- * (migrations/seed.sql) and what the settings form
+ * (scripts/seed.sql) and what the settings form
  * (admin/settings/index.html) submits — not quite the list in docs/api.md's
  * prose, which has `theme_accent` (nothing seeds, stores or reads it) and is
  * missing `admin_url` (the form has a real field for it). Reconciled here

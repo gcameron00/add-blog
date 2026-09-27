@@ -1,6 +1,6 @@
 /**
  * Seeds a D1 binding directly, via parameterized statements — used by tests
- * (src/test-setup.js). migrations/seed.sql (generate-seed.mjs) is the
+ * (src/test-setup.js). scripts/seed.sql (generate-seed.mjs) is the
  * equivalent for a real deployment via `wrangler d1 execute --file=`; that
  * path properly parses multi-line SQL text, but Miniflare's local `.exec()`
  * emulation does not (it splits naively on newlines, which breaks on any

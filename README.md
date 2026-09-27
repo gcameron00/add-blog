@@ -173,10 +173,10 @@ with D1 keeping the metadata row that points at each R2 object.
 ├── migrations/
 │   ├── 0001_init.sql          Schema — see docs/architecture.md §3
 │   ├── 0002_authors_disabled.sql  Additive: authors.disabled (Phase 5e)
-│   ├── 0003_audit_via_cron.sql    Rebuild: audit_log.via + 'cron' (Phase 5f)
-│   └── seed.sql               Generated — see scripts/generate-seed.mjs
+│   └── 0003_audit_via_cron.sql    Rebuild: audit_log.via + 'cron' (Phase 5f)
 ├── scripts/
-│   ├── generate-seed.mjs      assets/js/demo-data.js → migrations/seed.sql
+│   ├── generate-seed.mjs      assets/js/demo-data.js → scripts/seed.sql
+│   ├── seed.sql               Generated demo content — never in migrations/ (#20)
 │   └── seed-db.mjs            Same seed data, applied directly — used by tests
 ├── wrangler.toml               One shared Worker, one [env.NAME] block per site
 ├── .assetsignore               Files excluded from the asset bundle

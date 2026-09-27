@@ -27,8 +27,11 @@ for `gcameron` already done; repeat it for each new one.
 ## What deploys today
 
 `.github/workflows/deploy.yml` runs on every push to `main`, once per entry in its
-`site` matrix, and calls `wrangler deploy --env <site>`. It skips cleanly if
-`CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` are not set as repository secrets.
+`site` matrix. For each site it first runs `wrangler d1 migrations apply DB --env <site>
+--remote` — applying any `migrations/NNNN_*.sql` that site's D1 hasn't had yet — then
+`wrangler deploy --env <site>`. If a migration fails, that site's deploy is skipped and
+its previous Worker version keeps serving. It skips cleanly if `CLOUDFLARE_API_TOKEN`
+and `CLOUDFLARE_ACCOUNT_ID` are not set as repository secrets.
 
 `main = "src/index.js"` is set as of Phase 2, so every push deploys the hostname
 router — see `wrangler.toml` for the current site list and
@@ -59,18 +62,28 @@ npx wrangler d1 create gcameron-blog
 
 # R2
 npx wrangler r2 bucket create gcameron-blog-media
-
-# Apply the schema (see docs/architecture.md §3) — one --file per migration, in order
-npx wrangler d1 execute gcameron-blog --file=./migrations/0001_init.sql --remote
-npx wrangler d1 execute gcameron-blog --file=./migrations/0002_authors_disabled.sql --remote
-npx wrangler d1 execute gcameron-blog --file=./migrations/0003_audit_via_cron.sql --remote
-npx wrangler d1 execute gcameron-blog --file=./migrations/0004_mcp.sql --remote
-npx wrangler d1 execute gcameron-blog --file=./migrations/0005_audit_via_import.sql --remote
-npx wrangler d1 execute gcameron-blog --file=./migrations/0006_media_source_url.sql --remote
-npx wrangler d1 execute gcameron-blog --file=./migrations/0007_nav_config.sql --remote
-npx wrangler d1 execute gcameron-blog --file=./migrations/0008_collections.sql --remote
-npx wrangler d1 execute gcameron-blog --file=./migrations/0009_post_views.sql --remote
 ```
+
+**The schema is applied by the deploy, not by hand** (#20). A new site's D1 only has to
+*exist* (and its `database_id` be in `wrangler.toml`) before its first deploy: the
+workflow's `wrangler d1 migrations apply` step finds an empty database and applies
+every file in `migrations/` in order, recording each in the database's own
+`d1_migrations` table. Every later deploy applies only what's new. Don't apply a
+migration with `wrangler d1 execute --file=` any more — wrangler wouldn't know it had
+run, and would try to apply it again (and fail) on the next deploy. To see where a site
+stands: `npx wrangler d1 migrations list DB --env <site> --remote`.
+
+**Only numbered migrations go in `migrations/`.** Every `.sql` file there is applied to
+every production database on the next deploy — demo content lives in
+`scripts/seed.sql` for that reason.
+
+**Writing a new migration.** Name it `NNNN_what_it_does.sql`, next number up. It will run
+on every site *before* that deploy's code goes live, while the previous Worker version
+is still serving — so it must be safe under the old code as well as the new:
+additive changes (new tables, new nullable/defaulted columns, new `settings` rows) are.
+For anything that drops, renames or rebuilds, split it: ship the code that stops using
+the old shape first, and the migration that removes it in a later release. The notes
+below are the history of 0003–0009 and still apply to what each one does.
 
 **0003 is a rebuild, not a plain `ALTER TABLE ADD COLUMN` like 0002** — SQLite can't
 widen a `CHECK` constraint in place, so it creates a new `audit_log`, copies every
@@ -123,16 +136,14 @@ In each site's zone: **Security → WAF → Rate limiting rules → Create rule*
 IP, e.g. 30 requests per 10 seconds, action **Block**. A normal reader sends one
 request per page. The free plan includes one such rule per zone.
 
-This list is the full bootstrap sequence for a brand-new site; for a site that's
-already live (`gcameron`), only run the migration file(s) that haven't been applied
-yet — re-running an already-applied one fails on `CREATE TABLE` already existing.
-Deploy the migration before (or together with, never after) the Worker version that
-expects it, same as 0002/0003/5e/5f were sequenced — a live Worker querying a table
-that doesn't exist yet is a 500, not a graceful fallback, for anything past the
-`env.DB` existence check every handler already does.
+Ordering between a migration and the code that needs it is now handled by the deploy
+workflow (migrations first, per site). Before #20 it was a manual step, and forgetting
+it — #19's code shipping ahead of 0008 — broke three live sites: a live Worker querying
+a table or column that doesn't exist yet is a 500, not a graceful fallback.
 
-Seed the first owner so there is an identity that can log in — the email must match
-exactly the identity Access will present:
+Once the site's first deploy has applied the schema, seed the first owner so there is an
+identity that can log in — the email must match exactly the identity Access will
+present:
 
 ```sql
 INSERT INTO authors (id, email, name, role, created_at)
@@ -248,13 +259,11 @@ Two smaller items that also live in `wrangler.toml`, shared across all sites:
   and repeated on every `[env.NAME.assets]` block, same reasoning as `run_worker_first`
   above — nothing here is inherited across environments. Phase 2 makes this moot for
   paths the Worker handles, but it still matters for unmatched static paths.
-- `docs/` is not in `.assetsignore`, so the Markdown files in this repository are
-  served publicly at e.g. `/docs/architecture.md`. That is harmless for a public repo
-  and arguably useful, but worth knowing. Add `docs` to `.assetsignore` if the blog
-  should not serve them.
+- `docs/`, `.claude/` and `.gitignore` are in `.assetsignore` (since #20), so the
+  repository's own Markdown and tooling config are not served by the blog.
 
-`src` and `migrations` are already in `.assetsignore` as of Phase 2, so Worker source
-and SQL files are never uploaded into the public asset bundle.
+`src`, `migrations` and `scripts` are already in `.assetsignore` as of Phase 2, so
+Worker source and SQL files are never uploaded into the public asset bundle.
 
 ## 4. Cloudflare Zero Trust Access
 
@@ -469,7 +478,9 @@ npx wrangler deployments list --env gcameron
 npx wrangler rollback <version-id> --env gcameron
 ```
 
-D1 migrations are not rolled back by that. Write migrations additively — add columns
+D1 migrations are not rolled back by that (and there are no down-migrations —
+restoring a database means D1 Time Travel, `npx wrangler d1 time-travel restore`).
+Write migrations additively — add columns
 and tables, avoid destructive changes in the same release as the code that depends on
 them — so an old Worker version keeps running against a newer schema. Take an export
 (`POST /api/admin/export`) before any migration that drops or rewrites data.

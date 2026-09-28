@@ -121,7 +121,7 @@ not_found_handling = "404-page"
 ADMIN_HOST = "blogtest-admin.gcameron.com"
 PUBLIC_HOST = "blogtest.gcameron.com"
 ACCESS_TEAM_DOMAIN = "grahamcameron.cloudflareaccess.com"
-# ACCESS_AUD set after the Access application is created — see docs/deployment.md §4.
+ACCESS_AUD = "119287369639e628f34d4d1b0ae5ce92c416c566c9946d484fe7f5c4935c0e91"
 
 [env.blogtest.triggers]
 crons = ["*/5 * * * *"]
@@ -154,7 +154,7 @@ not_found_handling = "404-page"
 ADMIN_HOST = "blog-admin.laax.run"
 PUBLIC_HOST = "laax.run"
 ACCESS_TEAM_DOMAIN = "grahamcameron.cloudflareaccess.com"
-# ACCESS_AUD set after the Access application is created — see docs/deployment.md §4.
+ACCESS_AUD = "6719ab61e2f787e9c927c480091b6428f4b594f3dc2cd730b1c72244b689337c"
 
 [env.laaxrun.triggers]
 crons = ["*/5 * * * *"]

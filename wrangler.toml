@@ -161,7 +161,7 @@ crons = ["*/5 * * * *"]
 
 # --- laax.ski -------------------------------------------------------
 
-[env.laaxrun-ski]
+[env.laax-ski]
 name = "laax-ski-blog"
 routes = [
   { pattern = "laax.ski",       custom_domain = true },
@@ -171,12 +171,12 @@ routes = [
 # Phase 3 — this site's own D1 database and R2 bucket (never shared with
 # any other site — see the single-tenant decision in implementation-plan.md).
 # Schema and seed applied via the commands in docs/deployment.md §1.
-[[env.laaxrun-ski.d1_databases]]
+[[env.laax-ski.d1_databases]]
 binding = "DB"
 database_name = "laax-ski-blog"
 database_id = "73ceef8a-4a19-4d95-a04d-19c6dd0057df"
 
-[[env.laaxrun-ski.r2_buckets]]
+[[env.laax-ski.r2_buckets]]
 binding = "MEDIA"
 bucket_name = "laax-ski-media"
 

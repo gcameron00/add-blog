@@ -93,6 +93,72 @@ ACCESS_AUD = "1d519becd47d98d3f450013b2124ab97d5ce468452735bd8bfb71f87b5941ca6"
 [env.gcameron.triggers]
 crons = ["*/5 * * * *"]
 
+# --- blogtest.gcameron.com -----------------------------------------------
+
+[env.blogtest]
+name = "blogtest-blog"
+routes = [
+  { pattern = "blogtest.gcameron.com",       custom_domain = true },
+  { pattern = "blogtest-admin.gcameron.com", custom_domain = true },
+]
+
+[[env.blogtest.d1_databases]]
+binding = "DB"
+database_name = "blogtest-blog"
+database_id = "d0975137-0e65-44fe-b0d4-d0ef0533d3d5"
+
+[[env.blogtest.r2_buckets]]
+binding = "MEDIA"
+bucket_name = "blogtest-blog-media"
+
+[env.blogtest.assets]
+directory = "."
+binding = "ASSETS"
+run_worker_first = true
+not_found_handling = "404-page"
+
+[env.blogtest.vars]
+ADMIN_HOST = "blogtest-admin.gcameron.com"
+PUBLIC_HOST = "blogtest.gcameron.com"
+ACCESS_TEAM_DOMAIN = "grahamcameron.cloudflareaccess.com"
+# ACCESS_AUD set after the Access application is created — see docs/deployment.md §4.
+
+[env.blogtest.triggers]
+crons = ["*/5 * * * *"]
+
+# --- laax.run --------------------------------------------------------------
+
+[env.laax]
+name = "laax-blog"
+routes = [
+  { pattern = "laax.run",            custom_domain = true },
+  { pattern = "blog-admin.laax.run", custom_domain = true },
+]
+
+[[env.laax.d1_databases]]
+binding = "DB"
+database_name = "laax-blog"
+database_id = "96ae681b-53ff-434e-a024-c9f92aa428db"
+
+[[env.laax.r2_buckets]]
+binding = "MEDIA"
+bucket_name = "laax-blog-media"
+
+[env.laax.assets]
+directory = "."
+binding = "ASSETS"
+run_worker_first = true
+not_found_handling = "404-page"
+
+[env.laax.vars]
+ADMIN_HOST = "blog-admin.laax.run"
+PUBLIC_HOST = "laax.run"
+ACCESS_TEAM_DOMAIN = "grahamcameron.cloudflareaccess.com"
+# ACCESS_AUD set after the Access application is created — see docs/deployment.md §4.
+
+[env.laax.triggers]
+crons = ["*/5 * * * *"]
+
 # --- laax.ski -------------------------------------------------------
 
 [env.laax-ski]

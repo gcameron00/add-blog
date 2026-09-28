@@ -128,40 +128,40 @@ crons = ["*/5 * * * *"]
 
 # --- laax.run --------------------------------------------------------------
 
-[env.laax]
-name = "laax-blog"
+[env.laaxrun]
+name = "laaxrun-blog"
 routes = [
   { pattern = "laax.run",            custom_domain = true },
   { pattern = "blog-admin.laax.run", custom_domain = true },
 ]
 
-[[env.laax.d1_databases]]
+[[env.laaxrun.d1_databases]]
 binding = "DB"
 database_name = "laaxrun-blog"
 database_id = "69a7dbd7-0d8a-49ea-88a1-ab4ac6134dde"
 
-[[env.laax.r2_buckets]]
+[[env.laaxrun.r2_buckets]]
 binding = "MEDIA"
 bucket_name = "laaxrun-blog-media"
 
-[env.laax.assets]
+[env.laaxrun.assets]
 directory = "."
 binding = "ASSETS"
 run_worker_first = true
 not_found_handling = "404-page"
 
-[env.laax.vars]
+[env.laaxrun.vars]
 ADMIN_HOST = "blog-admin.laax.run"
 PUBLIC_HOST = "laax.run"
 ACCESS_TEAM_DOMAIN = "grahamcameron.cloudflareaccess.com"
 # ACCESS_AUD set after the Access application is created — see docs/deployment.md §4.
 
-[env.laax.triggers]
+[env.laaxrun.triggers]
 crons = ["*/5 * * * *"]
 
 # --- laax.ski -------------------------------------------------------
 
-[env.laax-ski]
+[env.laaxrun-ski]
 name = "laax-ski-blog"
 routes = [
   { pattern = "laax.ski",       custom_domain = true },
@@ -171,12 +171,12 @@ routes = [
 # Phase 3 — this site's own D1 database and R2 bucket (never shared with
 # any other site — see the single-tenant decision in implementation-plan.md).
 # Schema and seed applied via the commands in docs/deployment.md §1.
-[[env.laax-ski.d1_databases]]
+[[env.laaxrun-ski.d1_databases]]
 binding = "DB"
 database_name = "laax-ski-blog"
 database_id = "73ceef8a-4a19-4d95-a04d-19c6dd0057df"
 
-[[env.laax-ski.r2_buckets]]
+[[env.laaxrun-ski.r2_buckets]]
 binding = "MEDIA"
 bucket_name = "laax-ski-media"
 

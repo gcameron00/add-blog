@@ -137,12 +137,12 @@ routes = [
 
 [[env.laax.d1_databases]]
 binding = "DB"
-database_name = "laax-blog"
-database_id = "96ae681b-53ff-434e-a024-c9f92aa428db"
+database_name = "laaxrun-blog"
+database_id = "69a7dbd7-0d8a-49ea-88a1-ab4ac6134dde"
 
 [[env.laax.r2_buckets]]
 binding = "MEDIA"
-bucket_name = "laax-blog-media"
+bucket_name = "laaxrun-blog-media"
 
 [env.laax.assets]
 directory = "."

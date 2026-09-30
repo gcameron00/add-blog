@@ -532,6 +532,18 @@ function renderCustomFields() {
         markDirty();
       });
       control = tokenHost;
+    } else if (spec.type === 'number') {
+      // valueAsNumber so the API gets a JSON number, not "12.4"; a cleared
+      // or unparseable box becomes '' and is dropped on save like any other
+      // empty field (see collect()'s type_fields filter).
+      control = el('input', {
+        type: 'number', step: 'any', value: typeof value === 'number' ? String(value) : (value ?? ''),
+        onInput: (event) => {
+          const next = event.target.valueAsNumber;
+          state.typeFields[spec.key] = Number.isFinite(next) ? next : '';
+          markDirty();
+        },
+      });
     } else {
       control = el('input', {
         type: spec.type === 'url' ? 'url' : spec.type === 'date' ? 'date' : 'text',
@@ -541,7 +553,7 @@ function renderCustomFields() {
     }
     dom.customFieldsBody.append(
       el('div', { class: 'field' }, [
-        el('label', { text: spec.label || spec.key }),
+        el('label', { text: spec.type === 'number' && spec.unit ? `${spec.label || spec.key} (${spec.unit})` : spec.label || spec.key }),
         control,
       ])
     );

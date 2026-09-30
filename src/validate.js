@@ -232,8 +232,12 @@ export function validatePostType(type, settings) {
 // Governs type_fields value validation — a different axis from
 // src/collections.js's FIELD_DISPLAYS (that's how a value renders; this is
 // what shape it must be to be stored at all).
-const FIELD_TYPES = ['text', 'enum', 'url', 'tags', 'date'];
+const FIELD_TYPES = ['text', 'enum', 'url', 'tags', 'date', 'number'];
 const FIELD_TEXT_MAX_LENGTH = 200;
+const FIELD_UNIT_MAX_LENGTH = 20;
+// Plain decimal notation only — Number() alone would also take "0x1f",
+// "Infinity" or "" (as 0), none of which an editor means as a quantity.
+const NUMERIC_STRING_RE = /^[+-]?(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?$/;
 const FIELD_TAGS_MAX = 10;
 const TYPE_FIELDS_MAX_BYTES = 8 * 1024;
 
@@ -269,6 +273,16 @@ function validateTypeFieldValue(key, value, spec) {
         throw new ValidationError(`type_fields.${key} must be an ISO-8601 date string.`, 'type_fields');
       }
       return value;
+    case 'number': {
+      // Numeric strings are coerced (form inputs and MCP callers often send
+      // "12.4"), but what's stored is always a JSON number — a string would
+      // compare as text in SQL (json_extract), so "100" would sort before "20".
+      const number = typeof value === 'string' && NUMERIC_STRING_RE.test(value.trim()) ? Number(value.trim()) : value;
+      if (typeof number !== 'number' || !Number.isFinite(number)) {
+        throw new ValidationError(`type_fields.${key} must be a finite number.`, 'type_fields');
+      }
+      return number;
+    }
     default:
       throw new ValidationError(`type_fields.${key} has an unrecognised field type.`, 'type_fields');
   }
@@ -352,6 +366,10 @@ function validateFieldSpecs(fields, collectionType) {
     }
     if (spec.type === 'enum' && (!Array.isArray(spec.options) || !spec.options.length)) {
       throw new ValidationError(`Field "${spec.key}" is an enum and needs non-empty "options".`, 'collections');
+    }
+    if (spec.type === 'number' && spec.unit !== undefined
+      && (typeof spec.unit !== 'string' || !spec.unit.trim() || spec.unit.length > FIELD_UNIT_MAX_LENGTH)) {
+      throw new ValidationError(`Field "${spec.key}" unit must be 1-${FIELD_UNIT_MAX_LENGTH} characters.`, 'collections');
     }
     if (!FIELD_DISPLAYS.includes(spec.display)) {
       throw new ValidationError(`Field "${spec.key}" display must be one of: ${FIELD_DISPLAYS.join(', ')}.`, 'collections');

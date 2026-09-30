@@ -56,9 +56,12 @@ already uses.
 **Why `layout` and each field's `display` are fixed enums, not free text.** A
 collection's index page renders as `grid` or `list` — two built-in layouts
 (`src/collections.js`'s `LAYOUTS`), never arbitrary owner-supplied HTML or a template
-string. Each declared field renders through one of five fixed `display` types
-(`badge`, `chips`, `link`, `text`, `date` — `FIELD_DISPLAYS`), each with its own
-escaping-aware renderer. This is the same posture as the Markdown renderer described
+string. Each declared field renders through one of six fixed `display` types
+(`badge`, `chips`, `link`, `text`, `date`, `number` — `FIELD_DISPLAYS`), each with its own
+escaping-aware renderer. `number` formats a numeric value (`en-US` grouping, the same
+fixed locale as dates) and appends the field's optional `unit`, e.g. a field declared
+`{ "key": "distance", "label": "Distance", "type": "number", "unit": "km", "display": "number" }`
+renders `12.4 km`. This is the same posture as the Markdown renderer described
 in [architecture.md](architecture.md) §6 ("Content safety"): the set of things that
 can be rendered is a fixed, reviewed list, not something a settings value can expand.
 

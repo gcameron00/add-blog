@@ -230,7 +230,9 @@ site's custom-content-type registry (`migrations/0008_collections.sql`,
 definition (type/label/base_path/layout/fields, each field's key/type/display, the
 enum values, the required keys), so a client can construct a new collection correctly
 from `tools/list` alone rather than reading this repo's source or guessing against
-validation errors.
+validation errors. A field of type `number` takes an optional `unit` (e.g. `"km"`),
+shown after the value by the `number` display; `create_post`/`update_post` accept its
+value as a number or a numeric string and store it as a JSON number.
 
 ### Design notes on the tool surface
 

@@ -13,7 +13,7 @@
 import { escapeHtml, slugify } from '../assets/js/markdown.js';
 
 export const LAYOUTS = ['grid', 'list'];
-export const FIELD_DISPLAYS = ['badge', 'chips', 'link', 'text', 'date'];
+export const FIELD_DISPLAYS = ['badge', 'chips', 'link', 'text', 'date', 'number'];
 
 /**
  * Parses/validates settings.collections defensively — same posture as
@@ -111,12 +111,31 @@ function renderFieldText(value) {
   return escapeHtml(String(value));
 }
 
+// Same fixed 'en-US' locale as formatDate below, so numbers and dates on one
+// page read consistently. maximumFractionDigits raised from the default 3 so
+// a small value (0.0005) isn't rounded to 0.
+const NUMBER_FORMAT = new Intl.NumberFormat('en-US', { maximumFractionDigits: 10 });
+
+/**
+ * Formatted number plus the field's unit, joined by a non-breaking space so
+ * "12.4 km" never wraps mid-value. A value that isn't a finite number (e.g.
+ * text stored before the field was switched to type "number") renders as
+ * plain text, without the unit — appending "km" to arbitrary text could
+ * misstate it.
+ */
+function renderFieldNumber(value, spec) {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return renderFieldText(value);
+  const unit = typeof spec?.unit === 'string' && spec.unit.trim() ? `\u00a0${escapeHtml(spec.unit.trim())}` : '';
+  return `${NUMBER_FORMAT.format(value)}${unit}`;
+}
+
 const FIELD_RENDERERS = {
   badge: renderStatusBadge,
   chips: renderFieldChips,
   link: renderFieldLink,
   date: renderFieldDate,
   text: renderFieldText,
+  number: renderFieldNumber,
 };
 
 function formatDate(iso) {

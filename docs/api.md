@@ -263,8 +263,13 @@ than `"post"`, it must be a type declared in the site's `collections` setting (`
 /settings`, or the `list_collections` MCP tool) — an unconfigured type is rejected
 `400 bad_request` with `field: "post_type"`. `type_fields` is a JSON object of values
 for that collection's declared fields, validated per field's `type` (`text`, `enum`,
-`url`, `tags`, `date`); an unknown key, or a value that doesn't match its field's
-type, is rejected the same way. **`post_type` cannot be changed on `PATCH`** — a `400`
+`url`, `tags`, `date`, `number`); an unknown key, or a value that doesn't match its field's
+type, is rejected the same way. A `number` value must be a finite number or a plain
+decimal string (`"12.4"`, `"-3"`, `"1e3"`), and is always stored and returned as a JSON
+number; `""`, `"12km"`, `NaN` and `Infinity` are rejected. Switching an existing field
+from `text` to `number` leaves previously stored strings in place — they still render
+(as plain text, without the unit), but re-saving such an item fails validation until
+the value is corrected. **`post_type` cannot be changed on `PATCH`** — a `400`
 with `field: "post_type"` if the body includes one that differs from the post's
 current value, since changing it would change the post's URL (a different
 collection's `base_path`) and its field contract (a different collection's fields)

@@ -1302,8 +1302,8 @@ function renderNavCustomLinks(tbody, links, redraw) {
  * src/site-template.js's list).
  * -------------------------------------------------------------------------- */
 
-const COLLECTION_FIELD_TYPES = ['text', 'enum', 'tags', 'url', 'date'];
-const COLLECTION_FIELD_DISPLAYS = ['badge', 'chips', 'link', 'text', 'date'];
+const COLLECTION_FIELD_TYPES = ['text', 'enum', 'tags', 'url', 'date', 'number'];
+const COLLECTION_FIELD_DISPLAYS = ['badge', 'chips', 'link', 'text', 'date', 'number'];
 const COLLECTION_LAYOUTS = ['grid', 'list'];
 const SLUG_RE = /^[a-z0-9]+(-[a-z0-9]+)*$/;
 
@@ -1322,8 +1322,9 @@ function blankCollection() {
 
 function blankCollectionField() {
   // `options` held as a plain comma-separated string while editing, split
-  // into an array only at submit time (enum fields only).
-  return { key: '', label: '', type: 'text', options: '', display: 'text' };
+  // into an array only at submit time (enum fields only). `unit` is only
+  // sent for number fields.
+  return { key: '', label: '', type: 'text', options: '', unit: '', display: 'text' };
 }
 
 function renderCollectionFieldsTable(host, fields, redraw) {
@@ -1332,7 +1333,7 @@ function renderCollectionFieldsTable(host, fields, redraw) {
     el('thead', {}, [
       el('tr', {}, [
         el('th', { text: 'Key' }), el('th', { text: 'Label' }), el('th', { text: 'Type' }),
-        el('th', { text: 'Options' }), el('th', { text: 'Display' }),
+        el('th', { text: 'Options / unit' }), el('th', { text: 'Display' }),
         el('th', {}, [el('span', { class: 'visually-hidden', text: 'Actions' })]),
       ]),
     ]),
@@ -1347,12 +1348,22 @@ function renderCollectionFieldsTable(host, fields, redraw) {
       })]),
       el('td', {}, [el('select', {
         'aria-label': 'Field type',
-        onChange: (event) => { field.type = event.target.value; redraw(); },
+        onChange: (event) => {
+          field.type = event.target.value;
+          // A number field shown with the plain text display would lose its
+          // unit and formatting — nudge the obvious pairing, still overridable.
+          if (field.type === 'number' && field.display === 'text') field.display = 'number';
+          redraw();
+        },
       }, COLLECTION_FIELD_TYPES.map((type) => el('option', { value: type, selected: field.type === type ? '' : null, text: type })))]),
       el('td', {}, [el('input', {
         type: 'text', value: field.options, hidden: field.type === 'enum' ? null : '',
         placeholder: 'Comma-separated, e.g. Live, In Progress, Archived', 'aria-label': 'Field options',
         onInput: (event) => { field.options = event.target.value; },
+      }), el('input', {
+        type: 'text', value: field.unit, hidden: field.type === 'number' ? null : '', maxlength: '20',
+        placeholder: 'Unit (optional), e.g. km', 'aria-label': 'Field unit',
+        onInput: (event) => { field.unit = event.target.value; },
       })]),
       el('td', {}, [el('select', {
         'aria-label': 'Field display',
@@ -1494,7 +1505,7 @@ async function initCollections() {
     ? current.collections.map((c) => ({
         ...c,
         nav: { header: false, footer: false, ...c.nav },
-        fields: (c.fields || []).map((f) => ({ ...f, options: Array.isArray(f.options) ? f.options.join(', ') : (f.options || '') })),
+        fields: (c.fields || []).map((f) => ({ ...f, options: Array.isArray(f.options) ? f.options.join(', ') : (f.options || ''), unit: f.unit || '' })),
         // Closed by default (unlike blankCollection()'s freshly-added ones)
         // — with more than a couple of collections saved, starting them all
         // open would be exactly the wall of fields this page exists to avoid.
@@ -1543,6 +1554,7 @@ async function initCollections() {
           label: f.label.trim(),
           type: f.type,
           ...(f.type === 'enum' ? { options: f.options.split(',').map((o) => o.trim()).filter(Boolean) } : {}),
+          ...(f.type === 'number' && f.unit.trim() ? { unit: f.unit.trim() } : {}),
           display: f.display,
         })),
       })),

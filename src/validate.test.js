@@ -104,6 +104,20 @@ describe('validateTypeFields', () => {
     expect(() => validateTypeFields({ launched: 'not a date' }, dateFields)).toThrow(ValidationError);
   });
 
+  it('validates a number field, coercing plain numeric strings and always storing a JSON number', () => {
+    const numberFields = [{ key: 'distance', label: 'Distance', type: 'number', unit: 'km', display: 'number' }];
+    expect(validateTypeFields({ distance: 12.4 }, numberFields)).toEqual({ distance: 12.4 });
+    expect(validateTypeFields({ distance: 0 }, numberFields)).toEqual({ distance: 0 });
+    expect(validateTypeFields({ distance: -3 }, numberFields)).toEqual({ distance: -3 });
+    expect(validateTypeFields({ distance: '12.4' }, numberFields)).toEqual({ distance: 12.4 });
+    expect(validateTypeFields({ distance: ' 1240 ' }, numberFields)).toEqual({ distance: 1240 });
+    expect(validateTypeFields({ distance: '.5' }, numberFields)).toEqual({ distance: 0.5 });
+    expect(validateTypeFields({ distance: '1e3' }, numberFields)).toEqual({ distance: 1000 });
+    for (const bad of ['', '  ', '12km', 'abc', '0x1f', 'Infinity', 'NaN', NaN, Infinity, -Infinity, null, true, [], {}, [12]]) {
+      expect(() => validateTypeFields({ distance: bad }, numberFields), JSON.stringify(bad)).toThrow(ValidationError);
+    }
+  });
+
   it('rejects a payload over 8KB total', () => {
     const tagsField = [{ key: 'tech', label: 'Tech', type: 'tags', display: 'chips' }];
     const hugeTags = Array.from({ length: 10 }, (_, i) => 'x'.repeat(1000) + i);
@@ -163,6 +177,24 @@ describe('validateCollections', () => {
   it('rejects an unrecognised field type', () => {
     const bad = { ...PROJECT_COLLECTION, fields: [{ key: 'x', label: 'X', type: 'currency', display: 'text' }] };
     expect(() => validateCollections([bad])).toThrow(ValidationError);
+  });
+
+  it('accepts a number field with or without a unit', () => {
+    const ok = {
+      ...PROJECT_COLLECTION,
+      fields: [
+        { key: 'distance', label: 'Distance', type: 'number', unit: 'km', display: 'number' },
+        { key: 'rank', label: 'Rank', type: 'number', display: 'number' },
+      ],
+    };
+    expect(validateCollections([ok])).toEqual([ok]);
+  });
+
+  it('rejects a number field unit that is blank, not a string, or over 20 characters', () => {
+    for (const unit of ['', '   ', 42, null, 'x'.repeat(21)]) {
+      const bad = { ...PROJECT_COLLECTION, fields: [{ key: 'distance', label: 'Distance', type: 'number', unit, display: 'number' }] };
+      expect(() => validateCollections([bad]), JSON.stringify(unit)).toThrow(ValidationError);
+    }
   });
 
   it('rejects an enum field with no options', () => {

@@ -571,9 +571,10 @@ const COLLECTIONS_SCHEMA = {
           properties: {
             key: { type: 'string', pattern: SLUG_PATTERN, maxLength: 40, description: 'type_fields key, e.g. "status".' },
             label: { type: 'string', maxLength: 60, description: 'Field label shown in the UI.' },
-            type: { type: 'string', enum: ['text', 'enum', 'tags', 'url', 'date'], description: 'Value shape. "enum" requires non-empty "options".' },
+            type: { type: 'string', enum: ['text', 'enum', 'tags', 'url', 'date', 'number'], description: 'Value shape. "enum" requires non-empty "options". "number" values are stored as JSON numbers (numeric strings are coerced).' },
             options: { type: 'array', items: { type: 'string' }, description: 'Allowed values — required, non-empty, only for type "enum".' },
-            display: { type: 'string', enum: ['badge', 'chips', 'link', 'text', 'date'], description: 'How the value renders on the public site.' },
+            unit: { type: 'string', maxLength: 20, description: 'Optional, only for type "number" — shown after the value by the "number" display, e.g. "km", "m", "min", "CHF".' },
+            display: { type: 'string', enum: ['badge', 'chips', 'link', 'text', 'date', 'number'], description: 'How the value renders on the public site. Use "number" for number fields (formatted, with the unit).' },
           },
         },
       },

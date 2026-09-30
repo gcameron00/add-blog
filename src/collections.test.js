@@ -202,10 +202,57 @@ describe('XSS-safety — every renderer escapes rather than passing through', ()
     expect(html).not.toContain('field-panel');
   });
 
+  it('renderFieldPanel escapes a number field unit', () => {
+    const html = renderFieldPanel({ n: 5 }, [{ key: 'n', label: 'N', type: 'number', unit: XSS, display: 'number' }]);
+    expect(html).not.toContain('<script>');
+    expect(html).toContain('&lt;script&gt;');
+  });
+
   it('renderFieldPanel (cards/index) never gets the boxed treatment or a date row', () => {
     const html = renderFieldPanel({ status: 'Live' }, PROJECT_COLLECTION.fields);
     expect(html).toContain('field-panel"');
     expect(html).not.toContain('field-panel--boxed');
     expect(html).not.toContain('Published');
+  });
+});
+
+describe('number display', () => {
+  const fields = [
+    { key: 'distance', label: 'Distance', type: 'number', unit: 'km', display: 'number' },
+    { key: 'climb', label: 'Climb', type: 'number', unit: 'm', display: 'number' },
+    { key: 'rank', label: 'Rank', type: 'number', display: 'number' },
+  ];
+
+  it('formats the value with grouping and appends the unit with a non-breaking space', () => {
+    const html = renderFieldPanel({ distance: 12.4, climb: 1240, rank: 3 }, fields);
+    expect(html).toContain('12.4\u00a0km');
+    expect(html).toContain('1,240\u00a0m');
+    expect(html).toMatch(/field-row__value">3<\/span>/);
+  });
+
+  it('does not round small fractions to zero', () => {
+    expect(renderFieldPanel({ rank: 0.0005 }, fields)).toContain('0.0005');
+  });
+
+  it('renders a zero value rather than omitting the row', () => {
+    const html = renderFieldPanel({ climb: 0 }, fields);
+    expect(html).toContain('Climb');
+    expect(html).toContain('0\u00a0m');
+  });
+
+  it('renders a legacy non-number value as plain escaped text, without the unit', () => {
+    const html = renderFieldPanel({ distance: `12 km ${XSS}` }, fields);
+    expect(html).not.toContain('<script>');
+    expect(html).toContain('12 km &lt;script&gt;');
+    expect(html).not.toContain('\u00a0km');
+  });
+
+  it('shows the formatted value on the item detail page too', () => {
+    const html = renderCollectionItem(
+      { slug: 'r', title: 'Route', type_fields: { distance: 21.1 }, body_html: '' },
+      { ...PROJECT_COLLECTION, fields }
+    );
+    expect(html).toContain('Distance');
+    expect(html).toContain('21.1\u00a0km');
   });
 });

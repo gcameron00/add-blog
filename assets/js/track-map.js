@@ -87,8 +87,11 @@ function drawTrackMap(L, figure) {
     attribution: publisher.attribution,
   }).addTo(map);
 
-  const accent = getComputedStyle(figure).getPropertyValue('--accent').trim() || '#2563eb';
-  const route = L.polyline(points, { color: accent, weight: 4, opacity: 0.9 }).addTo(map);
+  // A white casing under the route keeps it legible on any background —
+  // the same trick Strava and Komoot use.
+  const colour = tiles.line || getComputedStyle(figure).getPropertyValue('--accent').trim() || '#2563eb';
+  L.polyline(points, { color: '#ffffff', weight: 8, opacity: 0.85, interactive: false }).addTo(map);
+  const route = L.polyline(points, { color: colour, weight: 4, opacity: 1 }).addTo(map);
   const endpoint = (point, fill, label) =>
     L.circleMarker(point, { radius: 6, color: '#ffffff', weight: 2, fillColor: fill, fillOpacity: 1 })
       .bindTooltip(label)

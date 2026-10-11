@@ -11,8 +11,14 @@
  * - src/index.js's CSP allows every `tileOrigins()` origin in `img-src`,
  *   since Leaflet loads tiles as plain <img> elements.
  *
- * The first style listed for a publisher is its default.
+ * The first style listed for a publisher is its default. A style may set
+ * `line` to override the route colour where the site accent (blue by
+ * default) would blend into the map — sea, lakes or aerial imagery.
  */
+
+// Magenta — the conventional route colour on topographic maps, since almost
+// nothing else on one is drawn in it.
+const ROUTE_MAGENTA = '#d6249f';
 
 export const TRACK_PUBLISHERS = {
   // Swiss Federal Office of Topography — free open data (no key) since 2021,
@@ -26,7 +32,7 @@ export const TRACK_PUBLISHERS = {
       colour: { url: 'https://wmts.geo.admin.ch/1.0.0/ch.swisstopo.pixelkarte-farbe/default/current/3857/{z}/{x}/{y}.jpeg', maxZoom: 18 },
       winter: { url: 'https://wmts.geo.admin.ch/1.0.0/ch.swisstopo.pixelkarte-farbe-winter/default/current/3857/{z}/{x}/{y}.jpeg', maxZoom: 18 },
       grey: { url: 'https://wmts.geo.admin.ch/1.0.0/ch.swisstopo.pixelkarte-grau/default/current/3857/{z}/{x}/{y}.jpeg', maxZoom: 18 },
-      aerial: { url: 'https://wmts.geo.admin.ch/1.0.0/ch.swisstopo.swissimage/default/current/3857/{z}/{x}/{y}.jpeg', maxZoom: 19 },
+      aerial: { url: 'https://wmts.geo.admin.ch/1.0.0/ch.swisstopo.swissimage/default/current/3857/{z}/{x}/{y}.jpeg', maxZoom: 19, line: ROUTE_MAGENTA },
     },
   },
   // OpenStreetMap-based topographic style — free under a light-use policy
@@ -35,7 +41,7 @@ export const TRACK_PUBLISHERS = {
     label: 'OpenTopoMap',
     attribution: 'Map data &copy; <a href="https://www.openstreetmap.org/copyright" rel="noopener noreferrer">OpenStreetMap</a> contributors, SRTM | Style &copy; <a href="https://opentopomap.org" rel="noopener noreferrer">OpenTopoMap</a> (CC-BY-SA)',
     styles: {
-      standard: { url: 'https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png', subdomains: 'abc', maxZoom: 17 },
+      standard: { url: 'https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png', subdomains: 'abc', maxZoom: 17, line: ROUTE_MAGENTA },
     },
   },
 };

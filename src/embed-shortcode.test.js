@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { embedFrameSrcOrigins, embedShortcodeReference, embedSrcWithTheme, renderMarkdown } from '../assets/js/markdown.js';
+import { embedFrameSrcOrigins, embedImgSrcOrigins, embedShortcodeReference, embedSrcWithTheme, renderMarkdown } from '../assets/js/markdown.js';
 
 describe('embed shortcodes', () => {
   it('renders {{apple-music: <url>}} as a sandboxed embed iframe', () => {
@@ -165,6 +165,45 @@ describe('gpx shortcode', () => {
   });
 
   it('does not add an iframe origin', () => {
+    expect(embedFrameSrcOrigins()).toEqual(['https://embed.music.apple.com']);
+  });
+});
+
+describe('setlist shortcode', () => {
+  const URL = 'https://www.setlist.fm/setlist/nile-rodgers-and-chic/2026/event-halle-basel-switzerland-5b7c17e4.html';
+
+  it("renders setlist.fm's setlist image, linked to the setlist page", () => {
+    const html = renderMarkdown(`{{setlist: ${URL}}}`);
+    expect(html).toContain('<figure class="setlist-embed">');
+    expect(html).toContain(`<a href="${URL}" rel="noopener noreferrer">`);
+    expect(html).toContain('src="https://www.setlist.fm/widgets/setlist-image-v1?id=5b7c17e4"');
+    expect(html).toContain('alt="Setlist: nile rodgers and chic, event halle basel switzerland, 2026"');
+    expect(html).not.toContain('<iframe');
+  });
+
+  it('accepts a link without www. or with a query string, linking to the clean page URL', () => {
+    const html = renderMarkdown(`{{setlist: ${URL.replace('www.', '')}?utm_source=x}}`);
+    expect(html).toContain(`<a href="${URL}"`);
+    expect(html).toContain('id=5b7c17e4"');
+  });
+
+  it.each([
+    ['another site', '{{setlist: https://example.com/setlist/a/2026/b-5b7c17e4.html}}'],
+    ['plain http', `{{setlist: ${URL.replace('https', 'http')}}}`],
+    ['an artist page', '{{setlist: https://www.setlist.fm/setlists/nile-rodgers-and-chic-7bc85ec8.html}}'],
+    ['an attribute breakout', '{{setlist: https://www.setlist.fm/setlist/a/2026/b-5b7c17e4.html?"><script>}}'],
+  ])('leaves %s as plain text', (_, line) => {
+    const html = renderMarkdown(line);
+    expect(html).not.toContain('<img');
+    expect(html).toMatch(/^<p>/);
+  });
+
+  it('is listed in the MCP reference', () => {
+    expect(embedShortcodeReference()).toContain('{{setlist: <url>}}');
+  });
+
+  it('adds setlist.fm as an image origin, not an iframe origin', () => {
+    expect(embedImgSrcOrigins()).toEqual(['https://www.setlist.fm']);
     expect(embedFrameSrcOrigins()).toEqual(['https://embed.music.apple.com']);
   });
 });

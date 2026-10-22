@@ -45,7 +45,7 @@
  * nothing about the visitor. See that file for why it's shaped the way it is.
  */
 
-import { embedFrameSrcOrigins } from '../assets/js/markdown.js';
+import { embedFrameSrcOrigins, embedImgSrcOrigins } from '../assets/js/markdown.js';
 import { tileOrigins } from '../assets/js/track-publishers.js';
 import { handlePublicApi } from './public-api.js';
 import {
@@ -117,11 +117,13 @@ function contentSecurityPolicy() {
   // loads them as plain <img> elements. Same idea: sourced from the publisher
   // table itself, so a new publisher's tiles are allowed without a second edit.
   const tileSrc = tileOrigins();
+  // Images an embed shortcode hotlinks, e.g. setlist.fm's setlist image.
+  const embedImgSrc = embedImgSrcOrigins();
   return [
     "default-src 'self'",
     `script-src 'self' ${CDN_ORIGIN}`,
     `style-src 'self' 'unsafe-inline' ${CDN_ORIGIN}`,
-    `img-src 'self' data: ${tileSrc.join(' ')}`,
+    `img-src 'self' data: ${[...tileSrc, ...embedImgSrc].join(' ')}`,
     `font-src 'self' data: ${CDN_ORIGIN}`,
     "connect-src 'self'",
     `frame-src ${frameSrc.length ? frameSrc.join(' ') : "'none'"}`,

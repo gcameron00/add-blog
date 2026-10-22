@@ -133,6 +133,12 @@ describe('headers', () => {
     expect(imgSrc).toContain('https://wmts.geo.admin.ch');
     expect(imgSrc).toContain('https://a.tile.opentopomap.org');
   });
+
+  it('allows setlist.fm images for the setlist shortcode in img-src', async () => {
+    const res = await get(PUBLIC_HOST, '/');
+    const imgSrc = res.headers.get('Content-Security-Policy').split('; ').find((d) => d.startsWith('img-src'));
+    expect(imgSrc).toContain('https://www.setlist.fm');
+  });
 });
 
 describe('/health', () => {

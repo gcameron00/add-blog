@@ -577,9 +577,9 @@ a.tag:hover {
 }
 .track-map--error .track-map__fallback { color: var(--danger); }
 /* setlist.fm setlists — the `{{setlist: …}}` shortcode. The image is a fixed
-   light card, so it keeps its own size and sits centred rather than stretching. */
-.setlist-embed { text-align: center; }
-.prose .setlist-embed img { max-width: min(100%, 460px); height: auto; }
+   light card, so it keeps its own size and sits centred rather than stretching.
+   Images are display: block site-wide, so it's centred with margins, not text-align. */
+.prose .setlist-embed img { max-width: min(100%, 460px); height: auto; margin-inline: auto; }
 .prose figcaption {
   font-size: var(--text-sm);
   color: var(--text-muted);

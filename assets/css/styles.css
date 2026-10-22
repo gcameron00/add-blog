@@ -576,6 +576,10 @@ a.tag:hover {
   color: var(--text-muted);
 }
 .track-map--error .track-map__fallback { color: var(--danger); }
+/* setlist.fm setlists — the `{{setlist: …}}` shortcode. The image is a fixed
+   light card, so it keeps its own size and sits centred rather than stretching. */
+.setlist-embed { text-align: center; }
+.prose .setlist-embed img { max-width: min(100%, 460px); height: auto; }
 .prose figcaption {
   font-size: var(--text-sm);
   color: var(--text-muted);

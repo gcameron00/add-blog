@@ -175,6 +175,13 @@ about raw HTML in `body_md` changes; it is still always escaped. The `create_pos
 the current provider set, generated from that same table, so adding a provider never
 requires updating hand-written prose in more than one place.
 
+`{{setlist: <url>}}` takes a setlist.fm setlist page link
+(`https://www.setlist.fm/setlist/<artist>/<year>/<venue>-<id>.html`) and renders
+setlist.fm's own setlist image, linked back to the page — the same thing setlist.fm's
+"embed" option produces, minus its edit/more-setlists links. The image is hotlinked from
+`www.setlist.fm` (allowed in the CSP's `img-src`), not copied, so later corrections to
+the setlist show up in the post.
+
 The `gpx` shortcode is the one exception to "resolved at render time": it draws a GPX
 track from the media library on a map —
 

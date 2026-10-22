@@ -89,6 +89,25 @@ const EMBED_PROVIDERS = {
     // from the device's when the visitor has used the theme toggle.
     themeParam: 'theme',
   },
+  // A setlist.fm concert setlist, as the image setlist.fm's own "embed" option
+  // gives (a linked <img>, not an iframe). The image is hotlinked rather than
+  // copied into R2 so that later corrections to the setlist show up in the post.
+  setlist: {
+    example: 'https://www.setlist.fm/setlist/nile-rodgers-and-chic/2026/event-halle-basel-switzerland-5b7c17e4.html',
+    notes: 'paste a setlist.fm setlist page link; it renders as setlist.fm\'s setlist image, linked to the page',
+    // Captures artist slug, year, venue slug and setlist id. Like apple-music,
+    // nothing here can contain quotes/angle brackets/whitespace.
+    urlPattern: /^https:\/\/(?:www\.)?setlist\.fm\/setlist\/([a-z0-9-]+)\/(\d{4})\/([a-z0-9-]+)-([0-9a-f]{8})\.html(?:[?#][^\s"'<>]*)?$/i,
+    render(url) {
+      const [, artist, year, venue, id] = url.match(this.urlPattern);
+      const href = `https://www.setlist.fm/setlist/${artist}/${year}/${venue}-${id}.html`;
+      const alt = escapeHtml(`Setlist: ${artist.replace(/-/g, ' ')}, ${venue.replace(/-/g, ' ')}, ${year}`);
+      return `<figure class="setlist-embed"><a href="${escapeHtml(href)}" rel="noopener noreferrer">`
+        + `<img src="${this.imgOrigin}/widgets/setlist-image-v1?id=${id.toLowerCase()}" alt="${alt}" loading="lazy"></a></figure>`;
+    },
+    // For src/index.js's CSP img-src, like embedOrigin is for frame-src.
+    imgOrigin: 'https://www.setlist.fm',
+  },
   // A GPX track from the media library, drawn on a map. Unlike an iframe
   // embed, this renders only a *placeholder*: the GPX has to be read,
   // privacy-trimmed and simplified first, which needs R2 — so src/track.js's
@@ -215,6 +234,11 @@ export function embedSrcWithTheme(src, param, theme) {
 /** Every origin an embed shortcode can render an iframe into — for src/index.js's CSP `frame-src`. */
 export function embedFrameSrcOrigins() {
   return [...new Set(Object.values(EMBED_PROVIDERS).map((provider) => provider.embedOrigin).filter(Boolean))];
+}
+
+/** Every origin an embed shortcode can render an <img> from — for src/index.js's CSP `img-src`. */
+export function embedImgSrcOrigins() {
+  return [...new Set(Object.values(EMBED_PROVIDERS).map((provider) => provider.imgOrigin).filter(Boolean))];
 }
 
 // NUL can never survive escapeHtml's output, which makes it a safe sentinel for

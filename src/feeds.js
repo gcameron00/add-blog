@@ -16,6 +16,14 @@ function xmlEscape(str) {
   ));
 }
 
+// Same icon the HTML <link>s / manifest use: the owner's uploaded
+// settings.site_icon_key when set, else the shared static default.
+function iconUrl(url, settings) {
+  return settings.site_icon_key
+    ? `${url.origin}/media/${settings.site_icon_key}`
+    : `${url.origin}/assets/icon-512.png`;
+}
+
 function xml(body, contentType = 'application/xml;charset=UTF-8') {
   return new Response(`<?xml version="1.0" encoding="UTF-8"?>\n${body}`, {
     headers: { 'Content-Type': contentType, 'Cache-Control': FEED_CACHE_CONTROL },
@@ -53,6 +61,11 @@ async function rss(url, env) {
   <language>en</language>
   <atom:link href="${url.origin}/feed.xml" rel="self" type="application/rss+xml" />
   <lastBuildDate>${new Date().toUTCString()}</lastBuildDate>
+  <image>
+    <url>${xmlEscape(iconUrl(url, settings))}</url>
+    <title>${xmlEscape(title)}</title>
+    <link>${url.origin}/</link>
+  </image>
   ${items}
 </channel>
 </rss>`, 'application/rss+xml;charset=UTF-8');
@@ -87,6 +100,7 @@ async function atom(url, env) {
   <link href="${url.origin}/atom.xml" rel="self" />
   <link href="${url.origin}/" />
   <id>${url.origin}/</id>
+  <icon>${xmlEscape(iconUrl(url, settings))}</icon>
   <updated>${updated}</updated>
   ${entries}
 </feed>`, 'application/atom+xml;charset=UTF-8');

@@ -1,7 +1,11 @@
-import { SELF } from 'cloudflare:test';
+import { SELF, env } from 'cloudflare:test';
 import { describe, expect, it } from 'vitest';
 
 const HOST = 'blog.mysite.com';
+
+async function setSetting(key, value) {
+  await env.DB.prepare(`UPDATE settings SET value = ? WHERE key = ?`).bind(JSON.stringify(value), key).run();
+}
 
 describe('GET /feed.xml', () => {
   it('serves RSS 2.0 with the published posts, newest first', async () => {
@@ -17,6 +21,18 @@ describe('GET /feed.xml', () => {
     expect(xml).not.toContain('notes-on-the-media-pipeline');
     expect(xml).not.toContain('accessibility-pass-findings');
   });
+
+  it('advertises a channel <image>: the static default, or the uploaded site icon when set', async () => {
+    await setSetting('site_icon_key', '');
+    let xml = await (await SELF.fetch(`https://${HOST}/feed.xml`)).text();
+    expect(xml).toContain(`<image>\n    <url>https://${HOST}/assets/icon-512.png</url>`);
+    expect(xml).toContain(`<link>https://${HOST}/</link>\n  </image>`);
+
+    await setSetting('site_icon_key', '2026/08/abc123-icon.png');
+    xml = await (await SELF.fetch(`https://${HOST}/feed.xml`)).text();
+    expect(xml).toContain(`<url>https://${HOST}/media/2026/08/abc123-icon.png</url>`);
+    await setSetting('site_icon_key', '');
+  });
 });
 
 describe('GET /atom.xml', () => {
@@ -26,6 +42,7 @@ describe('GET /atom.xml', () => {
     expect(res.headers.get('Content-Type')).toBe('application/atom+xml;charset=UTF-8');
     const xml = await res.text();
     expect(xml).toContain('<feed xmlns="http://www.w3.org/2005/Atom">');
+    expect(xml).toContain(`<icon>https://${HOST}/assets/icon-512.png</icon>`);
     expect(xml).toContain('shipping-a-blog-on-cloudflare-workers');
   });
 });
